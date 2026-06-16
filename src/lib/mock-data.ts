@@ -67,9 +67,32 @@ export const sampleContent: ContentItem[] = [
   },
 ];
 
-export const specialties = ["Dentist", "Dermatologist", "Cardiologist", "General Physician"];
-export const contentTypes = ["Instagram Post", "Patient Education", "Blog Article"] as const;
-export const tones = ["Professional", "Educational", "Friendly"];
+export const specialties = [
+  "Dentist",
+  "Dermatologist",
+  "Cardiologist",
+  "General Physician",
+  "Pediatrician",
+  "Orthodontist",
+  "Gynecologist",
+];
+export const contentTypes = [
+  "Instagram Post",
+  "Patient Education",
+  "Blog Article",
+  "Health Awareness Post",
+  "Caption",
+  "Greeting / Festival Post",
+  "Reel Script",
+] as const;
+export const tones = ["Professional", "Educational", "Friendly", "Motivational"];
+export const audiences = [
+  "Patients",
+  "General Public",
+  "Existing Patients",
+  "Parents",
+  "Healthcare Professionals",
+];
 
 export function generateMockContent(opts: {
   specialty: string;
