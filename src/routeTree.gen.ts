@@ -15,6 +15,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppSubscriptionRouteImport } from './routes/_app.subscription'
 import { Route as AppHistoryRouteImport } from './routes/_app.history'
+import { Route as AppGenerateRouteImport } from './routes/_app.generate'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppAdminRouteImport } from './routes/_app.admin'
 
@@ -47,6 +48,11 @@ const AppHistoryRoute = AppHistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGenerateRoute = AppGenerateRouteImport.update({
+  id: '/generate',
+  path: '/generate',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/admin': typeof AppAdminRoute
   '/dashboard': typeof AppDashboardRoute
+  '/generate': typeof AppGenerateRoute
   '/history': typeof AppHistoryRoute
   '/subscription': typeof AppSubscriptionRoute
 }
@@ -73,6 +80,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/admin': typeof AppAdminRoute
   '/dashboard': typeof AppDashboardRoute
+  '/generate': typeof AppGenerateRoute
   '/history': typeof AppHistoryRoute
   '/subscription': typeof AppSubscriptionRoute
 }
@@ -84,6 +92,7 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/_app/admin': typeof AppAdminRoute
   '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/generate': typeof AppGenerateRoute
   '/_app/history': typeof AppHistoryRoute
   '/_app/subscription': typeof AppSubscriptionRoute
 }
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/admin'
     | '/dashboard'
+    | '/generate'
     | '/history'
     | '/subscription'
   fileRoutesByTo: FileRoutesByTo
@@ -104,6 +114,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/admin'
     | '/dashboard'
+    | '/generate'
     | '/history'
     | '/subscription'
   id:
@@ -114,6 +125,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/_app/admin'
     | '/_app/dashboard'
+    | '/_app/generate'
     | '/_app/history'
     | '/_app/subscription'
   fileRoutesById: FileRoutesById
@@ -169,6 +181,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppHistoryRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/generate': {
+      id: '/_app/generate'
+      path: '/generate'
+      fullPath: '/generate'
+      preLoaderRoute: typeof AppGenerateRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dashboard': {
       id: '/_app/dashboard'
       path: '/dashboard'
@@ -189,6 +208,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAdminRoute: typeof AppAdminRoute
   AppDashboardRoute: typeof AppDashboardRoute
+  AppGenerateRoute: typeof AppGenerateRoute
   AppHistoryRoute: typeof AppHistoryRoute
   AppSubscriptionRoute: typeof AppSubscriptionRoute
 }
@@ -196,6 +216,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRoute,
   AppDashboardRoute: AppDashboardRoute,
+  AppGenerateRoute: AppGenerateRoute,
   AppHistoryRoute: AppHistoryRoute,
   AppSubscriptionRoute: AppSubscriptionRoute,
 }
