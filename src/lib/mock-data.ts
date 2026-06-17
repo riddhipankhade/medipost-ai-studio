@@ -94,6 +94,39 @@ export const audiences = [
   "Healthcare Professionals",
 ];
 
+export const festivals = [
+  "Diwali",
+  "New Year",
+  "Doctor's Day",
+  "Independence Day",
+  "Christmas",
+  "World Health Day",
+  "Women's Day",
+  "Mother's Day",
+];
+
+export type WorkflowKind =
+  | "single"
+  | "carousel"
+  | "story"
+  | "reel"
+  | "campaign"
+  | "festive";
+
+export const workflows: {
+  kind: WorkflowKind;
+  title: string;
+  tagline: string;
+  icon: string;
+}[] = [
+  { kind: "single", title: "Single Post", tagline: "One scroll-stopping post", icon: "square" },
+  { kind: "carousel", title: "Carousel Post", tagline: "5–10 swipeable slides", icon: "layers" },
+  { kind: "story", title: "Story", tagline: "9:16 vertical story", icon: "smartphone" },
+  { kind: "reel", title: "Reel Script", tagline: "Hook · Points · CTA", icon: "film" },
+  { kind: "campaign", title: "Awareness Campaign", tagline: "Weekly content plan", icon: "calendar" },
+  { kind: "festive", title: "Festive Wishes", tagline: "Greetings for any occasion", icon: "sparkles" },
+];
+
 export function generateMockContent(opts: {
   specialty: string;
   type: string;
