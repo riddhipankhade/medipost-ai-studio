@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/generate", label: "AI Generator", icon: Sparkles },
+  { to: "/generate", label: "Content Studio", icon: Sparkles },
   { to: "/history", label: "Content History", icon: History },
   { to: "/subscription", label: "Subscription", icon: CreditCard },
   { to: "/admin", label: "Admin", icon: ShieldCheck },
