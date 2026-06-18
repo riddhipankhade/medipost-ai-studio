@@ -54,6 +54,18 @@ import {
   type Campaign,
   type FestivePost,
 } from "@/lib/api/generate.functions";
+import {
+  carouselThemes,
+  slideLayouts,
+  fontFamilies,
+  iconsFor,
+  primaryIconFor,
+  suggestThemeId,
+  getTheme,
+  type SlideLayout,
+} from "@/lib/carousel-themes";
+import { useBrandKit } from "@/lib/brand-kit";
+import { Phone, Globe, Image as ImagePlus } from "lucide-react";
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
@@ -426,95 +438,621 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
 
 /* ---- Carousel ---- */
 function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: string }) {
+  const [brand] = useBrandKit();
   const [idx, setIdx] = useState(0);
+  const [themeId, setThemeId] = useState<string>(() => suggestThemeId(specialty));
+  const [layout, setLayout] = useState<SlideLayout>("centered");
+  const [fontFamily, setFontFamily] = useState<string>(carouselThemes[0].fontFamily);
+  const [fontScale, setFontScale] = useState<number>(1);
+  const [headingColor, setHeadingColor] = useState<string | null>(null);
+  const [textColor, setTextColor] = useState<string | null>(null);
+  const [accentColor, setAccentColor] = useState<string | null>(null);
+  const [useBrandColors, setUseBrandColors] = useState<boolean>(true);
+  const [showIcons, setShowIcons] = useState<boolean>(true);
+
+  const baseTheme = getTheme(themeId);
+  const theme = {
+    ...baseTheme,
+    bg: useBrandColors
+      ? `linear-gradient(135deg, ${brand.primaryColor} 0%, ${brand.secondaryColor} 100%)`
+      : baseTheme.bg,
+    heading: headingColor || baseTheme.heading,
+    text: textColor || baseTheme.text,
+    accent: accentColor || (useBrandColors ? brand.primaryColor : baseTheme.accent),
+    fontFamily,
+  };
+
   const total = post.slides.length;
   const slide = post.slides[idx];
   if (!slide) return null;
 
-  const fullText = post.slides
-    .map((s, i) => `Slide ${i + 1} — ${s.title}\n${s.content}`)
-    .join("\n\n") + `\n\nCTA: ${post.cta}\n${post.hashtags.join(" ")}`;
+  const fullText =
+    post.slides
+      .map((s, i) => `Slide ${i + 1} — ${s.title}\n${s.content}`)
+      .join("\n\n") + `\n\nCTA: ${post.cta}\n${post.hashtags.join(" ")}`;
 
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
-        <PreviewToolbar title={post.title || "Carousel Preview"} onCopy={() => copyText(fullText, "Carousel copied")} />
+        <PreviewToolbar
+          title={post.title || "Carousel Preview"}
+          onCopy={() => copyText(fullText, "Carousel copied")}
+        />
 
-        <div className="relative mx-auto w-full max-w-md">
-          <div
-            className="aspect-square rounded-2xl border border-border overflow-hidden shadow-sm flex flex-col text-white p-6"
-            style={{
-              background: `linear-gradient(135deg, ${post.visual.colors[0] || "#0E7C7B"}, ${post.visual.colors[1] || "#1f4e79"})`,
-            }}
-          >
-            <div className="flex items-center justify-between text-xs opacity-80">
-              <span className="font-semibold">{specialty.toLowerCase()}.clinic</span>
-              <span>Slide {idx + 1} of {total}</span>
+        <div className="grid gap-5 md:grid-cols-[1fr_280px]">
+          {/* Slide canvas */}
+          <div>
+            <div className="relative mx-auto w-full max-w-md">
+              <SlideCanvas
+                slideTitle={slide.title}
+                slideBody={slide.content}
+                slideIndex={idx}
+                totalSlides={total}
+                isCta={idx === total - 1}
+                cta={post.cta}
+                specialty={specialty}
+                theme={theme}
+                layout={layout}
+                fontScale={fontScale}
+                showIcons={showIcons}
+                brand={brand}
+              />
+
+              <button
+                onClick={() => setIdx((i) => Math.max(0, i - 1))}
+                disabled={idx === 0}
+                className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 h-10 w-10 grid place-items-center rounded-full bg-background border border-border shadow disabled:opacity-40"
+                aria-label="Previous slide"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => setIdx((i) => Math.min(total - 1, i + 1))}
+                disabled={idx === total - 1}
+                className="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 h-10 w-10 grid place-items-center rounded-full bg-background border border-border shadow disabled:opacity-40"
+                aria-label="Next slide"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
             </div>
-            <div className="flex-1 grid place-items-center text-center">
-              <div>
-                <p className="text-xl font-bold leading-tight mb-3">{slide.title}</p>
-                <p className="text-sm leading-relaxed opacity-95 whitespace-pre-wrap">
-                  {slide.content}
-                </p>
-                {idx === total - 1 && (
-                  <p className="mt-4 inline-block px-3 py-1 rounded-full bg-white/20 text-sm font-medium">
-                    {post.cta}
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex gap-1 justify-center">
-              {post.slides.map((_, i) => (
-                <span
+
+            {/* Slide strip */}
+            <div className="mt-4 grid gap-2 grid-cols-3 sm:grid-cols-4 md:grid-cols-5">
+              {post.slides.map((s, i) => (
+                <button
                   key={i}
-                  className={`h-1 rounded-full transition-all ${
-                    i === idx ? "w-6 bg-white" : "w-2 bg-white/40"
+                  onClick={() => setIdx(i)}
+                  className={`group text-left rounded-md border overflow-hidden transition-all ${
+                    i === idx
+                      ? "border-[color:var(--teal)] ring-2 ring-[color:var(--teal)]/30"
+                      : "border-border hover:border-[color:var(--teal)]/50"
                   }`}
-                />
+                  title={s.title}
+                >
+                  <div
+                    className="aspect-square p-1.5 text-[8px] leading-tight flex flex-col"
+                    style={{ background: theme.bg, color: theme.text, fontFamily: theme.fontFamily }}
+                  >
+                    <span className="opacity-60">{i + 1}</span>
+                    <span className="font-bold line-clamp-3 mt-auto" style={{ color: theme.heading }}>
+                      {s.title}
+                    </span>
+                  </div>
+                </button>
               ))}
             </div>
           </div>
 
-          <button
-            onClick={() => setIdx((i) => Math.max(0, i - 1))}
-            disabled={idx === 0}
-            className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 h-10 w-10 grid place-items-center rounded-full bg-background border border-border shadow disabled:opacity-40"
-            aria-label="Previous slide"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => setIdx((i) => Math.min(total - 1, i + 1))}
-            disabled={idx === total - 1}
-            className="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 h-10 w-10 grid place-items-center rounded-full bg-background border border-border shadow disabled:opacity-40"
-            aria-label="Next slide"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-2">
-          {post.slides.map((s, i) => (
-            <button
-              key={i}
-              onClick={() => setIdx(i)}
-              className={`text-left rounded-lg border p-3 transition-colors ${
-                i === idx ? "border-[color:var(--teal)] bg-accent/40" : "border-border hover:bg-accent/30"
-              }`}
-            >
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                Slide {i + 1}{i === total - 1 ? " · CTA" : ""}
-              </p>
-              <p className="text-sm font-semibold mt-0.5">{s.title}</p>
-              <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{s.content}</p>
-            </button>
-          ))}
+          {/* Studio controls */}
+          <StudioControls
+            themeId={themeId}
+            setThemeId={(id) => {
+              setThemeId(id);
+              setFontFamily(getTheme(id).fontFamily);
+            }}
+            layout={layout}
+            setLayout={setLayout}
+            fontFamily={fontFamily}
+            setFontFamily={setFontFamily}
+            fontScale={fontScale}
+            setFontScale={setFontScale}
+            headingColor={headingColor ?? theme.heading}
+            setHeadingColor={setHeadingColor}
+            textColor={textColor ?? theme.text}
+            setTextColor={setTextColor}
+            accentColor={accentColor ?? theme.accent}
+            setAccentColor={setAccentColor}
+            useBrandColors={useBrandColors}
+            setUseBrandColors={setUseBrandColors}
+            showIcons={showIcons}
+            setShowIcons={setShowIcons}
+          />
         </div>
 
         <SectionBlock title="Hashtags" body={post.hashtags.join(" ")} />
       </CardContent>
     </Card>
+  );
+}
+
+/* ---------- Carousel sub-components ---------- */
+
+type SlideCanvasProps = {
+  slideTitle: string;
+  slideBody: string;
+  slideIndex: number;
+  totalSlides: number;
+  isCta: boolean;
+  cta: string;
+  specialty: string;
+  theme: ReturnType<typeof getTheme> & { fontFamily: string };
+  layout: SlideLayout;
+  fontScale: number;
+  showIcons: boolean;
+  brand: ReturnType<typeof useBrandKit>[0];
+};
+
+function SlideCanvas(p: SlideCanvasProps) {
+  const PrimaryIcon = primaryIconFor(p.specialty);
+  const titleSize = 22 * p.fontScale;
+  const bodySize = 14 * p.fontScale;
+
+  const baseStyle: React.CSSProperties = {
+    background: p.theme.bg,
+    color: p.theme.text,
+    fontFamily: p.theme.fontFamily,
+  };
+
+  return (
+    <div
+      className="relative aspect-square rounded-2xl border border-border overflow-hidden shadow-md"
+      style={baseStyle}
+    >
+      {/* Contextual visual background */}
+      {p.showIcons && (
+        <ContextualBackground specialty={p.specialty} opacity={p.theme.iconOpacity} color={p.theme.heading} />
+      )}
+
+      {/* Layout */}
+      {p.layout === "centered" && (
+        <CenteredLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+      )}
+      {p.layout === "image-left" && (
+        <ImageLeftLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+      )}
+      {p.layout === "full-image" && (
+        <FullImageLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+      )}
+      {p.layout === "split" && (
+        <SplitLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+      )}
+      {p.layout === "modern-card" && (
+        <ModernCardLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+      )}
+
+      {/* Page indicator */}
+      <div className="absolute top-3 right-4 z-20 text-[10px] font-medium opacity-80" style={{ color: p.theme.heading }}>
+        {p.slideIndex + 1} / {p.totalSlides}
+      </div>
+
+      {/* Progress dots */}
+      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex gap-1">
+        {Array.from({ length: p.totalSlides }).map((_, i) => (
+          <span
+            key={i}
+            className="h-1 rounded-full transition-all"
+            style={{
+              width: i === p.slideIndex ? 18 : 6,
+              background: i === p.slideIndex ? p.theme.heading : `${p.theme.heading}55`,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type LayoutProps = SlideCanvasProps & {
+  titleSize: number;
+  bodySize: number;
+  PrimaryIcon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+};
+
+function BrandHeader({ p }: { p: LayoutProps }) {
+  return (
+    <div className="flex items-center gap-2 relative z-10">
+      {p.brand.logo ? (
+        <img src={p.brand.logo} alt="" className="h-8 w-8 rounded-md object-cover bg-white" />
+      ) : (
+        <div
+          className="h-8 w-8 rounded-md grid place-items-center"
+          style={{ background: `${p.theme.heading}22`, color: p.theme.heading }}
+        >
+          <p.PrimaryIcon className="h-4 w-4" />
+        </div>
+      )}
+      <p className="text-[11px] font-semibold tracking-wide truncate" style={{ color: p.theme.heading }}>
+        {p.brand.clinicName}
+      </p>
+    </div>
+  );
+}
+
+function BrandFooter({ p }: { p: LayoutProps }) {
+  return (
+    <div
+      className="flex items-center gap-3 text-[9px] relative z-10 pt-2 border-t"
+      style={{ borderColor: `${p.theme.heading}33`, color: p.theme.text }}
+    >
+      <span className="inline-flex items-center gap-1 truncate">
+        <Globe className="h-2.5 w-2.5" /> {p.brand.website}
+      </span>
+      <span className="inline-flex items-center gap-1 truncate">
+        <Phone className="h-2.5 w-2.5" /> {p.brand.phone}
+      </span>
+    </div>
+  );
+}
+
+function CtaPill({ p }: { p: LayoutProps }) {
+  if (!p.isCta) return null;
+  return (
+    <div
+      className="inline-block px-4 py-2 rounded-full text-xs font-semibold mt-3"
+      style={{ background: p.theme.accent, color: "#fff" }}
+    >
+      {p.cta}
+    </div>
+  );
+}
+
+function CenteredLayout(p: LayoutProps) {
+  return (
+    <div className="absolute inset-0 z-10 p-6 flex flex-col">
+      <BrandHeader p={p} />
+      <div className="flex-1 grid place-items-center text-center px-2">
+        <div>
+          <div
+            className="h-10 w-10 rounded-full grid place-items-center mx-auto mb-3"
+            style={{ background: `${p.theme.accent}33`, color: p.theme.accent }}
+          >
+            <p.PrimaryIcon className="h-5 w-5" />
+          </div>
+          <h3
+            className="font-bold leading-tight"
+            style={{ color: p.theme.heading, fontSize: p.titleSize }}
+          >
+            {p.slideTitle}
+          </h3>
+          <p className="mt-3 leading-relaxed" style={{ color: p.theme.text, fontSize: p.bodySize }}>
+            {p.slideBody}
+          </p>
+          <CtaPill p={p} />
+        </div>
+      </div>
+      <BrandFooter p={p} />
+    </div>
+  );
+}
+
+function ImageLeftLayout(p: LayoutProps) {
+  return (
+    <div className="absolute inset-0 z-10 p-5 flex flex-col">
+      <BrandHeader p={p} />
+      <div className="flex-1 grid grid-cols-[40%_1fr] gap-3 mt-3">
+        <ImagePlaceholder p={p} />
+        <div className="flex flex-col justify-center">
+          <h3 className="font-bold leading-tight" style={{ color: p.theme.heading, fontSize: p.titleSize * 0.85 }}>
+            {p.slideTitle}
+          </h3>
+          <p className="mt-2 leading-relaxed" style={{ color: p.theme.text, fontSize: p.bodySize * 0.95 }}>
+            {p.slideBody}
+          </p>
+          <CtaPill p={p} />
+        </div>
+      </div>
+      <BrandFooter p={p} />
+    </div>
+  );
+}
+
+function FullImageLayout(p: LayoutProps) {
+  const photo = p.brand.coverPhoto || p.brand.clinicPhoto;
+  return (
+    <>
+      {photo ? (
+        <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      ) : (
+        <ImagePlaceholder p={p} full />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
+      <div className="absolute inset-0 z-10 p-6 flex flex-col text-white">
+        <BrandHeader p={{ ...p, theme: { ...p.theme, heading: "#fff", text: "#fff" } }} />
+        <div className="flex-1" />
+        <div>
+          <h3 className="font-bold leading-tight" style={{ fontSize: p.titleSize }}>
+            {p.slideTitle}
+          </h3>
+          <p className="mt-2 opacity-90" style={{ fontSize: p.bodySize }}>
+            {p.slideBody}
+          </p>
+          <CtaPill p={p} />
+        </div>
+        <BrandFooter p={{ ...p, theme: { ...p.theme, heading: "#fff", text: "#fff" } }} />
+      </div>
+    </>
+  );
+}
+
+function SplitLayout(p: LayoutProps) {
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col">
+      <div className="h-[42%] relative p-5 flex flex-col justify-between" style={{ background: p.theme.accent }}>
+        <BrandHeader p={{ ...p, theme: { ...p.theme, heading: "#fff" } }} />
+        <h3 className="font-bold leading-tight text-white" style={{ fontSize: p.titleSize }}>
+          {p.slideTitle}
+        </h3>
+      </div>
+      <div className="flex-1 p-5 flex flex-col bg-white/95 backdrop-blur">
+        <p className="leading-relaxed text-gray-700" style={{ fontSize: p.bodySize }}>
+          {p.slideBody}
+        </p>
+        <CtaPill p={p} />
+        <div className="mt-auto">
+          <BrandFooter
+            p={{ ...p, theme: { ...p.theme, heading: "#222", text: "#555" } }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModernCardLayout(p: LayoutProps) {
+  return (
+    <div className="absolute inset-0 z-10 p-5 flex flex-col">
+      <BrandHeader p={p} />
+      <div className="flex-1 grid place-items-center">
+        <div
+          className="w-full rounded-xl p-5 backdrop-blur shadow-lg border"
+          style={{
+            background: "rgba(255,255,255,0.92)",
+            borderColor: `${p.theme.accent}55`,
+          }}
+        >
+          <div
+            className="h-9 w-9 rounded-lg grid place-items-center mb-3"
+            style={{ background: `${p.theme.accent}22`, color: p.theme.accent }}
+          >
+            <p.PrimaryIcon className="h-5 w-5" />
+          </div>
+          <h3 className="font-bold leading-tight text-gray-900" style={{ fontSize: p.titleSize * 0.9 }}>
+            {p.slideTitle}
+          </h3>
+          <p className="mt-2 leading-relaxed text-gray-600" style={{ fontSize: p.bodySize * 0.95 }}>
+            {p.slideBody}
+          </p>
+          <CtaPill p={p} />
+        </div>
+      </div>
+      <BrandFooter p={p} />
+    </div>
+  );
+}
+
+function ImagePlaceholder({ p, full }: { p: LayoutProps; full?: boolean }) {
+  const photo = p.brand.clinicPhoto || p.brand.doctorPhoto || p.brand.coverPhoto;
+  if (photo) {
+    return (
+      <img
+        src={photo}
+        alt=""
+        className={`${full ? "absolute inset-0 w-full h-full" : "w-full h-full"} object-cover rounded-lg`}
+      />
+    );
+  }
+  return (
+    <div
+      className={`${
+        full ? "absolute inset-0" : "h-full w-full"
+      } rounded-lg grid place-items-center text-center`}
+      style={{
+        background: `repeating-linear-gradient(45deg, ${p.theme.accent}11 0 10px, ${p.theme.accent}22 10px 20px)`,
+        color: p.theme.heading,
+      }}
+    >
+      <div className="flex flex-col items-center gap-1 opacity-80">
+        <ImagePlus className="h-6 w-6" />
+        <span className="text-[9px] font-medium tracking-wide uppercase">AI image area</span>
+      </div>
+    </div>
+  );
+}
+
+function ContextualBackground({
+  specialty,
+  opacity,
+  color,
+}: {
+  specialty: string;
+  opacity: number;
+  color: string;
+}) {
+  const Icons = iconsFor(specialty);
+  // Deterministic scattered icon positions to evoke topic-specific visuals.
+  const positions = [
+    { top: "8%", left: "10%", size: 56, rot: -10 },
+    { top: "20%", left: "78%", size: 38, rot: 18 },
+    { top: "45%", left: "5%", size: 30, rot: 6 },
+    { top: "60%", left: "85%", size: 64, rot: -22 },
+    { top: "78%", left: "20%", size: 42, rot: 12 },
+    { top: "30%", left: "45%", size: 90, rot: -6 },
+    { top: "85%", left: "60%", size: 34, rot: 24 },
+  ];
+  return (
+    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden" aria-hidden>
+      {positions.map((pos, i) => {
+        const Icon = Icons[i % Icons.length];
+        return (
+          <Icon
+            key={i}
+            style={{
+              position: "absolute",
+              top: pos.top,
+              left: pos.left,
+              width: pos.size,
+              height: pos.size,
+              transform: `rotate(${pos.rot}deg)`,
+              color,
+              opacity,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function StudioControls(props: {
+  themeId: string;
+  setThemeId: (v: string) => void;
+  layout: SlideLayout;
+  setLayout: (v: SlideLayout) => void;
+  fontFamily: string;
+  setFontFamily: (v: string) => void;
+  fontScale: number;
+  setFontScale: (v: number) => void;
+  headingColor: string;
+  setHeadingColor: (v: string | null) => void;
+  textColor: string;
+  setTextColor: (v: string | null) => void;
+  accentColor: string;
+  setAccentColor: (v: string | null) => void;
+  useBrandColors: boolean;
+  setUseBrandColors: (v: boolean) => void;
+  showIcons: boolean;
+  setShowIcons: (v: boolean) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-4 text-sm h-fit">
+      <div>
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Theme</Label>
+        <div className="mt-2 grid grid-cols-2 gap-1.5">
+          {carouselThemes.map((t) => {
+            const active = t.id === props.themeId;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => props.setThemeId(t.id)}
+                className={`rounded-md border overflow-hidden text-left ${
+                  active ? "ring-2 ring-[color:var(--teal)] border-[color:var(--teal)]" : "border-border"
+                }`}
+                title={t.tagline}
+              >
+                <div className="h-8" style={{ background: t.bg }} />
+                <div className="px-1.5 py-1">
+                  <p className="text-[10px] font-semibold leading-tight">{t.name}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Layout</Label>
+        <Select value={props.layout} onValueChange={(v) => props.setLayout(v as SlideLayout)}>
+          <SelectTrigger className="mt-1.5 h-9"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {slideLayouts.map((l) => (
+              <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Font</Label>
+        <Select value={props.fontFamily} onValueChange={props.setFontFamily}>
+          <SelectTrigger className="mt-1.5 h-9"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {fontFamilies.map((f) => (
+              <SelectItem key={f.id} value={f.id}>
+                <span style={{ fontFamily: f.id }}>{f.name}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between">
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+            Font size
+          </Label>
+          <span className="text-xs font-mono">{Math.round(props.fontScale * 100)}%</span>
+        </div>
+        <input
+          type="range"
+          min={0.8}
+          max={1.4}
+          step={0.05}
+          value={props.fontScale}
+          onChange={(e) => props.setFontScale(Number(e.target.value))}
+          className="w-full accent-[color:var(--teal)] mt-1.5"
+        />
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <MiniColor label="Heading" value={props.headingColor} onChange={props.setHeadingColor} />
+        <MiniColor label="Body" value={props.textColor} onChange={props.setTextColor} />
+        <MiniColor label="Accent" value={props.accentColor} onChange={props.setAccentColor} />
+      </div>
+
+      <div className="space-y-2 pt-1">
+        <label className="flex items-center justify-between gap-2 text-xs cursor-pointer">
+          <span>Use clinic brand colors</span>
+          <input
+            type="checkbox"
+            checked={props.useBrandColors}
+            onChange={(e) => props.setUseBrandColors(e.target.checked)}
+            className="accent-[color:var(--teal)]"
+          />
+        </label>
+        <label className="flex items-center justify-between gap-2 text-xs cursor-pointer">
+          <span>Show contextual icons</span>
+          <input
+            type="checkbox"
+            checked={props.showIcons}
+            onChange={(e) => props.setShowIcons(e.target.checked)}
+            className="accent-[color:var(--teal)]"
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function MiniColor({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string | null) => void;
+}) {
+  return (
+    <div>
+      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</Label>
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 h-8 w-full rounded border border-border cursor-pointer bg-transparent"
+      />
+    </div>
   );
 }
 
