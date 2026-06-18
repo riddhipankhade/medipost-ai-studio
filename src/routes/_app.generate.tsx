@@ -54,6 +54,18 @@ import {
   type Campaign,
   type FestivePost,
 } from "@/lib/api/generate.functions";
+import {
+  carouselThemes,
+  slideLayouts,
+  fontFamilies,
+  iconsFor,
+  primaryIconFor,
+  suggestThemeId,
+  getTheme,
+  type SlideLayout,
+} from "@/lib/carousel-themes";
+import { useBrandKit } from "@/lib/brand-kit";
+import { Phone, Globe, Image as ImagePlus } from "lucide-react";
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
