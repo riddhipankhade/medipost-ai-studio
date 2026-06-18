@@ -1,5 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Sparkles, History, CreditCard, ShieldCheck, LogOut } from "lucide-react";
+import { LayoutDashboard, Sparkles, History, CreditCard, ShieldCheck, LogOut, Palette } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/generate", label: "Content Studio", icon: Sparkles },
+  { to: "/brand", label: "Brand Kit", icon: Palette },
   { to: "/history", label: "Content History", icon: History },
   { to: "/subscription", label: "Subscription", icon: CreditCard },
   { to: "/admin", label: "Admin", icon: ShieldCheck },
