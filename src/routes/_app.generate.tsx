@@ -373,6 +373,32 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function CategoryChip({
+  cat,
+  active,
+  onClick,
+}: {
+  cat: { id: ContentCategory; title: string; tagline: string; emoji: string };
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={cat.tagline}
+      className={`px-2.5 py-1.5 rounded-lg text-xs border transition-all flex items-center gap-1.5 ${
+        active
+          ? "border-[color:var(--teal)] bg-[color:var(--teal)]/10 text-foreground shadow-sm"
+          : "border-border bg-background hover:border-[color:var(--teal)]/50 text-foreground"
+      }`}
+    >
+      <span>{cat.emoji}</span>
+      <span className="font-medium">{cat.title}</span>
+    </button>
+  );
+}
+
 function LoadingPanel({ stage }: { stage: number }) {
   const pct = ((stage + 1) / PROGRESS_STAGES.length) * 100;
   return (
