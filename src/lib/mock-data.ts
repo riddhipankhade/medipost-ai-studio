@@ -105,6 +105,55 @@ export const festivals = [
   "Mother's Day",
 ];
 
+/* ------------- Content Categories ------------- */
+
+export type ContentCategory =
+  | "educational"
+  | "myth-fact"
+  | "did-you-know"
+  | "patient-faq"
+  | "health-tips"
+  | "warning-signs"
+  | "prevention"
+  | "doctor-explains"
+  | "awareness"
+  | "clinic-promo"
+  | "greeting"
+  | "reel-hook";
+
+export const contentCategories: {
+  id: ContentCategory;
+  title: string;
+  tagline: string;
+  emoji: string;
+  /** Workflow kinds where this category shines (UI hint only) */
+  bestFor: WorkflowKind[];
+}[] = [
+  { id: "educational", title: "Educational", tagline: "Teach a concept simply", emoji: "📘", bestFor: ["single", "carousel", "reel"] },
+  { id: "myth-fact", title: "Myth vs Fact", tagline: "Bust a common myth", emoji: "⚖️", bestFor: ["carousel", "single", "reel"] },
+  { id: "did-you-know", title: "Did You Know?", tagline: "Eye-opening fact", emoji: "💡", bestFor: ["single", "story", "reel"] },
+  { id: "patient-faq", title: "Patient FAQ", tagline: "Answer a real question", emoji: "❓", bestFor: ["carousel", "single"] },
+  { id: "health-tips", title: "Health Tips", tagline: "Quick actionable tips", emoji: "✅", bestFor: ["carousel", "single", "reel"] },
+  { id: "warning-signs", title: "Warning Signs", tagline: "When to seek care", emoji: "⚠️", bestFor: ["carousel", "single", "reel"] },
+  { id: "prevention", title: "Prevention Tips", tagline: "Stay ahead of disease", emoji: "🛡️", bestFor: ["carousel", "single"] },
+  { id: "doctor-explains", title: "Doctor Explains", tagline: "Authority-led explainer", emoji: "🩺", bestFor: ["reel", "single", "carousel"] },
+  { id: "awareness", title: "Awareness Campaign", tagline: "Build movement around a cause", emoji: "📣", bestFor: ["campaign", "single"] },
+  { id: "clinic-promo", title: "Clinic Promotion", tagline: "Highlight services & offers", emoji: "🏥", bestFor: ["single", "story", "carousel"] },
+  { id: "greeting", title: "Greeting Post", tagline: "Festive & occasion wishes", emoji: "🎉", bestFor: ["festive", "single", "story"] },
+  { id: "reel-hook", title: "Reel Hook", tagline: "3-second scroll stopper", emoji: "🎬", bestFor: ["reel", "story"] },
+];
+
+export function defaultCategoryFor(kind: WorkflowKind): ContentCategory {
+  switch (kind) {
+    case "carousel": return "myth-fact";
+    case "story": return "did-you-know";
+    case "reel": return "reel-hook";
+    case "campaign": return "awareness";
+    case "festive": return "greeting";
+    default: return "educational";
+  }
+}
+
 export type WorkflowKind =
   | "single"
   | "carousel"
