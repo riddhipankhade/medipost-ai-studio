@@ -1170,6 +1170,12 @@ function MiniColor({
 
 /* ---- Story ---- */
 function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string }) {
+  const [brand] = useBrandKit();
+  const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
+  const c2 = brand.secondaryColor || post.visual.colors[1] || "#1f4e79";
+  const c3 = post.visual.colors[2] || "#0a3d62";
+  const photo = brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
+  const handle = (brand.clinicName || `${specialty.toLowerCase()}.clinic`).slice(0, 28);
   const fullText = `${post.headline}\n\n${post.message}\n\n${post.cta}`;
   return (
     <Card className="border-border/60">
@@ -1181,21 +1187,31 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
           style={{ width: 270, height: 480 }}
         >
           <div
-            className="w-full h-full flex flex-col p-5 text-white"
-            style={{
-              background: `linear-gradient(160deg, ${post.visual.colors[0] || "#0E7C7B"}, ${post.visual.colors[1] || "#1f4e79"} 60%, ${post.visual.colors[2] || "#0a3d62"})`,
-            }}
+            className="relative w-full h-full flex flex-col p-5 text-white"
+            style={{ background: `linear-gradient(160deg, ${c1}, ${c2} 60%, ${c3})` }}
           >
+            {photo && (
+              <>
+                <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${c1}b3 0%, ${c2}f0 100%)` }} />
+              </>
+            )}
+            <ContextualBackground specialty={specialty} opacity={0.08} color="#ffffff" />
+            <div className="relative z-10 flex flex-col h-full">
             <div className="flex gap-1">
               <span className="h-0.5 flex-1 bg-white rounded" />
               <span className="h-0.5 flex-1 bg-white/40 rounded" />
               <span className="h-0.5 flex-1 bg-white/40 rounded" />
             </div>
             <div className="mt-3 flex items-center gap-2">
-              <div className="h-7 w-7 rounded-full bg-white/30 grid place-items-center text-[10px] font-bold">
-                {specialty.slice(0, 2).toUpperCase()}
-              </div>
-              <p className="text-xs font-medium">{specialty.toLowerCase()}.clinic</p>
+              {brand.logo ? (
+                <img src={brand.logo} alt="" className="h-7 w-7 rounded-full object-cover bg-white" />
+              ) : (
+                <div className="h-7 w-7 rounded-full bg-white/30 grid place-items-center text-[10px] font-bold">
+                  {(brand.clinicName || specialty).slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <p className="text-xs font-medium truncate">{handle}</p>
             </div>
 
             <div className="flex-1 grid place-items-center text-center">
@@ -1205,8 +1221,9 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
               </div>
             </div>
 
-            <div className="rounded-full bg-white text-foreground text-sm font-semibold py-2.5 text-center shadow">
+            <div className="rounded-full bg-white text-sm font-semibold py-2.5 text-center shadow" style={{ color: c1 }}>
               {post.cta}
+            </div>
             </div>
           </div>
         </div>
