@@ -466,6 +466,20 @@ function PreviewToolbar({ onCopy, title }: { onCopy: () => void; title: string }
 
 /* ---- Single Post ---- */
 function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: string }) {
+  const [brand] = useBrandKit();
+  const handle = (brand.clinicName || `${specialty.toLowerCase()}.clinic`)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 24) || "clinic";
+  const brandedVisual: Visual = {
+    ...post.visual,
+    colors: [
+      brand.primaryColor,
+      brand.secondaryColor,
+      post.visual.colors[2] || "#e8f4f8",
+      ...(post.visual.colors.slice(3) || []),
+    ],
+  };
   const fullText = [
     post.headline,
     "",
@@ -485,17 +499,24 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
 
         <div className="mx-auto w-full max-w-md rounded-xl border border-border overflow-hidden bg-background shadow-sm">
           <div className="flex items-center gap-3 p-3 border-b border-border">
-            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[color:var(--teal)] to-primary grid place-items-center text-white text-xs font-semibold">
-              {specialty.slice(0, 2).toUpperCase()}
-            </div>
+            {brand.logo ? (
+              <img src={brand.logo} alt="" className="h-9 w-9 rounded-full object-cover bg-white border border-border" />
+            ) : (
+              <div
+                className="h-9 w-9 rounded-full grid place-items-center text-white text-xs font-semibold"
+                style={{ background: `linear-gradient(135deg, ${brand.primaryColor}, ${brand.secondaryColor})` }}
+              >
+                {(brand.clinicName || specialty).slice(0, 2).toUpperCase()}
+              </div>
+            )}
             <div className="min-w-0">
-              <p className="text-sm font-semibold truncate">{specialty.toLowerCase()}.clinic</p>
-              <p className="text-[11px] text-muted-foreground">Sponsored</p>
+              <p className="text-sm font-semibold truncate">{handle}</p>
+              <p className="text-[11px] text-muted-foreground truncate">{brand.doctorName || "Sponsored"}</p>
             </div>
             <MoreHorizontal className="ml-auto h-4 w-4 text-muted-foreground" />
           </div>
 
-          <VisualCanvas visual={post.visual} headline={post.headline} />
+          <VisualCanvas visual={brandedVisual} headline={post.headline} brand={brand} specialty={specialty} />
 
           <div className="flex items-center gap-4 px-3 pt-3">
             <HeartIcon className="h-5 w-5" />
@@ -506,11 +527,11 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
 
           <div className="px-3 pb-4 pt-2 space-y-2">
             <p className="text-sm">
-              <span className="font-semibold">{specialty.toLowerCase()}.clinic</span>{" "}
+              <span className="font-semibold">{handle}</span>{" "}
               {post.caption}
             </p>
             <p className="text-sm whitespace-pre-wrap">{post.content}</p>
-            <p className="text-sm font-medium text-[color:var(--teal)]">{post.cta}</p>
+            <p className="text-sm font-medium" style={{ color: brand.primaryColor }}>{post.cta}</p>
             <p className="text-xs text-[oklch(0.55_0.13_240)] leading-relaxed">
               {post.hashtags.join(" ")}
             </p>
