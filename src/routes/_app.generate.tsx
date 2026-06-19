@@ -41,6 +41,9 @@ import {
   festivals,
   workflows,
   type WorkflowKind,
+  contentCategories,
+  defaultCategoryFor,
+  type ContentCategory,
 } from "@/lib/mock-data";
 import {
   generateContent,
@@ -90,9 +93,12 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 
 function GeneratePage() {
   const callGenerate = useServerFn(generateContent);
+  const [brand] = useBrandKit();
 
   const [kind, setKind] = useState<WorkflowKind>("single");
+  const [category, setCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
   const [form, setForm] = useState<Omit<GenerateInput, "kind">>({
+    category: "educational",
     specialty: "Dentist",
     topic: "Daily oral hygiene habits",
     tone: "Friendly",
@@ -110,7 +116,15 @@ function GeneratePage() {
 
   function switchKind(next: WorkflowKind) {
     setKind(next);
+    const nextCat = defaultCategoryFor(next);
+    setCategory(nextCat);
+    setForm((f) => ({ ...f, category: nextCat }));
     setResult(null);
+  }
+
+  function pickCategory(next: ContentCategory) {
+    setCategory(next);
+    setForm((f) => ({ ...f, category: next }));
   }
 
   async function run() {
@@ -125,7 +139,24 @@ function GeneratePage() {
       setStage((s) => Math.min(s + 1, PROGRESS_STAGES.length - 1));
     }, 900);
     try {
-      const out = await callGenerate({ data: { kind, ...form } });
+      const out = await callGenerate({
+        data: {
+          kind,
+          ...form,
+          category,
+          brand: {
+            clinicName: brand.clinicName,
+            doctorName: brand.doctorName,
+            primaryColor: brand.primaryColor,
+            secondaryColor: brand.secondaryColor,
+            website: brand.website,
+            phone: brand.phone,
+            hasLogo: Boolean(brand.logo),
+            hasDoctorPhoto: Boolean(brand.doctorPhoto),
+            hasClinicPhoto: Boolean(brand.clinicPhoto || brand.coverPhoto),
+          },
+        },
+      });
       setResult(out);
       toast.success("Your content is ready");
     } catch (e) {
@@ -137,6 +168,8 @@ function GeneratePage() {
   }
 
   const activeWorkflow = workflows.find((w) => w.kind === kind)!;
+  const recommendedCategories = contentCategories.filter((c) => c.bestFor.includes(kind));
+  const otherCategories = contentCategories.filter((c) => !c.bestFor.includes(kind));
 
   return (
     <div className="space-y-6">
@@ -187,6 +220,38 @@ function GeneratePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <Field label="Content Category">
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {recommendedCategories.map((c) => (
+                    <CategoryChip
+                      key={c.id}
+                      cat={c}
+                      active={category === c.id}
+                      onClick={() => pickCategory(c.id)}
+                    />
+                  ))}
+                </div>
+                {otherCategories.length > 0 && (
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer hover:text-foreground">
+                      More categories
+                    </summary>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {otherCategories.map((c) => (
+                        <CategoryChip
+                          key={c.id}
+                          cat={c}
+                          active={category === c.id}
+                          onClick={() => pickCategory(c.id)}
+                        />
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            </Field>
+
             <Field label="Medical Specialty">
               <Select value={form.specialty} onValueChange={(v) => update("specialty", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
