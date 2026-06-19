@@ -1,14 +1,45 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+const BrandSchema = z
+  .object({
+    clinicName: z.string().optional(),
+    doctorName: z.string().optional(),
+    primaryColor: z.string().optional(),
+    secondaryColor: z.string().optional(),
+    website: z.string().optional(),
+    phone: z.string().optional(),
+    hasLogo: z.boolean().optional(),
+    hasDoctorPhoto: z.boolean().optional(),
+    hasClinicPhoto: z.boolean().optional(),
+  })
+  .optional();
+
+const CategoryEnum = z.enum([
+  "educational",
+  "myth-fact",
+  "did-you-know",
+  "patient-faq",
+  "health-tips",
+  "warning-signs",
+  "prevention",
+  "doctor-explains",
+  "awareness",
+  "clinic-promo",
+  "greeting",
+  "reel-hook",
+]);
+
 const InputSchema = z.object({
   kind: z.enum(["single", "carousel", "story", "reel", "campaign", "festive"]),
+  category: CategoryEnum.default("educational"),
   specialty: z.string().min(1),
   topic: z.string().min(1),
   tone: z.string().min(1),
   audience: z.string().min(1),
   festival: z.string().optional(),
   slideCount: z.number().int().min(5).max(10).optional(),
+  brand: BrandSchema,
 });
 
 export type GenerateInput = z.infer<typeof InputSchema>;
@@ -86,7 +117,141 @@ const SHARED_RULES = `CONTENT SAFETY RULES (strict)
 - Be accurate, evidence-aligned, marketing-friendly, and culturally respectful.
 - Do NOT diagnose, prescribe, or guarantee outcomes.
 - Do NOT include misinformation or unverified claims.
-- Remind readers to consult a qualified professional when appropriate.`;
+- Remind readers to consult a qualified professional when appropriate.
+
+EDITORIAL VOICE (very important)
+- Write like world-class healthcare brands: Mayo Clinic, Cleveland Clinic, Apollo, Fortis,
+  and creator-doctors like Dr Mike, Dr Karan Rajan, Dr Tanaya Narendra.
+- Use plain, modern English. Short sentences. Concrete numbers and timeframes.
+- Lead with a real human hook (a fear, a myth, a surprising stat), NOT generic intros.
+- No "in today's fast-paced world", no "are you struggling with…", no fluff.
+- Prefer specifics over generalities. Cite mechanism in 1 line when relevant.
+- Sound like a confident clinician talking to a patient, not a marketing template.`;
+
+const CATEGORY_HINTS: Record<z.infer<typeof CategoryEnum>, string> = {
+  "educational":
+    "Tone: clear, calm, evidence-based explainer. Teach ONE concept well; finish with a 'remember this' line.",
+  "myth-fact":
+    "Bust ONE specific myth. Be confident and respectful. Name the myth → state the fact → explain why → tell them what to do.",
+  "did-you-know":
+    "Open with a single surprising stat or anatomy fact. Keep it punchy and shareable.",
+  "patient-faq":
+    "Answer a real patient question. Use the structure Question → Direct answer → Why → Key takeaway → CTA.",
+  "health-tips":
+    "Give 3–6 specific, low-friction tips a patient can act on this week. No vague advice.",
+  "warning-signs":
+    "List the red-flag symptoms that mean 'see a doctor now'. Be firm but not alarmist. End with a clear next-step.",
+  "prevention":
+    "Focus on small daily/weekly habits that prevent the condition. Mention realistic risk reduction.",
+  "doctor-explains":
+    "First-person voice from the clinician. Use phrases like 'As a {specialty}, here's what I tell my patients…'.",
+  "awareness":
+    "Frame the issue, scale of the problem, who is at risk, and a clear call to action / movement.",
+  "clinic-promo":
+    "Highlight a specific service / package / new doctor. Lead with patient benefit, not features. End with a booking CTA.",
+  "greeting":
+    "Warm, culturally respectful festive wish from a clinic. Tie wellbeing to the occasion subtly.",
+  "reel-hook":
+    "Write a 3-second scroll-stopper opening line followed by the rest of the script. Hook must create a curiosity gap.",
+};
+
+/** Per-category carousel slide structures (drives slide outlines). */
+function carouselStructureFor(
+  category: z.infer<typeof CategoryEnum>,
+  n: number,
+): string {
+  const fill = (count: number, label: string) =>
+    Array.from({ length: count }, (_, i) => `Slide ${i + 2}: ${label} ${i + 1}`).join("\n");
+
+  switch (category) {
+    case "myth-fact":
+      return `MUST follow exactly this structure (adapt slide count as needed but keep the order):
+Slide 1: HOOK — call out the myth in 4-7 words (e.g. "Brushing harder ≠ cleaner teeth")
+Slide 2: THE MYTH — state the common belief in plain language
+Slide 3: THE FACT — the evidence-based truth
+Slide 4: WHY — short mechanism explanation (1-2 sentences)
+${n >= 5 ? `Slide 5: WHAT TO DO INSTEAD — practical fix\n` : ""}${n >= 6 ? `Slide 6: BONUS TIP — extra value\n` : ""}Slide ${n}: CTA — clear next step + book/consult line`;
+    case "patient-faq":
+      return `MUST follow exactly this structure:
+Slide 1: HOOK — frame the question patients actually ask
+Slide 2: QUESTION — the question in patient words
+Slide 3: DIRECT ANSWER — yes/no/it depends in one line + 1-2 sentence explanation
+Slide 4: WHY THIS HAPPENS — the medical reason in plain language
+${n >= 5 ? `Slide 5: WHAT TO DO — patient action steps\n` : ""}${n >= 6 ? `Slide 6: KEY TAKEAWAY — the 'remember this' line\n` : ""}Slide ${n}: CTA — invite them to book / DM / ask`;
+    case "educational":
+      return `MUST follow exactly this structure:
+Slide 1: HOOK — surprising stat or relatable scenario
+Slide 2: KEY POINT 1 — the most important idea
+Slide 3: KEY POINT 2 — supporting idea
+${n >= 4 ? `Slide 4: KEY POINT 3 — supporting idea\n` : ""}${n >= 5 ? `Slide 5: PRACTICAL TIPS — what the reader should do this week\n` : ""}${n >= 6 ? `Slide 6: MYTH BUSTED — a common misconception quickly corrected\n` : ""}Slide ${n}: CTA — book a consultation / save this post`;
+    case "warning-signs":
+      return `MUST follow exactly this structure:
+Slide 1: HOOK — "Don't ignore these signs of {topic}"
+Slides 2 to ${n - 1}: ONE warning sign per slide. Title = the symptom in plain language; body = why it matters and when to act.
+Slide ${n}: CTA — "If you notice any of these, book a {specialty} consultation"`;
+    case "prevention":
+      return `MUST follow exactly this structure:
+Slide 1: HOOK — what's at stake without prevention
+Slides 2 to ${n - 1}: ONE prevention habit per slide. Title = habit (3-5 words). Body = how / how often / why it works.
+Slide ${n}: CTA — book a preventive check-up`;
+    case "health-tips":
+      return `MUST follow exactly this structure:
+Slide 1: HOOK — promise of the tips (e.g. "5 dentist-approved tips for whiter teeth")
+Slides 2 to ${n - 1}: ONE tip per slide. Title = the tip itself; body = brief how-to.
+Slide ${n}: CTA — "Save this & share with someone who needs it"`;
+    case "doctor-explains":
+      return `MUST follow exactly this structure, first-person:
+Slide 1: HOOK — "As a {specialty}, here's what most patients get wrong about {topic}"
+Slide 2: THE COMMON BELIEF
+Slide 3: WHAT'S ACTUALLY HAPPENING — clinician-level explanation in plain words
+${n >= 4 ? `Slide 4: WHAT I RECOMMEND — clinical guidance\n` : ""}${n >= 5 ? `Slide 5: WHO SHOULD WORRY — risk groups\n` : ""}Slide ${n}: CTA — book a consult / DM for questions`;
+    case "did-you-know":
+      return `MUST follow exactly this structure:
+Slide 1: HOOK — "Did you know…?" + the surprising fact
+Slides 2 to ${n - 1}: ONE related insight per slide.
+Slide ${n}: CTA`;
+    case "awareness":
+      return `MUST follow exactly this structure:
+Slide 1: HOOK — the cause / awareness theme
+Slide 2: THE PROBLEM — scale & stats
+Slide 3: WHO IS AT RISK
+${n >= 4 ? `Slide 4: WHAT YOU CAN DO\n` : ""}${n >= 5 ? `Slide 5: HOW WE HELP AT THE CLINIC\n` : ""}Slide ${n}: CTA — join the movement / share / book a screening`;
+    case "clinic-promo":
+      return `MUST follow exactly this structure:
+Slide 1: HOOK — patient benefit headline
+Slide 2: THE SERVICE / OFFER — what it is in plain language
+Slide 3: WHO IT'S FOR
+${n >= 4 ? `Slide 4: WHAT TO EXPECT — patient journey in 2-3 lines\n` : ""}${n >= 5 ? `Slide 5: WHY OUR CLINIC — credibility / experience\n` : ""}Slide ${n}: CTA — book now / WhatsApp us`;
+    case "greeting":
+      return `Festive carousel:
+Slide 1: Greeting headline tied to the occasion
+Slides 2 to ${n - 1}: One short wellness wish per slide tied to the festival
+Slide ${n}: Warm signoff from the clinic`;
+    case "reel-hook":
+      return `Use the carousel as a teaser:
+Slide 1: 3-second scroll-stop HOOK
+Slides 2 to ${n - 1}: One curiosity beat per slide
+Slide ${n}: CTA — "Watch the full reel" / "Follow for more"`;
+  }
+}
+
+function brandBlock(b: GenerateInput["brand"]): string {
+  if (!b) return "BRAND: not provided. Keep content brand-neutral.";
+  const lines: string[] = ["BRAND CONTEXT (subtly weave in, do not stuff):"];
+  if (b.clinicName) lines.push(`- Clinic name: ${b.clinicName}`);
+  if (b.doctorName) lines.push(`- Doctor: ${b.doctorName}`);
+  if (b.primaryColor || b.secondaryColor) {
+    lines.push(
+      `- Brand colors (use as visual.colors[0] and visual.colors[1] verbatim): ${b.primaryColor ?? ""} ${b.secondaryColor ?? ""}`.trim(),
+    );
+  }
+  if (b.website) lines.push(`- Website: ${b.website}`);
+  if (b.phone) lines.push(`- Phone: ${b.phone}`);
+  if (b.hasDoctorPhoto) lines.push(`- A doctor headshot is available — reference it in visual.concept where appropriate.`);
+  if (b.hasClinicPhoto) lines.push(`- A clinic photo is available — reference it as a possible background.`);
+  if (b.hasLogo) lines.push(`- A clinic logo is available — mention placing it as a brand mark.`);
+  return lines.join("\n");
+}
 
 const VISUAL_BLOCK = `"visual": {
     "concept": "one-sentence scene description for the accompanying image",
@@ -101,6 +266,12 @@ function buildPrompt(d: GenerateInput): { system: string; user: string } {
 - Topic: ${d.topic}
 - Tone: ${d.tone}
 - Target audience: ${d.audience}
+- Content category: ${d.category}
+
+CATEGORY GUIDANCE
+${CATEGORY_HINTS[d.category]}
+
+${brandBlock(d.brand)}
 
 ${SHARED_RULES}`;
 
@@ -111,6 +282,8 @@ ${SHARED_RULES}`;
         user: `${base}
 
 TASK: Generate ONE scroll-stopping single social media post about "${d.topic}".
+The post MUST clearly read as a "${d.category}" piece (see CATEGORY GUIDANCE above).
+The headline must be specific — not a generic platitude.
 
 Return STRICT JSON, no markdown, no commentary:
 {
@@ -125,15 +298,17 @@ Return STRICT JSON, no markdown, no commentary:
 
     case "carousel": {
       const n = d.slideCount ?? 7;
+      const structure = carouselStructureFor(d.category, n);
       return {
         system: "You are Medipost AI. You design educational carousel posts for doctors. Respond ONLY with strict JSON.",
         user: `${base}
 
 TASK: Design an Instagram CAROUSEL with exactly ${n} slides on "${d.topic}".
-- Slide 1 = cover slide (hook + topic).
-- Slides 2 to ${n - 1} = educational/value slides, each one focused idea.
-- Slide ${n} = final slide with a strong call-to-action.
+
+${structure}
+
 - Each slide title 3-7 words, slide content 20-40 words, plain text.
+- Do NOT repeat the same idea across slides. Each slide must add new value.
 
 Return STRICT JSON:
 {

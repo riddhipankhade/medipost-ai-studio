@@ -41,6 +41,9 @@ import {
   festivals,
   workflows,
   type WorkflowKind,
+  contentCategories,
+  defaultCategoryFor,
+  type ContentCategory,
 } from "@/lib/mock-data";
 import {
   generateContent,
@@ -90,9 +93,12 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 
 function GeneratePage() {
   const callGenerate = useServerFn(generateContent);
+  const [brand] = useBrandKit();
 
   const [kind, setKind] = useState<WorkflowKind>("single");
+  const [category, setCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
   const [form, setForm] = useState<Omit<GenerateInput, "kind">>({
+    category: "educational",
     specialty: "Dentist",
     topic: "Daily oral hygiene habits",
     tone: "Friendly",
@@ -110,7 +116,15 @@ function GeneratePage() {
 
   function switchKind(next: WorkflowKind) {
     setKind(next);
+    const nextCat = defaultCategoryFor(next);
+    setCategory(nextCat);
+    setForm((f) => ({ ...f, category: nextCat }));
     setResult(null);
+  }
+
+  function pickCategory(next: ContentCategory) {
+    setCategory(next);
+    setForm((f) => ({ ...f, category: next }));
   }
 
   async function run() {
@@ -125,7 +139,24 @@ function GeneratePage() {
       setStage((s) => Math.min(s + 1, PROGRESS_STAGES.length - 1));
     }, 900);
     try {
-      const out = await callGenerate({ data: { kind, ...form } });
+      const out = await callGenerate({
+        data: {
+          kind,
+          ...form,
+          category,
+          brand: {
+            clinicName: brand.clinicName,
+            doctorName: brand.doctorName,
+            primaryColor: brand.primaryColor,
+            secondaryColor: brand.secondaryColor,
+            website: brand.website,
+            phone: brand.phone,
+            hasLogo: Boolean(brand.logo),
+            hasDoctorPhoto: Boolean(brand.doctorPhoto),
+            hasClinicPhoto: Boolean(brand.clinicPhoto || brand.coverPhoto),
+          },
+        },
+      });
       setResult(out);
       toast.success("Your content is ready");
     } catch (e) {
@@ -137,6 +168,8 @@ function GeneratePage() {
   }
 
   const activeWorkflow = workflows.find((w) => w.kind === kind)!;
+  const recommendedCategories = contentCategories.filter((c) => c.bestFor.includes(kind));
+  const otherCategories = contentCategories.filter((c) => !c.bestFor.includes(kind));
 
   return (
     <div className="space-y-6">
@@ -187,6 +220,38 @@ function GeneratePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <Field label="Content Category">
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {recommendedCategories.map((c) => (
+                    <CategoryChip
+                      key={c.id}
+                      cat={c}
+                      active={category === c.id}
+                      onClick={() => pickCategory(c.id)}
+                    />
+                  ))}
+                </div>
+                {otherCategories.length > 0 && (
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer hover:text-foreground">
+                      More categories
+                    </summary>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {otherCategories.map((c) => (
+                        <CategoryChip
+                          key={c.id}
+                          cat={c}
+                          active={category === c.id}
+                          onClick={() => pickCategory(c.id)}
+                        />
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            </Field>
+
             <Field label="Medical Specialty">
               <Select value={form.specialty} onValueChange={(v) => update("specialty", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -308,6 +373,32 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function CategoryChip({
+  cat,
+  active,
+  onClick,
+}: {
+  cat: { id: ContentCategory; title: string; tagline: string; emoji: string };
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={cat.tagline}
+      className={`px-2.5 py-1.5 rounded-lg text-xs border transition-all flex items-center gap-1.5 ${
+        active
+          ? "border-[color:var(--teal)] bg-[color:var(--teal)]/10 text-foreground shadow-sm"
+          : "border-border bg-background hover:border-[color:var(--teal)]/50 text-foreground"
+      }`}
+    >
+      <span>{cat.emoji}</span>
+      <span className="font-medium">{cat.title}</span>
+    </button>
+  );
+}
+
 function LoadingPanel({ stage }: { stage: number }) {
   const pct = ((stage + 1) / PROGRESS_STAGES.length) * 100;
   return (
@@ -375,6 +466,20 @@ function PreviewToolbar({ onCopy, title }: { onCopy: () => void; title: string }
 
 /* ---- Single Post ---- */
 function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: string }) {
+  const [brand] = useBrandKit();
+  const handle = (brand.clinicName || `${specialty.toLowerCase()}.clinic`)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 24) || "clinic";
+  const brandedVisual: Visual = {
+    ...post.visual,
+    colors: [
+      brand.primaryColor,
+      brand.secondaryColor,
+      post.visual.colors[2] || "#e8f4f8",
+      ...(post.visual.colors.slice(3) || []),
+    ],
+  };
   const fullText = [
     post.headline,
     "",
@@ -394,17 +499,24 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
 
         <div className="mx-auto w-full max-w-md rounded-xl border border-border overflow-hidden bg-background shadow-sm">
           <div className="flex items-center gap-3 p-3 border-b border-border">
-            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[color:var(--teal)] to-primary grid place-items-center text-white text-xs font-semibold">
-              {specialty.slice(0, 2).toUpperCase()}
-            </div>
+            {brand.logo ? (
+              <img src={brand.logo} alt="" className="h-9 w-9 rounded-full object-cover bg-white border border-border" />
+            ) : (
+              <div
+                className="h-9 w-9 rounded-full grid place-items-center text-white text-xs font-semibold"
+                style={{ background: `linear-gradient(135deg, ${brand.primaryColor}, ${brand.secondaryColor})` }}
+              >
+                {(brand.clinicName || specialty).slice(0, 2).toUpperCase()}
+              </div>
+            )}
             <div className="min-w-0">
-              <p className="text-sm font-semibold truncate">{specialty.toLowerCase()}.clinic</p>
-              <p className="text-[11px] text-muted-foreground">Sponsored</p>
+              <p className="text-sm font-semibold truncate">{handle}</p>
+              <p className="text-[11px] text-muted-foreground truncate">{brand.doctorName || "Sponsored"}</p>
             </div>
             <MoreHorizontal className="ml-auto h-4 w-4 text-muted-foreground" />
           </div>
 
-          <VisualCanvas visual={post.visual} headline={post.headline} />
+          <VisualCanvas visual={brandedVisual} headline={post.headline} brand={brand} specialty={specialty} />
 
           <div className="flex items-center gap-4 px-3 pt-3">
             <HeartIcon className="h-5 w-5" />
@@ -415,11 +527,11 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
 
           <div className="px-3 pb-4 pt-2 space-y-2">
             <p className="text-sm">
-              <span className="font-semibold">{specialty.toLowerCase()}.clinic</span>{" "}
+              <span className="font-semibold">{handle}</span>{" "}
               {post.caption}
             </p>
             <p className="text-sm whitespace-pre-wrap">{post.content}</p>
-            <p className="text-sm font-medium text-[color:var(--teal)]">{post.cta}</p>
+            <p className="text-sm font-medium" style={{ color: brand.primaryColor }}>{post.cta}</p>
             <p className="text-xs text-[oklch(0.55_0.13_240)] leading-relaxed">
               {post.hashtags.join(" ")}
             </p>
@@ -1058,6 +1170,12 @@ function MiniColor({
 
 /* ---- Story ---- */
 function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string }) {
+  const [brand] = useBrandKit();
+  const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
+  const c2 = brand.secondaryColor || post.visual.colors[1] || "#1f4e79";
+  const c3 = post.visual.colors[2] || "#0a3d62";
+  const photo = brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
+  const handle = (brand.clinicName || `${specialty.toLowerCase()}.clinic`).slice(0, 28);
   const fullText = `${post.headline}\n\n${post.message}\n\n${post.cta}`;
   return (
     <Card className="border-border/60">
@@ -1069,21 +1187,31 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
           style={{ width: 270, height: 480 }}
         >
           <div
-            className="w-full h-full flex flex-col p-5 text-white"
-            style={{
-              background: `linear-gradient(160deg, ${post.visual.colors[0] || "#0E7C7B"}, ${post.visual.colors[1] || "#1f4e79"} 60%, ${post.visual.colors[2] || "#0a3d62"})`,
-            }}
+            className="relative w-full h-full flex flex-col p-5 text-white"
+            style={{ background: `linear-gradient(160deg, ${c1}, ${c2} 60%, ${c3})` }}
           >
+            {photo && (
+              <>
+                <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${c1}b3 0%, ${c2}f0 100%)` }} />
+              </>
+            )}
+            <ContextualBackground specialty={specialty} opacity={0.08} color="#ffffff" />
+            <div className="relative z-10 flex flex-col h-full">
             <div className="flex gap-1">
               <span className="h-0.5 flex-1 bg-white rounded" />
               <span className="h-0.5 flex-1 bg-white/40 rounded" />
               <span className="h-0.5 flex-1 bg-white/40 rounded" />
             </div>
             <div className="mt-3 flex items-center gap-2">
-              <div className="h-7 w-7 rounded-full bg-white/30 grid place-items-center text-[10px] font-bold">
-                {specialty.slice(0, 2).toUpperCase()}
-              </div>
-              <p className="text-xs font-medium">{specialty.toLowerCase()}.clinic</p>
+              {brand.logo ? (
+                <img src={brand.logo} alt="" className="h-7 w-7 rounded-full object-cover bg-white" />
+              ) : (
+                <div className="h-7 w-7 rounded-full bg-white/30 grid place-items-center text-[10px] font-bold">
+                  {(brand.clinicName || specialty).slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <p className="text-xs font-medium truncate">{handle}</p>
             </div>
 
             <div className="flex-1 grid place-items-center text-center">
@@ -1093,8 +1221,9 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
               </div>
             </div>
 
-            <div className="rounded-full bg-white text-foreground text-sm font-semibold py-2.5 text-center shadow">
+            <div className="rounded-full bg-white text-sm font-semibold py-2.5 text-center shadow" style={{ color: c1 }}>
               {post.cta}
+            </div>
             </div>
           </div>
         </div>
@@ -1245,6 +1374,10 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
 
 /* ---- Festive ---- */
 function FestivePreview({ post, specialty }: { post: FestivePost; specialty: string }) {
+  const [brand] = useBrandKit();
+  const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
+  const c2 = post.visual.colors[1] || "#f4b400";
+  const c3 = brand.secondaryColor || post.visual.colors[2] || "#0a3d62";
   const fullText = `${post.greeting}\n\n${post.caption}\n\n${post.hashtags.join(" ")}`;
   return (
     <Card className="border-border/60">
@@ -1254,19 +1387,28 @@ function FestivePreview({ post, specialty }: { post: FestivePost; specialty: str
         <div className="mx-auto w-full max-w-md">
           <div
             className="aspect-[4/5] rounded-2xl overflow-hidden shadow-lg border border-border p-8 flex flex-col text-white relative"
-            style={{
-              background: `radial-gradient(circle at top right, ${post.visual.colors[1] || "#f4b400"} 0%, ${post.visual.colors[0] || "#0E7C7B"} 60%, ${post.visual.colors[2] || "#0a3d62"})`,
-            }}
+            style={{ background: `radial-gradient(circle at top right, ${c2} 0%, ${c1} 60%, ${c3})` }}
           >
             <div className="absolute top-4 right-4 opacity-30">
               <Heart className="h-16 w-16" />
             </div>
+            <ContextualBackground specialty={specialty} opacity={0.07} color="#ffffff" />
+            <div className="relative z-10 flex flex-col h-full">
             <p className="text-xs uppercase tracking-[0.3em] opacity-80">Happy</p>
             <p className="text-4xl font-bold mt-1 mb-6">{post.festival}</p>
             <p className="text-base leading-relaxed flex-1">{post.greeting}</p>
-            <div className="mt-6 pt-4 border-t border-white/30">
+            <div className="mt-6 pt-4 border-t border-white/30 flex items-center gap-3">
+              {brand.logo && (
+                <img src={brand.logo} alt="" className="h-9 w-9 rounded-lg object-cover bg-white" />
+              )}
+              <div className="min-w-0">
               <p className="text-xs uppercase tracking-wide opacity-80">With warm wishes from</p>
-              <p className="text-sm font-semibold">{specialty.toLowerCase()}.clinic</p>
+              <p className="text-sm font-semibold truncate">{brand.clinicName || `${specialty.toLowerCase()}.clinic`}</p>
+              {brand.doctorName && (
+                <p className="text-[11px] opacity-80 truncate">{brand.doctorName}</p>
+              )}
+              </div>
+            </div>
             </div>
           </div>
         </div>
@@ -1302,27 +1444,60 @@ function SectionBlock({ title, body }: { title: string; body: string }) {
   );
 }
 
-function VisualCanvas({ visual, headline }: { visual: Visual; headline: string }) {
-  const [c1, c2, c3] = [
-    visual.colors[0] || "#0E7C7B",
-    visual.colors[1] || "#1f4e79",
-    visual.colors[2] || "#e8f4f8",
-  ];
+function VisualCanvas({
+  visual,
+  headline,
+  brand,
+  specialty,
+}: {
+  visual: Visual;
+  headline: string;
+  brand?: ReturnType<typeof useBrandKit>[0];
+  specialty?: string;
+}) {
+  const c1 = visual.colors[0] || brand?.primaryColor || "#0E7C7B";
+  const c2 = visual.colors[1] || brand?.secondaryColor || "#1f4e79";
+  const photo = brand?.coverPhoto || brand?.clinicPhoto || brand?.doctorPhoto;
+  const PrimaryIcon = specialty ? primaryIconFor(specialty) : ImageIcon;
+
   return (
     <div
-      className="aspect-square w-full grid place-items-center p-6 text-center text-white"
+      className="relative aspect-square w-full overflow-hidden text-white"
       style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
     >
-      <div>
-        <div
-          className="h-12 w-12 rounded-full mx-auto mb-4 grid place-items-center"
-          style={{ background: c3, color: c1 }}
-        >
-          <ImageIcon className="h-5 w-5" />
+      {photo && (
+        <>
+          <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(180deg, ${c1}cc 0%, ${c2}e6 100%)`,
+              mixBlendMode: "multiply",
+            }}
+          />
+        </>
+      )}
+      {specialty && (
+        <ContextualBackground specialty={specialty} opacity={0.08} color="#ffffff" />
+      )}
+      <div className="absolute inset-0 grid place-items-center p-6 text-center">
+        <div className="relative z-10">
+          <div
+            className="h-12 w-12 rounded-full mx-auto mb-4 grid place-items-center backdrop-blur"
+            style={{ background: "rgba(255,255,255,0.18)", color: "#fff" }}
+          >
+            <PrimaryIcon className="h-5 w-5" />
+          </div>
+          <p className="text-xl font-bold leading-tight">{headline}</p>
+          <p className="text-[11px] mt-3 opacity-80 italic line-clamp-2">{visual.concept}</p>
         </div>
-        <p className="text-lg font-bold leading-tight">{headline}</p>
-        <p className="text-[11px] mt-3 opacity-80 italic line-clamp-2">{visual.concept}</p>
       </div>
+      {brand?.clinicName && (
+        <div className="absolute bottom-3 left-0 right-0 z-10 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.2em] opacity-90">
+          {brand.logo && <img src={brand.logo} alt="" className="h-4 w-4 rounded-sm object-cover bg-white/80" />}
+          <span>{brand.clinicName}</span>
+        </div>
+      )}
     </div>
   );
 }
