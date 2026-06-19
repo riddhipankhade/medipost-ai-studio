@@ -1374,6 +1374,10 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
 
 /* ---- Festive ---- */
 function FestivePreview({ post, specialty }: { post: FestivePost; specialty: string }) {
+  const [brand] = useBrandKit();
+  const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
+  const c2 = post.visual.colors[1] || "#f4b400";
+  const c3 = brand.secondaryColor || post.visual.colors[2] || "#0a3d62";
   const fullText = `${post.greeting}\n\n${post.caption}\n\n${post.hashtags.join(" ")}`;
   return (
     <Card className="border-border/60">
@@ -1383,19 +1387,28 @@ function FestivePreview({ post, specialty }: { post: FestivePost; specialty: str
         <div className="mx-auto w-full max-w-md">
           <div
             className="aspect-[4/5] rounded-2xl overflow-hidden shadow-lg border border-border p-8 flex flex-col text-white relative"
-            style={{
-              background: `radial-gradient(circle at top right, ${post.visual.colors[1] || "#f4b400"} 0%, ${post.visual.colors[0] || "#0E7C7B"} 60%, ${post.visual.colors[2] || "#0a3d62"})`,
-            }}
+            style={{ background: `radial-gradient(circle at top right, ${c2} 0%, ${c1} 60%, ${c3})` }}
           >
             <div className="absolute top-4 right-4 opacity-30">
               <Heart className="h-16 w-16" />
             </div>
+            <ContextualBackground specialty={specialty} opacity={0.07} color="#ffffff" />
+            <div className="relative z-10 flex flex-col h-full">
             <p className="text-xs uppercase tracking-[0.3em] opacity-80">Happy</p>
             <p className="text-4xl font-bold mt-1 mb-6">{post.festival}</p>
             <p className="text-base leading-relaxed flex-1">{post.greeting}</p>
-            <div className="mt-6 pt-4 border-t border-white/30">
+            <div className="mt-6 pt-4 border-t border-white/30 flex items-center gap-3">
+              {brand.logo && (
+                <img src={brand.logo} alt="" className="h-9 w-9 rounded-lg object-cover bg-white" />
+              )}
+              <div className="min-w-0">
               <p className="text-xs uppercase tracking-wide opacity-80">With warm wishes from</p>
-              <p className="text-sm font-semibold">{specialty.toLowerCase()}.clinic</p>
+              <p className="text-sm font-semibold truncate">{brand.clinicName || `${specialty.toLowerCase()}.clinic`}</p>
+              {brand.doctorName && (
+                <p className="text-[11px] opacity-80 truncate">{brand.doctorName}</p>
+              )}
+              </div>
+            </div>
             </div>
           </div>
         </div>
