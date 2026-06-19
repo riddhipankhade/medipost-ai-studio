@@ -1414,27 +1414,60 @@ function SectionBlock({ title, body }: { title: string; body: string }) {
   );
 }
 
-function VisualCanvas({ visual, headline }: { visual: Visual; headline: string }) {
-  const [c1, c2, c3] = [
-    visual.colors[0] || "#0E7C7B",
-    visual.colors[1] || "#1f4e79",
-    visual.colors[2] || "#e8f4f8",
-  ];
+function VisualCanvas({
+  visual,
+  headline,
+  brand,
+  specialty,
+}: {
+  visual: Visual;
+  headline: string;
+  brand?: ReturnType<typeof useBrandKit>[0];
+  specialty?: string;
+}) {
+  const c1 = visual.colors[0] || brand?.primaryColor || "#0E7C7B";
+  const c2 = visual.colors[1] || brand?.secondaryColor || "#1f4e79";
+  const photo = brand?.coverPhoto || brand?.clinicPhoto || brand?.doctorPhoto;
+  const PrimaryIcon = specialty ? primaryIconFor(specialty) : ImageIcon;
+
   return (
     <div
-      className="aspect-square w-full grid place-items-center p-6 text-center text-white"
+      className="relative aspect-square w-full overflow-hidden text-white"
       style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
     >
-      <div>
-        <div
-          className="h-12 w-12 rounded-full mx-auto mb-4 grid place-items-center"
-          style={{ background: c3, color: c1 }}
-        >
-          <ImageIcon className="h-5 w-5" />
+      {photo && (
+        <>
+          <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(180deg, ${c1}cc 0%, ${c2}e6 100%)`,
+              mixBlendMode: "multiply",
+            }}
+          />
+        </>
+      )}
+      {specialty && (
+        <ContextualBackground specialty={specialty} opacity={0.08} color="#ffffff" />
+      )}
+      <div className="absolute inset-0 grid place-items-center p-6 text-center">
+        <div className="relative z-10">
+          <div
+            className="h-12 w-12 rounded-full mx-auto mb-4 grid place-items-center backdrop-blur"
+            style={{ background: "rgba(255,255,255,0.18)", color: "#fff" }}
+          >
+            <PrimaryIcon className="h-5 w-5" />
+          </div>
+          <p className="text-xl font-bold leading-tight">{headline}</p>
+          <p className="text-[11px] mt-3 opacity-80 italic line-clamp-2">{visual.concept}</p>
         </div>
-        <p className="text-lg font-bold leading-tight">{headline}</p>
-        <p className="text-[11px] mt-3 opacity-80 italic line-clamp-2">{visual.concept}</p>
       </div>
+      {brand?.clinicName && (
+        <div className="absolute bottom-3 left-0 right-0 z-10 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.2em] opacity-90">
+          {brand.logo && <img src={brand.logo} alt="" className="h-4 w-4 rounded-sm object-cover bg-white/80" />}
+          <span>{brand.clinicName}</span>
+        </div>
+      )}
     </div>
   );
 }
