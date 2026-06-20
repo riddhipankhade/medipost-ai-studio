@@ -628,6 +628,7 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
 /* ---- Carousel ---- */
 function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: string }) {
   const [brand] = useBrandKit();
+  const callImage = useServerFn(generateImage);
   const [idx, setIdx] = useState(0);
   const [themeId, setThemeId] = useState<string>(() => suggestThemeId(specialty));
   const [layout, setLayout] = useState<SlideLayout>("centered");
@@ -638,6 +639,58 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
   const [accentColor, setAccentColor] = useState<string | null>(null);
   const [useBrandColors, setUseBrandColors] = useState<boolean>(true);
   const [showIcons, setShowIcons] = useState<boolean>(true);
+  const [slideImages, setSlideImages] = useState<(string | null)[]>(
+    () => post.slides.map(() => null),
+  );
+  const [loadingSlide, setLoadingSlide] = useState<number | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  // Reset image state if the carousel content itself changes.
+  // (post is recreated on every generate, so reference equality is fine.)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // — intentionally tied to post identity below
+  if (slideImages.length !== post.slides.length) {
+    setSlideImages(post.slides.map(() => null));
+  }
+
+  async function genSlideImage(i: number) {
+    const s = post.slides[i];
+    const prompt =
+      s?.imagePrompt ||
+      `${post.visual.imagePrompt || post.visual.concept}. Scene focus: ${s?.title}. ${s?.content}`;
+    if (!prompt.trim()) {
+      toast.error("No image prompt available for this slide");
+      return;
+    }
+    setLoadingSlide(i);
+    try {
+      const r = await callImage({ data: { prompt, visualStyle: post.visual.visualStyle } });
+      setSlideImages((arr) => {
+        const next = [...arr];
+        next[i] = r.dataUrl;
+        return next;
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Image generation failed");
+    } finally {
+      setLoadingSlide(null);
+    }
+  }
+
+  async function genAll() {
+    setBulkLoading(true);
+    try {
+      for (let i = 0; i < post.slides.length; i++) {
+        if (slideImages[i]) continue;
+        // sequential to stay polite to rate limits
+        // eslint-disable-next-line no-await-in-loop
+        await genSlideImage(i);
+      }
+      toast.success("All slide visuals ready");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
 
   const baseTheme = getTheme(themeId);
   const theme = {
@@ -668,6 +721,26 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
           onCopy={() => copyText(fullText, "Carousel copied")}
         />
 
+        <div className="flex flex-wrap items-center justify-end gap-2 -mt-1">
+          <AiImageButton
+            loading={loadingSlide === idx}
+            hasImage={!!slideImages[idx]}
+            onClick={() => genSlideImage(idx)}
+            label={slideImages[idx] ? "Regenerate this slide" : "Generate AI visual for this slide"}
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="gap-1.5 h-8"
+            disabled={bulkLoading || loadingSlide !== null}
+            onClick={genAll}
+          >
+            {bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+            {bulkLoading ? "Generating all…" : "Generate all slide visuals"}
+          </Button>
+        </div>
+
         <div className="grid gap-5 md:grid-cols-[1fr_280px]">
           {/* Slide canvas */}
           <div>
@@ -685,6 +758,8 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
                 fontScale={fontScale}
                 showIcons={showIcons}
                 brand={brand}
+                imageUrl={slideImages[idx]}
+                imageLoading={loadingSlide === idx}
               />
 
               <button
