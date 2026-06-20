@@ -1526,22 +1526,45 @@ function VisualCanvas({
   headline,
   brand,
   specialty,
+  imageUrl,
+  imageLoading,
 }: {
   visual: Visual;
   headline: string;
   brand?: ReturnType<typeof useBrandKit>[0];
   specialty?: string;
+  imageUrl?: string | null;
+  imageLoading?: boolean;
 }) {
   const c1 = visual.colors[0] || brand?.primaryColor || "#0E7C7B";
   const c2 = visual.colors[1] || brand?.secondaryColor || "#1f4e79";
   const photo = brand?.coverPhoto || brand?.clinicPhoto || brand?.doctorPhoto;
   const PrimaryIcon = specialty ? primaryIconFor(specialty) : ImageIcon;
 
+  // When an AI-generated image is available, render image-led creative.
+  if (imageUrl) {
+    return (
+      <div className="relative aspect-square w-full overflow-hidden text-white">
+        <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/0" />
+        <div className="absolute inset-x-0 bottom-0 p-5 z-10">
+          <p className="text-xl font-bold leading-tight drop-shadow-md">{headline}</p>
+          {brand?.clinicName && (
+            <p className="text-[10px] uppercase tracking-[0.25em] mt-2 opacity-90">
+              {brand.clinicName}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative aspect-square w-full overflow-hidden text-white"
       style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
     >
+      {imageLoading && <ImageLoadingOverlay />}
       {photo && (
         <>
           <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
