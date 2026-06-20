@@ -889,7 +889,7 @@ function SlideCanvas(p: SlideCanvasProps) {
 
       {/* Layout */}
       {p.imageUrl ? (
-        <FullImageOverlayLayout p={{ ...p, titleSize, bodySize, PrimaryIcon }} />
+        <FullImageOverlayLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
       ) : p.layout === "centered" ? (
         <CenteredLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
       ) : p.layout === "image-left" ? (
