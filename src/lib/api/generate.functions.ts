@@ -49,6 +49,9 @@ export type Visual = {
   colors: string[];
   style: string;
   layout: string;
+  imagePrompt: string;
+  composition: string;
+  visualStyle: string;
 };
 
 export type SinglePost = {
@@ -64,7 +67,7 @@ export type SinglePost = {
 export type CarouselPost = {
   kind: "carousel";
   title: string;
-  slides: { title: string; content: string }[];
+  slides: { title: string; content: string; imagePrompt?: string }[];
   cta: string;
   hashtags: string[];
   visual: Visual;
@@ -257,7 +260,10 @@ const VISUAL_BLOCK = `"visual": {
     "concept": "one-sentence scene description for the accompanying image",
     "colors": ["#RRGGBB","#RRGGBB","#RRGGBB","#RRGGBB"],
     "style": "short visual style note (e.g. Soft clinical photography)",
-    "layout": "layout recommendation (e.g. Instagram Square Post, 9:16 Vertical, Carousel 1080x1080)"
+    "layout": "layout recommendation (e.g. Instagram Square Post, 9:16 Vertical, Carousel 1080x1080)",
+    "visualStyle": "pick ONE: 'Modern Healthcare' | 'Premium Clinic' | 'Editorial Infographic' | 'Lifestyle Photography' | 'Awareness Campaign' | 'Luxury Aesthetic'",
+    "composition": "1-line composition instructions (subject placement, camera angle, lighting, color mood)",
+    "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words). Must describe a real, photorealistic or editorial-illustrated healthcare scene related to the topic and specialty. NEVER ask for solid color backgrounds. Include subject, environment, lighting, mood, framing, and 'no text, no watermark, Instagram-ready, premium healthcare marketing'."
   }`;
 
 function buildPrompt(d: GenerateInput): { system: string; user: string } {
@@ -309,12 +315,13 @@ ${structure}
 
 - Each slide title 3-7 words, slide content 20-40 words, plain text.
 - Do NOT repeat the same idea across slides. Each slide must add new value.
+- For EACH slide, write an "imagePrompt": a vivid 40-80 word AI image prompt for that slide that visually communicates the slide's idea (real healthcare scene, doctor/patient/anatomy/lifestyle imagery — NOT solid colors, NOT text-on-background). End each with "no text, no watermark, Instagram-ready, premium healthcare brand aesthetic".
 
 Return STRICT JSON:
 {
   "title": "short carousel title",
   "slides": [
-    { "title": "Slide 1 title", "content": "Slide 1 body" },
+    { "title": "Slide 1 title", "content": "Slide 1 body", "imagePrompt": "..." },
     ... exactly ${n} slides total
   ],
   "cta": "the final CTA repeated as a single line",
@@ -431,6 +438,9 @@ function normalizeVisual(v: unknown): Visual {
     colors: Array.isArray(obj.colors) ? obj.colors.slice(0, 6).map(String) : [],
     style: String(obj.style ?? ""),
     layout: String(obj.layout ?? ""),
+    imagePrompt: String((obj as any).imagePrompt ?? ""),
+    composition: String((obj as any).composition ?? ""),
+    visualStyle: String((obj as any).visualStyle ?? ""),
   };
 }
 
@@ -455,6 +465,7 @@ function normalize(kind: GenerateInput["kind"], raw: any): GenerateOutput {
           ? raw.slides.map((s: any) => ({
               title: String(s?.title ?? ""),
               content: String(s?.content ?? ""),
+              imagePrompt: s?.imagePrompt ? String(s.imagePrompt) : undefined,
             }))
           : [],
         cta: String(raw?.cta ?? ""),
@@ -540,4 +551,69 @@ export const generateContent = createServerFn({ method: "POST" })
     const content: string = json?.choices?.[0]?.message?.content ?? "";
     const parsed = extractJson(content);
     return normalize(data.kind, parsed);
+  });
+
+/* ============================ AI Image Generation ============================ */
+
+const ImageInputSchema = z.object({
+  prompt: z.string().min(3).max(2000),
+  visualStyle: z.string().optional(),
+});
+
+export type GenerateImageOutput = { dataUrl: string };
+
+const STYLE_DIRECTIVES: Record<string, string> = {
+  "Modern Healthcare":
+    "modern healthcare photography, bright clinic, soft daylight, shallow depth of field, calm and trustworthy mood",
+  "Premium Clinic":
+    "premium private clinic editorial photography, luxurious interiors, warm neutral palette, cinematic lighting",
+  "Editorial Infographic":
+    "clean editorial healthcare illustration, flat vector style, minimal palette, infographic feel, isometric details",
+  "Lifestyle Photography":
+    "real lifestyle photography of patients and doctors, candid moments, natural light, documentary feel, authentic skin tones",
+  "Awareness Campaign":
+    "bold awareness campaign visual, high contrast, emotive subject, public health poster energy, single hero subject",
+  "Luxury Aesthetic":
+    "luxury aesthetic clinic visual, marble and gold accents, soft beige and ivory tones, fashion-editorial composition",
+};
+
+export const generateImage = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => ImageInputSchema.parse(data))
+  .handler(async ({ data }): Promise<GenerateImageOutput> => {
+    const apiKey = process.env.LOVABLE_API_KEY;
+    if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+
+    const directive = data.visualStyle ? STYLE_DIRECTIVES[data.visualStyle] : "";
+    const fullPrompt = [
+      data.prompt,
+      directive,
+      "Square 1:1 composition, Instagram-ready, premium healthcare marketing creative, no text, no watermark, no logos, no captions, photorealistic where appropriate.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/images/generations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Lovable-API-Key": apiKey,
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3.1-flash-image-preview",
+        messages: [{ role: "user", content: fullPrompt }],
+        modalities: ["image", "text"],
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      if (res.status === 429) throw new Error("Image rate limit reached. Try again in a moment.");
+      if (res.status === 402) throw new Error("AI credits exhausted. Please add credits to continue.");
+      throw new Error(`Image generation failed (${res.status}): ${body.slice(0, 200)}`);
+    }
+
+    const json = await res.json();
+    const b64: string | undefined = json?.data?.[0]?.b64_json;
+    if (!b64) throw new Error("Image generation returned no image data");
+    return { dataUrl: `data:image/png;base64,${b64}` };
   });

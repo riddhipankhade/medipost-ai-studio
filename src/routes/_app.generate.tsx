@@ -47,6 +47,7 @@ import {
 } from "@/lib/mock-data";
 import {
   generateContent,
+  generateImage,
   type GenerateInput,
   type GenerateOutput,
   type Visual,
@@ -68,7 +69,7 @@ import {
   type SlideLayout,
 } from "@/lib/carousel-themes";
 import { useBrandKit } from "@/lib/brand-kit";
-import { Phone, Globe, Image as ImagePlus } from "lucide-react";
+import { Phone, Globe, Image as ImagePlus, ImageDown, RefreshCw, Wand } from "lucide-react";
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
@@ -464,9 +465,70 @@ function PreviewToolbar({ onCopy, title }: { onCopy: () => void; title: string }
   );
 }
 
+/* ============================ AI Image Hook ============================ */
+
+function useAiImage() {
+  const call = useServerFn(generateImage);
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const run = async (prompt: string, visualStyle?: string) => {
+    if (!prompt || !prompt.trim()) {
+      toast.error("No image prompt available — re-generate the content first.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const r = await call({ data: { prompt, visualStyle } });
+      setUrl(r.dataUrl);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Image generation failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+  return { url, loading, run, setUrl };
+}
+
+function AiImageButton({
+  loading,
+  hasImage,
+  onClick,
+  size = "sm",
+  label,
+}: {
+  loading: boolean;
+  hasImage: boolean;
+  onClick: () => void;
+  size?: "sm" | "xs";
+  label?: string;
+}) {
+  return (
+    <Button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      size="sm"
+      variant={hasImage ? "outline" : "default"}
+      className={`gap-1.5 ${size === "xs" ? "h-7 text-[11px] px-2.5" : "h-8"}`}
+    >
+      {loading ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : hasImage ? (
+        <RefreshCw className="h-3.5 w-3.5" />
+      ) : (
+        <Wand className="h-3.5 w-3.5" />
+      )}
+      {loading
+        ? "Generating image…"
+        : label ?? (hasImage ? "Regenerate visual" : "Generate AI visual")}
+    </Button>
+  );
+}
+
 /* ---- Single Post ---- */
 function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: string }) {
   const [brand] = useBrandKit();
+  const ai = useAiImage();
   const handle = (brand.clinicName || `${specialty.toLowerCase()}.clinic`)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "")
@@ -497,6 +559,14 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
       <CardContent className="pt-6 space-y-5">
         <PreviewToolbar title="Instagram Post Preview" onCopy={() => copyText(fullText, "Post copied")} />
 
+        <div className="flex justify-end -mt-1">
+          <AiImageButton
+            loading={ai.loading}
+            hasImage={!!ai.url}
+            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+          />
+        </div>
+
         <div className="mx-auto w-full max-w-md rounded-xl border border-border overflow-hidden bg-background shadow-sm">
           <div className="flex items-center gap-3 p-3 border-b border-border">
             {brand.logo ? (
@@ -516,7 +586,14 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
             <MoreHorizontal className="ml-auto h-4 w-4 text-muted-foreground" />
           </div>
 
-          <VisualCanvas visual={brandedVisual} headline={post.headline} brand={brand} specialty={specialty} />
+          <VisualCanvas
+            visual={brandedVisual}
+            headline={post.headline}
+            brand={brand}
+            specialty={specialty}
+            imageUrl={ai.url}
+            imageLoading={ai.loading}
+          />
 
           <div className="flex items-center gap-4 px-3 pt-3">
             <HeartIcon className="h-5 w-5" />
@@ -551,6 +628,7 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
 /* ---- Carousel ---- */
 function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: string }) {
   const [brand] = useBrandKit();
+  const callImage = useServerFn(generateImage);
   const [idx, setIdx] = useState(0);
   const [themeId, setThemeId] = useState<string>(() => suggestThemeId(specialty));
   const [layout, setLayout] = useState<SlideLayout>("centered");
@@ -561,6 +639,58 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
   const [accentColor, setAccentColor] = useState<string | null>(null);
   const [useBrandColors, setUseBrandColors] = useState<boolean>(true);
   const [showIcons, setShowIcons] = useState<boolean>(true);
+  const [slideImages, setSlideImages] = useState<(string | null)[]>(
+    () => post.slides.map(() => null),
+  );
+  const [loadingSlide, setLoadingSlide] = useState<number | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  // Reset image state if the carousel content itself changes.
+  // (post is recreated on every generate, so reference equality is fine.)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // — intentionally tied to post identity below
+  if (slideImages.length !== post.slides.length) {
+    setSlideImages(post.slides.map(() => null));
+  }
+
+  async function genSlideImage(i: number) {
+    const s = post.slides[i];
+    const prompt =
+      s?.imagePrompt ||
+      `${post.visual.imagePrompt || post.visual.concept}. Scene focus: ${s?.title}. ${s?.content}`;
+    if (!prompt.trim()) {
+      toast.error("No image prompt available for this slide");
+      return;
+    }
+    setLoadingSlide(i);
+    try {
+      const r = await callImage({ data: { prompt, visualStyle: post.visual.visualStyle } });
+      setSlideImages((arr) => {
+        const next = [...arr];
+        next[i] = r.dataUrl;
+        return next;
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Image generation failed");
+    } finally {
+      setLoadingSlide(null);
+    }
+  }
+
+  async function genAll() {
+    setBulkLoading(true);
+    try {
+      for (let i = 0; i < post.slides.length; i++) {
+        if (slideImages[i]) continue;
+        // sequential to stay polite to rate limits
+        // eslint-disable-next-line no-await-in-loop
+        await genSlideImage(i);
+      }
+      toast.success("All slide visuals ready");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
 
   const baseTheme = getTheme(themeId);
   const theme = {
@@ -591,6 +721,26 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
           onCopy={() => copyText(fullText, "Carousel copied")}
         />
 
+        <div className="flex flex-wrap items-center justify-end gap-2 -mt-1">
+          <AiImageButton
+            loading={loadingSlide === idx}
+            hasImage={!!slideImages[idx]}
+            onClick={() => genSlideImage(idx)}
+            label={slideImages[idx] ? "Regenerate this slide" : "Generate AI visual for this slide"}
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="gap-1.5 h-8"
+            disabled={bulkLoading || loadingSlide !== null}
+            onClick={genAll}
+          >
+            {bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+            {bulkLoading ? "Generating all…" : "Generate all slide visuals"}
+          </Button>
+        </div>
+
         <div className="grid gap-5 md:grid-cols-[1fr_280px]">
           {/* Slide canvas */}
           <div>
@@ -608,6 +758,8 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
                 fontScale={fontScale}
                 showIcons={showIcons}
                 brand={brand}
+                imageUrl={slideImages[idx]}
+                imageLoading={loadingSlide === idx}
               />
 
               <button
@@ -702,6 +854,8 @@ type SlideCanvasProps = {
   fontScale: number;
   showIcons: boolean;
   brand: ReturnType<typeof useBrandKit>[0];
+  imageUrl?: string | null;
+  imageLoading?: boolean;
 };
 
 function SlideCanvas(p: SlideCanvasProps) {
@@ -720,25 +874,31 @@ function SlideCanvas(p: SlideCanvasProps) {
       className="relative aspect-square rounded-2xl border border-border overflow-hidden shadow-md"
       style={baseStyle}
     >
+      {p.imageUrl && (
+        <>
+          <img src={p.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/10" />
+        </>
+      )}
+      {p.imageLoading && <ImageLoadingOverlay />}
+
       {/* Contextual visual background */}
-      {p.showIcons && (
+      {p.showIcons && !p.imageUrl && (
         <ContextualBackground specialty={p.specialty} opacity={p.theme.iconOpacity} color={p.theme.heading} />
       )}
 
       {/* Layout */}
-      {p.layout === "centered" && (
+      {p.imageUrl ? (
+        <FullImageOverlayLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+      ) : p.layout === "centered" ? (
         <CenteredLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
-      )}
-      {p.layout === "image-left" && (
+      ) : p.layout === "image-left" ? (
         <ImageLeftLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
-      )}
-      {p.layout === "full-image" && (
+      ) : p.layout === "full-image" ? (
         <FullImageLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
-      )}
-      {p.layout === "split" && (
+      ) : p.layout === "split" ? (
         <SplitLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
-      )}
-      {p.layout === "modern-card" && (
+      ) : (
         <ModernCardLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
       )}
 
@@ -948,6 +1108,31 @@ function ModernCardLayout(p: LayoutProps) {
         </div>
       </div>
       <BrandFooter p={p} />
+    </div>
+  );
+}
+
+/** Layout used when the slide has a real AI-generated background image. */
+function FullImageOverlayLayout(p: LayoutProps) {
+  return (
+    <div className="absolute inset-0 z-10 p-6 flex flex-col text-white">
+      <BrandHeader p={{ ...p, theme: { ...p.theme, heading: "#ffffff", text: "#ffffff" } }} />
+      <div className="flex-1" />
+      <div className="relative">
+        <h3
+          className="font-bold leading-tight drop-shadow"
+          style={{ fontSize: p.titleSize }}
+        >
+          {p.slideTitle}
+        </h3>
+        <p className="mt-2 opacity-95" style={{ fontSize: p.bodySize }}>
+          {p.slideBody}
+        </p>
+        <CtaPill p={p} />
+      </div>
+      <div className="mt-4">
+        <BrandFooter p={{ ...p, theme: { ...p.theme, heading: "#ffffff", text: "#ffffff" } }} />
+      </div>
     </div>
   );
 }
@@ -1171,16 +1356,25 @@ function MiniColor({
 /* ---- Story ---- */
 function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string }) {
   const [brand] = useBrandKit();
+  const ai = useAiImage();
   const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
   const c2 = brand.secondaryColor || post.visual.colors[1] || "#1f4e79";
   const c3 = post.visual.colors[2] || "#0a3d62";
-  const photo = brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
+  const aiOrPhoto = ai.url || brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
   const handle = (brand.clinicName || `${specialty.toLowerCase()}.clinic`).slice(0, 28);
   const fullText = `${post.headline}\n\n${post.message}\n\n${post.cta}`;
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
         <PreviewToolbar title="Story (9:16) Preview" onCopy={() => copyText(fullText, "Story copied")} />
+
+        <div className="flex justify-end -mt-1">
+          <AiImageButton
+            loading={ai.loading}
+            hasImage={!!ai.url}
+            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+          />
+        </div>
 
         <div
           className="mx-auto rounded-3xl overflow-hidden shadow-lg border-[6px] border-foreground/80"
@@ -1190,10 +1384,18 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
             className="relative w-full h-full flex flex-col p-5 text-white"
             style={{ background: `linear-gradient(160deg, ${c1}, ${c2} 60%, ${c3})` }}
           >
-            {photo && (
+            {ai.loading && <ImageLoadingOverlay />}
+            {aiOrPhoto && (
               <>
-                <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${c1}b3 0%, ${c2}f0 100%)` }} />
+                <img src={aiOrPhoto} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: ai.url
+                      ? "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.75) 100%)"
+                      : `linear-gradient(180deg, ${c1}b3 0%, ${c2}f0 100%)`,
+                  }}
+                />
               </>
             )}
             <ContextualBackground specialty={specialty} opacity={0.08} color="#ffffff" />
@@ -1375,6 +1577,7 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
 /* ---- Festive ---- */
 function FestivePreview({ post, specialty }: { post: FestivePost; specialty: string }) {
   const [brand] = useBrandKit();
+  const ai = useAiImage();
   const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
   const c2 = post.visual.colors[1] || "#f4b400";
   const c3 = brand.secondaryColor || post.visual.colors[2] || "#0a3d62";
@@ -1384,11 +1587,26 @@ function FestivePreview({ post, specialty }: { post: FestivePost; specialty: str
       <CardContent className="pt-6 space-y-5">
         <PreviewToolbar title={`${post.festival} Greeting`} onCopy={() => copyText(fullText, "Greeting copied")} />
 
+        <div className="flex justify-end -mt-1">
+          <AiImageButton
+            loading={ai.loading}
+            hasImage={!!ai.url}
+            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+          />
+        </div>
+
         <div className="mx-auto w-full max-w-md">
           <div
             className="aspect-[4/5] rounded-2xl overflow-hidden shadow-lg border border-border p-8 flex flex-col text-white relative"
             style={{ background: `radial-gradient(circle at top right, ${c2} 0%, ${c1} 60%, ${c3})` }}
           >
+            {ai.loading && <ImageLoadingOverlay />}
+            {ai.url && (
+              <>
+                <img src={ai.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/10" />
+              </>
+            )}
             <div className="absolute top-4 right-4 opacity-30">
               <Heart className="h-16 w-16" />
             </div>
@@ -1449,22 +1667,45 @@ function VisualCanvas({
   headline,
   brand,
   specialty,
+  imageUrl,
+  imageLoading,
 }: {
   visual: Visual;
   headline: string;
   brand?: ReturnType<typeof useBrandKit>[0];
   specialty?: string;
+  imageUrl?: string | null;
+  imageLoading?: boolean;
 }) {
   const c1 = visual.colors[0] || brand?.primaryColor || "#0E7C7B";
   const c2 = visual.colors[1] || brand?.secondaryColor || "#1f4e79";
   const photo = brand?.coverPhoto || brand?.clinicPhoto || brand?.doctorPhoto;
   const PrimaryIcon = specialty ? primaryIconFor(specialty) : ImageIcon;
 
+  // When an AI-generated image is available, render image-led creative.
+  if (imageUrl) {
+    return (
+      <div className="relative aspect-square w-full overflow-hidden text-white">
+        <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/0" />
+        <div className="absolute inset-x-0 bottom-0 p-5 z-10">
+          <p className="text-xl font-bold leading-tight drop-shadow-md">{headline}</p>
+          {brand?.clinicName && (
+            <p className="text-[10px] uppercase tracking-[0.25em] mt-2 opacity-90">
+              {brand.clinicName}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative aspect-square w-full overflow-hidden text-white"
       style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
     >
+      {imageLoading && <ImageLoadingOverlay />}
       {photo && (
         <>
           <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -1549,6 +1790,17 @@ function VisualField({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p className="text-sm leading-relaxed">{value}</p>
+    </div>
+  );
+}
+
+function ImageLoadingOverlay() {
+  return (
+    <div className="absolute inset-0 z-30 grid place-items-center bg-black/40 backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-2 text-white">
+        <Loader2 className="h-6 w-6 animate-spin" />
+        <p className="text-xs font-medium tracking-wide uppercase">Generating visual…</p>
+      </div>
     </div>
   );
 }
