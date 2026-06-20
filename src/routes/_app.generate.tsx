@@ -1112,6 +1112,31 @@ function ModernCardLayout(p: LayoutProps) {
   );
 }
 
+/** Layout used when the slide has a real AI-generated background image. */
+function FullImageOverlayLayout(p: LayoutProps) {
+  return (
+    <div className="absolute inset-0 z-10 p-6 flex flex-col text-white">
+      <BrandHeader p={{ ...p, theme: { ...p.theme, heading: "#ffffff", text: "#ffffff" } }} />
+      <div className="flex-1" />
+      <div className="relative">
+        <h3
+          className="font-bold leading-tight drop-shadow"
+          style={{ fontSize: p.titleSize }}
+        >
+          {p.slideTitle}
+        </h3>
+        <p className="mt-2 opacity-95" style={{ fontSize: p.bodySize }}>
+          {p.slideBody}
+        </p>
+        <CtaPill p={p} />
+      </div>
+      <div className="mt-4">
+        <BrandFooter p={{ ...p, theme: { ...p.theme, heading: "#ffffff", text: "#ffffff" } }} />
+      </div>
+    </div>
+  );
+}
+
 function ImagePlaceholder({ p, full }: { p: LayoutProps; full?: boolean }) {
   const photo = p.brand.clinicPhoto || p.brand.doctorPhoto || p.brand.coverPhoto;
   if (photo) {
