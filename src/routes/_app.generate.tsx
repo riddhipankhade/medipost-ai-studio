@@ -854,6 +854,8 @@ type SlideCanvasProps = {
   fontScale: number;
   showIcons: boolean;
   brand: ReturnType<typeof useBrandKit>[0];
+  imageUrl?: string | null;
+  imageLoading?: boolean;
 };
 
 function SlideCanvas(p: SlideCanvasProps) {
@@ -872,25 +874,31 @@ function SlideCanvas(p: SlideCanvasProps) {
       className="relative aspect-square rounded-2xl border border-border overflow-hidden shadow-md"
       style={baseStyle}
     >
+      {p.imageUrl && (
+        <>
+          <img src={p.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/10" />
+        </>
+      )}
+      {p.imageLoading && <ImageLoadingOverlay />}
+
       {/* Contextual visual background */}
-      {p.showIcons && (
+      {p.showIcons && !p.imageUrl && (
         <ContextualBackground specialty={p.specialty} opacity={p.theme.iconOpacity} color={p.theme.heading} />
       )}
 
       {/* Layout */}
-      {p.layout === "centered" && (
+      {p.imageUrl ? (
+        <FullImageOverlayLayout p={{ ...p, titleSize, bodySize, PrimaryIcon }} />
+      ) : p.layout === "centered" ? (
         <CenteredLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
-      )}
-      {p.layout === "image-left" && (
+      ) : p.layout === "image-left" ? (
         <ImageLeftLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
-      )}
-      {p.layout === "full-image" && (
+      ) : p.layout === "full-image" ? (
         <FullImageLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
-      )}
-      {p.layout === "split" && (
+      ) : p.layout === "split" ? (
         <SplitLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
-      )}
-      {p.layout === "modern-card" && (
+      ) : (
         <ModernCardLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
       )}
 
