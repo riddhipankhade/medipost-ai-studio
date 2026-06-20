@@ -1113,8 +1113,6 @@ function ModernCardLayout(p: LayoutProps) {
 }
 
 function ImagePlaceholder({ p, full }: { p: LayoutProps; full?: boolean }) {
-  const _unused = full;
-  void _unused;
   const photo = p.brand.clinicPhoto || p.brand.doctorPhoto || p.brand.coverPhoto;
   if (photo) {
     return (
