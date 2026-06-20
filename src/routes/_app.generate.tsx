@@ -465,6 +465,66 @@ function PreviewToolbar({ onCopy, title }: { onCopy: () => void; title: string }
   );
 }
 
+/* ============================ AI Image Hook ============================ */
+
+function useAiImage() {
+  const call = useServerFn(generateImage);
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const run = async (prompt: string, visualStyle?: string) => {
+    if (!prompt || !prompt.trim()) {
+      toast.error("No image prompt available — re-generate the content first.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const r = await call({ data: { prompt, visualStyle } });
+      setUrl(r.dataUrl);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Image generation failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+  return { url, loading, run, setUrl };
+}
+
+function AiImageButton({
+  loading,
+  hasImage,
+  onClick,
+  size = "sm",
+  label,
+}: {
+  loading: boolean;
+  hasImage: boolean;
+  onClick: () => void;
+  size?: "sm" | "xs";
+  label?: string;
+}) {
+  return (
+    <Button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      size="sm"
+      variant={hasImage ? "outline" : "default"}
+      className={`gap-1.5 ${size === "xs" ? "h-7 text-[11px] px-2.5" : "h-8"}`}
+    >
+      {loading ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : hasImage ? (
+        <RefreshCw className="h-3.5 w-3.5" />
+      ) : (
+        <Wand className="h-3.5 w-3.5" />
+      )}
+      {loading
+        ? "Generating image…"
+        : label ?? (hasImage ? "Regenerate visual" : "Generate AI visual")}
+    </Button>
+  );
+}
+
 /* ---- Single Post ---- */
 function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: string }) {
   const [brand] = useBrandKit();
