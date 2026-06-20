@@ -552,3 +552,68 @@ export const generateContent = createServerFn({ method: "POST" })
     const parsed = extractJson(content);
     return normalize(data.kind, parsed);
   });
+
+/* ============================ AI Image Generation ============================ */
+
+const ImageInputSchema = z.object({
+  prompt: z.string().min(3).max(2000),
+  visualStyle: z.string().optional(),
+});
+
+export type GenerateImageOutput = { dataUrl: string };
+
+const STYLE_DIRECTIVES: Record<string, string> = {
+  "Modern Healthcare":
+    "modern healthcare photography, bright clinic, soft daylight, shallow depth of field, calm and trustworthy mood",
+  "Premium Clinic":
+    "premium private clinic editorial photography, luxurious interiors, warm neutral palette, cinematic lighting",
+  "Editorial Infographic":
+    "clean editorial healthcare illustration, flat vector style, minimal palette, infographic feel, isometric details",
+  "Lifestyle Photography":
+    "real lifestyle photography of patients and doctors, candid moments, natural light, documentary feel, authentic skin tones",
+  "Awareness Campaign":
+    "bold awareness campaign visual, high contrast, emotive subject, public health poster energy, single hero subject",
+  "Luxury Aesthetic":
+    "luxury aesthetic clinic visual, marble and gold accents, soft beige and ivory tones, fashion-editorial composition",
+};
+
+export const generateImage = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => ImageInputSchema.parse(data))
+  .handler(async ({ data }): Promise<GenerateImageOutput> => {
+    const apiKey = process.env.LOVABLE_API_KEY;
+    if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+
+    const directive = data.visualStyle ? STYLE_DIRECTIVES[data.visualStyle] : "";
+    const fullPrompt = [
+      data.prompt,
+      directive,
+      "Square 1:1 composition, Instagram-ready, premium healthcare marketing creative, no text, no watermark, no logos, no captions, photorealistic where appropriate.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/images/generations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Lovable-API-Key": apiKey,
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3.1-flash-image-preview",
+        messages: [{ role: "user", content: fullPrompt }],
+        modalities: ["image", "text"],
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      if (res.status === 429) throw new Error("Image rate limit reached. Try again in a moment.");
+      if (res.status === 402) throw new Error("AI credits exhausted. Please add credits to continue.");
+      throw new Error(`Image generation failed (${res.status}): ${body.slice(0, 200)}`);
+    }
+
+    const json = await res.json();
+    const b64: string | undefined = json?.data?.[0]?.b64_json;
+    if (!b64) throw new Error("Image generation returned no image data");
+    return { dataUrl: `data:image/png;base64,${b64}` };
+  });
