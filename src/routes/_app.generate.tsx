@@ -1652,3 +1652,14 @@ function VisualField({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+function ImageLoadingOverlay() {
+  return (
+    <div className="absolute inset-0 z-30 grid place-items-center bg-black/40 backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-2 text-white">
+        <Loader2 className="h-6 w-6 animate-spin" />
+        <p className="text-xs font-medium tracking-wide uppercase">Generating visual…</p>
+      </div>
+    </div>
+  );
+}
