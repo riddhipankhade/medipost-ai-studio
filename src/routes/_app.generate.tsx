@@ -528,6 +528,7 @@ function AiImageButton({
 /* ---- Single Post ---- */
 function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: string }) {
   const [brand] = useBrandKit();
+  const ai = useAiImage();
   const handle = (brand.clinicName || `${specialty.toLowerCase()}.clinic`)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "")
@@ -558,6 +559,14 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
       <CardContent className="pt-6 space-y-5">
         <PreviewToolbar title="Instagram Post Preview" onCopy={() => copyText(fullText, "Post copied")} />
 
+        <div className="flex justify-end -mt-1">
+          <AiImageButton
+            loading={ai.loading}
+            hasImage={!!ai.url}
+            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+          />
+        </div>
+
         <div className="mx-auto w-full max-w-md rounded-xl border border-border overflow-hidden bg-background shadow-sm">
           <div className="flex items-center gap-3 p-3 border-b border-border">
             {brand.logo ? (
@@ -577,7 +586,14 @@ function SinglePostPreview({ post, specialty }: { post: SinglePost; specialty: s
             <MoreHorizontal className="ml-auto h-4 w-4 text-muted-foreground" />
           </div>
 
-          <VisualCanvas visual={brandedVisual} headline={post.headline} brand={brand} specialty={specialty} />
+          <VisualCanvas
+            visual={brandedVisual}
+            headline={post.headline}
+            brand={brand}
+            specialty={specialty}
+            imageUrl={ai.url}
+            imageLoading={ai.loading}
+          />
 
           <div className="flex items-center gap-4 px-3 pt-3">
             <HeartIcon className="h-5 w-5" />
