@@ -1248,16 +1248,25 @@ function MiniColor({
 /* ---- Story ---- */
 function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string }) {
   const [brand] = useBrandKit();
+  const ai = useAiImage();
   const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
   const c2 = brand.secondaryColor || post.visual.colors[1] || "#1f4e79";
   const c3 = post.visual.colors[2] || "#0a3d62";
-  const photo = brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
+  const aiOrPhoto = ai.url || brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
   const handle = (brand.clinicName || `${specialty.toLowerCase()}.clinic`).slice(0, 28);
   const fullText = `${post.headline}\n\n${post.message}\n\n${post.cta}`;
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
         <PreviewToolbar title="Story (9:16) Preview" onCopy={() => copyText(fullText, "Story copied")} />
+
+        <div className="flex justify-end -mt-1">
+          <AiImageButton
+            loading={ai.loading}
+            hasImage={!!ai.url}
+            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+          />
+        </div>
 
         <div
           className="mx-auto rounded-3xl overflow-hidden shadow-lg border-[6px] border-foreground/80"
@@ -1267,10 +1276,18 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
             className="relative w-full h-full flex flex-col p-5 text-white"
             style={{ background: `linear-gradient(160deg, ${c1}, ${c2} 60%, ${c3})` }}
           >
-            {photo && (
+            {ai.loading && <ImageLoadingOverlay />}
+            {aiOrPhoto && (
               <>
-                <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${c1}b3 0%, ${c2}f0 100%)` }} />
+                <img src={aiOrPhoto} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: ai.url
+                      ? "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.75) 100%)"
+                      : `linear-gradient(180deg, ${c1}b3 0%, ${c2}f0 100%)`,
+                  }}
+                />
               </>
             )}
             <ContextualBackground specialty={specialty} opacity={0.08} color="#ffffff" />
