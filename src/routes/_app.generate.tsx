@@ -1469,6 +1469,7 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
 /* ---- Festive ---- */
 function FestivePreview({ post, specialty }: { post: FestivePost; specialty: string }) {
   const [brand] = useBrandKit();
+  const ai = useAiImage();
   const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
   const c2 = post.visual.colors[1] || "#f4b400";
   const c3 = brand.secondaryColor || post.visual.colors[2] || "#0a3d62";
@@ -1478,11 +1479,26 @@ function FestivePreview({ post, specialty }: { post: FestivePost; specialty: str
       <CardContent className="pt-6 space-y-5">
         <PreviewToolbar title={`${post.festival} Greeting`} onCopy={() => copyText(fullText, "Greeting copied")} />
 
+        <div className="flex justify-end -mt-1">
+          <AiImageButton
+            loading={ai.loading}
+            hasImage={!!ai.url}
+            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+          />
+        </div>
+
         <div className="mx-auto w-full max-w-md">
           <div
             className="aspect-[4/5] rounded-2xl overflow-hidden shadow-lg border border-border p-8 flex flex-col text-white relative"
             style={{ background: `radial-gradient(circle at top right, ${c2} 0%, ${c1} 60%, ${c3})` }}
           >
+            {ai.loading && <ImageLoadingOverlay />}
+            {ai.url && (
+              <>
+                <img src={ai.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/10" />
+              </>
+            )}
             <div className="absolute top-4 right-4 opacity-30">
               <Heart className="h-16 w-16" />
             </div>
