@@ -47,6 +47,7 @@ import {
 } from "@/lib/mock-data";
 import {
   generateContent,
+  generateImage,
   type GenerateInput,
   type GenerateOutput,
   type Visual,
@@ -68,7 +69,7 @@ import {
   type SlideLayout,
 } from "@/lib/carousel-themes";
 import { useBrandKit } from "@/lib/brand-kit";
-import { Phone, Globe, Image as ImagePlus } from "lucide-react";
+import { Phone, Globe, Image as ImagePlus, ImageDown, RefreshCw, Wand } from "lucide-react";
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
