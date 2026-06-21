@@ -38,6 +38,18 @@ const InputSchema = z.object({
   tone: z.string().min(1),
   audience: z.string().min(1),
   festival: z.string().optional(),
+  customInstructions: z.string().max(800).optional(),
+  festiveStyle: z
+    .enum([
+      "Professional",
+      "Warm & Friendly",
+      "Premium",
+      "Luxury Clinic",
+      "Traditional",
+      "Modern Social Media",
+      "Community-Focused",
+    ])
+    .optional(),
   slideCount: z.number().int().min(5).max(10).optional(),
   brand: BrandSchema,
 });
