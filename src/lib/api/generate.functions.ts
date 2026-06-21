@@ -38,6 +38,18 @@ const InputSchema = z.object({
   tone: z.string().min(1),
   audience: z.string().min(1),
   festival: z.string().optional(),
+  customInstructions: z.string().max(800).optional(),
+  festiveStyle: z
+    .enum([
+      "Professional",
+      "Warm & Friendly",
+      "Premium",
+      "Luxury Clinic",
+      "Traditional",
+      "Modern Social Media",
+      "Community-Focused",
+    ])
+    .optional(),
   slideCount: z.number().int().min(5).max(10).optional(),
   brand: BrandSchema,
 });
@@ -399,13 +411,39 @@ Return STRICT JSON:
 
     case "festive": {
       const fest = d.festival || "the upcoming festival";
+      const styleNote = d.festiveStyle
+        ? `CREATIVE STYLE: ${d.festiveStyle}. The greeting, caption AND visual must clearly reflect this style.`
+        : "";
+      const extra = d.customInstructions?.trim()
+        ? `ADDITIONAL INSTRUCTIONS FROM THE CLINIC (must be woven in naturally):
+"""
+${d.customInstructions.trim()}
+"""`
+        : "";
       return {
-        system: "You are Medipost AI, a culturally-aware festive greeting writer for healthcare brands. Respond ONLY with strict JSON.",
+        system:
+          "You are Medipost AI, a culturally-aware festive greeting writer for healthcare brands. You write greetings for ANY occasion — religious festivals, national days, awareness days (e.g. World Oral Health Day, Doctor's Day, Women's Day), clinic milestones (anniversaries, new branch launches, patient appreciation weeks), and custom events. Respond ONLY with strict JSON.",
         user: `${base}
 
-TASK: Write a ${fest} greeting from a ${d.specialty}'s clinic.
-- Greeting should feel warm, respectful, and brand-safe.
-- Tie the wish gracefully to health/wellness without being preachy.
+TASK: Write a greeting post for "${fest}" from a ${d.specialty}'s clinic.
+- Treat "${fest}" as the occasion — do NOT default to a generic festival. It may be a religious festival (Diwali, Christmas, Eid), an awareness day (World Oral Health Day, World Heart Day), a national day (Doctor's Day, Women's Day, Mother's Day), or a clinic milestone (Clinic Anniversary, New Branch Launch, Patient Appreciation Week).
+- The greeting must feel specific to "${fest}" — references, symbols, language, and warmth appropriate to that exact occasion.
+- Tie the wish gracefully to health/wellness without being preachy. Be culturally respectful.
+${styleNote}
+${extra}
+
+VISUAL DIRECTION (very important):
+The visual.imagePrompt MUST be occasion-specific and avoid generic gradient backgrounds.
+Examples of occasion-appropriate visual cues to draw from when relevant:
+- Diwali → diyas, rangoli, warm golden lighting, marigolds
+- Christmas → pine, snow, warm reds and greens, soft string lights
+- Eid → crescent moon, elegant Islamic geometric patterns, green and gold
+- Doctor's Day / Nurses Day → healthcare professionals, stethoscope, gratitude scene
+- World Oral Health Day → bright smiles, dental imagery, hygiene visuals
+- Mother's Day → mother-and-child warmth, soft pastels
+- Children's Day → joyful kids, bright friendly palette
+- Clinic Anniversary / New Branch Launch → modern clinic interior, ribbon-cut moment, team photo energy
+If the occasion has obvious symbols, use them. Otherwise, build a tasteful scene that captures the spirit of the occasion combined with healthcare warmth.
 
 Return STRICT JSON:
 {

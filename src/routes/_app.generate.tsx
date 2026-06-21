@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -105,6 +106,8 @@ function GeneratePage() {
     tone: "Friendly",
     audience: "Patients",
     festival: "Diwali",
+    customInstructions: "",
+    festiveStyle: "Warm & Friendly",
     slideCount: 7,
   });
 
@@ -262,28 +265,81 @@ function GeneratePage() {
               </Select>
             </Field>
 
-            <Field label={kind === "festive" ? "Theme / Message angle" : "Topic"}>
-              <Input
-                value={form.topic}
-                onChange={(e) => update("topic", e.target.value)}
-                placeholder={
-                  kind === "campaign"
-                    ? "e.g. Heart health awareness month"
-                    : kind === "festive"
-                    ? "e.g. Wishing patients health this season"
-                    : "e.g. Root canal myths, Pediatric flu season"
-                }
-              />
-            </Field>
-
-            {kind === "festive" && (
-              <Field label="Festival / Occasion">
-                <Select value={form.festival} onValueChange={(v) => update("festival", v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {festivals.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            {kind === "festive" ? (
+              <>
+                <Field label="Occasion / Festival">
+                  <Input
+                    value={form.festival ?? ""}
+                    onChange={(e) => update("festival", e.target.value)}
+                    placeholder="e.g. Diwali, World Oral Health Day, Clinic Anniversary"
+                  />
+                  <div className="flex flex-wrap gap-1.5 pt-2">
+                    {festivals.map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => update("festival", f)}
+                        className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                          form.festival === f
+                            ? "bg-[color:var(--teal)] text-white border-[color:var(--teal)]"
+                            : "bg-background border-border hover:bg-accent"
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Message angle (Topic)">
+                  <Input
+                    value={form.topic}
+                    onChange={(e) => update("topic", e.target.value)}
+                    placeholder="e.g. Wish patients good health this season"
+                  />
+                </Field>
+                <Field label="Creative Style">
+                  <Select
+                    value={form.festiveStyle ?? "Warm & Friendly"}
+                    onValueChange={(v) =>
+                      update("festiveStyle", v as NonNullable<typeof form.festiveStyle>)
+                    }
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[
+                        "Professional",
+                        "Warm & Friendly",
+                        "Premium",
+                        "Luxury Clinic",
+                        "Traditional",
+                        "Modern Social Media",
+                        "Community-Focused",
+                      ].map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Additional Instructions (optional)">
+                  <Textarea
+                    value={form.customInstructions ?? ""}
+                    onChange={(e) => update("customInstructions", e.target.value)}
+                    rows={3}
+                    placeholder="e.g. Mention our new clinic branch. Thank our patients. Focus on family wellness."
+                  />
+                </Field>
+              </>
+            ) : (
+              <Field label="Topic">
+                <Input
+                  value={form.topic}
+                  onChange={(e) => update("topic", e.target.value)}
+                  placeholder={
+                    kind === "campaign"
+                      ? "e.g. Heart health awareness month"
+                      : "e.g. Root canal myths, Pediatric flu season"
+                  }
+                />
               </Field>
             )}
 
