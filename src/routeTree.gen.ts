@@ -18,7 +18,6 @@ import { Route as AppHistoryRouteImport } from './routes/_app.history'
 import { Route as AppGenerateRouteImport } from './routes/_app.generate'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppBrandRouteImport } from './routes/_app.brand'
-import { Route as AppAdminRouteImport } from './routes/_app.admin'
 
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
@@ -64,17 +63,11 @@ const AppBrandRoute = AppBrandRouteImport.update({
   path: '/brand',
   getParentRoute: () => AppRoute,
 } as any)
-const AppAdminRoute = AppAdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => AppRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
-  '/admin': typeof AppAdminRoute
   '/brand': typeof AppBrandRoute
   '/dashboard': typeof AppDashboardRoute
   '/generate': typeof AppGenerateRoute
@@ -85,7 +78,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
-  '/admin': typeof AppAdminRoute
   '/brand': typeof AppBrandRoute
   '/dashboard': typeof AppDashboardRoute
   '/generate': typeof AppGenerateRoute
@@ -98,7 +90,6 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
-  '/_app/admin': typeof AppAdminRoute
   '/_app/brand': typeof AppBrandRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/generate': typeof AppGenerateRoute
@@ -111,7 +102,6 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/register'
-    | '/admin'
     | '/brand'
     | '/dashboard'
     | '/generate'
@@ -122,7 +112,6 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/register'
-    | '/admin'
     | '/brand'
     | '/dashboard'
     | '/generate'
@@ -134,7 +123,6 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/register'
-    | '/_app/admin'
     | '/_app/brand'
     | '/_app/dashboard'
     | '/_app/generate'
@@ -214,18 +202,10 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBrandRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/admin': {
-      id: '/_app/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AppAdminRouteImport
-      parentRoute: typeof AppRoute
-    }
   }
 }
 
 interface AppRouteChildren {
-  AppAdminRoute: typeof AppAdminRoute
   AppBrandRoute: typeof AppBrandRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppGenerateRoute: typeof AppGenerateRoute
@@ -234,7 +214,6 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppAdminRoute: AppAdminRoute,
   AppBrandRoute: AppBrandRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppGenerateRoute: AppGenerateRoute,
