@@ -1,4 +1,4 @@
-import { Link, Outlet, useRouterState, useNavigate } from "@tanstack/react-router";
+import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { LayoutDashboard, Users, CreditCard, BarChart3, Settings, LogOut, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ const nav = [
   { to: "/admin/settings", label: "Platform Settings", icon: Settings, exact: false as boolean },
 ];
 
-export function AdminShell() {
+export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
@@ -92,9 +92,7 @@ export function AdminShell() {
         </div>
       </aside>
       <main className="flex-1 min-w-0">
-        <div className="p-6 md:p-10 max-w-6xl mx-auto">
-          <Outlet />
-        </div>
+        <div className="p-6 md:p-10 max-w-6xl mx-auto">{children}</div>
       </main>
     </div>
   );
