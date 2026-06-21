@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Brand } from "@/components/brand";
+import { setRole } from "@/lib/auth-mock";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Login — Medipost AI" }] }),
@@ -43,7 +44,7 @@ function Login() {
                 <Label>Password</Label>
                 <Input type="password" defaultValue="demo1234" />
               </div>
-              <Button className="w-full" size="lg" onClick={() => navigate({ to: "/dashboard" })}>
+              <Button className="w-full" size="lg" onClick={() => { setRole("user"); navigate({ to: "/dashboard" }); }}>
                 Sign in
               </Button>
               <p className="text-sm text-muted-foreground text-center">
