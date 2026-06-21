@@ -6,12 +6,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { isAdmin, clearRole } from "@/lib/auth-mock";
 
 const nav = [
-  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { to: "/admin/users", label: "Users", icon: Users },
-  { to: "/admin/plans", label: "Subscription Plans", icon: CreditCard },
-  { to: "/admin/analytics", label: "Content Analytics", icon: BarChart3 },
-  { to: "/admin/settings", label: "Platform Settings", icon: Settings },
-] as const;
+  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true as boolean },
+  { to: "/admin/users", label: "Users", icon: Users, exact: false as boolean },
+  { to: "/admin/plans", label: "Subscription Plans", icon: CreditCard, exact: false as boolean },
+  { to: "/admin/analytics", label: "Content Analytics", icon: BarChart3, exact: false as boolean },
+  { to: "/admin/settings", label: "Platform Settings", icon: Settings, exact: false as boolean },
+];
 
 export function AdminShell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
