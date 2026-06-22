@@ -11,7 +11,8 @@ VALUES
     0.00,
     10,
     '{
-      "platforms": ["instagram", "facebook"],
+      "workflow_kinds": ["single", "story"],
+      "content_categories_limit": 4,
       "custom_branding": false,
       "priority_support": false,
       "content_history_days": 7
@@ -26,7 +27,8 @@ VALUES
     290.00,
     100,
     '{
-      "platforms": ["instagram", "facebook", "linkedin", "twitter"],
+      "workflow_kinds": ["single", "carousel", "story", "reel", "festive"],
+      "content_categories_limit": -1,
       "custom_branding": true,
       "priority_support": false,
       "content_history_days": 90
@@ -41,7 +43,8 @@ VALUES
     790.00,
     -1,
     '{
-      "platforms": ["instagram", "facebook", "linkedin", "twitter"],
+      "workflow_kinds": ["single", "carousel", "story", "reel", "campaign", "festive"],
+      "content_categories_limit": -1,
       "custom_branding": true,
       "priority_support": true,
       "content_history_days": -1
