@@ -103,4 +103,4 @@ CREATE POLICY "generated_content_admin_read"
     )
   );
 
-COMMENT ON COLUMN storage.buckets.file_size_limit IS 'Enforced by Supabase Storage middleware before the object reaches the DB.';
+-- COMMENT ON COLUMN storage.buckets.file_size_limit IS 'Enforced by Supabase Storage middleware before the object reaches the DB.';

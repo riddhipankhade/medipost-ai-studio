@@ -30,20 +30,20 @@ CREATE POLICY "plans_public_read"
   ON public.plans FOR SELECT
   USING (true);
 
-CREATE POLICY "plans_admin_all"
-  ON public.plans FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role = 'admin'
-    )
-  )
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role = 'admin'
-    )
-  );
+-- CREATE POLICY "plans_admin_all"
+--   ON public.plans FOR ALL
+--   USING (
+--     EXISTS (
+--       SELECT 1 FROM public.profiles
+--       WHERE id = auth.uid() AND role = 'admin'
+--     )
+--   )
+--   WITH CHECK (
+--     EXISTS (
+--       SELECT 1 FROM public.profiles
+--       WHERE id = auth.uid() AND role = 'admin'
+--     )
+--   );
 
 COMMENT ON TABLE public.plans IS 'Subscription tier definitions managed by admins.';
 COMMENT ON COLUMN public.plans.ai_generations_limit IS '-1 means unlimited.';
