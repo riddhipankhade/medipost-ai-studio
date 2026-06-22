@@ -37,6 +37,6 @@ enable_signup = true
 double_confirm_changes = true
 enable_confirmations = false   # Set true in production
 
-[seed]
-enabled = true
-sql_paths = ["./seed/*.sql"]
+#[seed]
+#enabled = true
+#sql_paths = ["./seed/*.sql"]
