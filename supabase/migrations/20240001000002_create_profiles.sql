@@ -67,3 +67,20 @@ CREATE TRIGGER on_auth_user_created
 
 COMMENT ON TABLE public.profiles IS 'App-level user data extending auth.users.';
 COMMENT ON COLUMN public.profiles.role IS 'user | admin. Elevated to admin manually or via service role.';
+
+-- plans_admin_all is defined here (not in create_plans.sql) because it references
+-- public.profiles, which must exist before the policy body can be parsed.
+CREATE POLICY "plans_admin_all"
+  ON public.plans FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
