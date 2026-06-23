@@ -5,6 +5,7 @@ import { Brand } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/lib/auth-context";
+import { useSubscription } from "@/lib/use-subscription";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -16,7 +17,8 @@ const nav = [
 ] as const;
 
 export function AppShell() {
-  const { session, profile, loading, signOut } = useAuth();
+  const { session, user, profile, loading, signOut } = useAuth();
+  const { data: sub } = useSubscription(user?.id);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -72,7 +74,7 @@ export function AppShell() {
             </Avatar>
             <div className="min-w-0">
               <p className="text-sm font-medium truncate">{displayName}</p>
-              <p className="text-xs text-muted-foreground truncate">Free plan</p>
+              <p className="text-xs text-muted-foreground truncate">{sub?.plans.display_name ?? "Free"}</p>
             </div>
             <button
               onClick={handleSignOut}
