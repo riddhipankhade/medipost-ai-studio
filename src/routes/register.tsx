@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Brand } from "@/components/brand";
 import { specialties } from "@/lib/mock-data";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/register")({
   head: () => ({ meta: [{ title: "Create account — Medipost AI" }] }),
@@ -16,20 +17,28 @@ export const Route = createFileRoute("/register")({
 
 function Register() {
   const navigate = useNavigate();
+  const { session, loading: authLoading } = useAuth();
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  // Redirect already-authenticated users away from the register page
+  useEffect(() => {
+    if (!authLoading && session) {
+      navigate({ to: "/dashboard", replace: true });
+    }
+  }, [authLoading, session, navigate]);
+
+  async function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
     setError(null);
-    setLoading(true);
+    setSubmitting(true);
 
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
@@ -42,21 +51,23 @@ function Register() {
       },
     });
 
-    setLoading(false);
+    setSubmitting(false);
 
     if (signUpError) {
       setError(signUpError.message);
       return;
     }
 
-    // If email confirmation is enabled, data.user exists but session is null.
-    // If confirmation is disabled, session is set and we can go straight to the app.
+    // If email confirmation is disabled in Supabase, session is set immediately.
+    // If enabled, session is null and the user must confirm via email first.
     if (data.session) {
-      navigate({ to: "/dashboard" });
+      navigate({ to: "/dashboard", replace: true });
     } else {
       setEmailSent(true);
     }
   }
+
+  if (authLoading) return null;
 
   if (emailSent) {
     return (
@@ -65,7 +76,8 @@ function Register() {
           <Brand to="/" />
           <h1 className="text-2xl font-semibold mt-6">Check your email</h1>
           <p className="text-muted-foreground text-sm">
-            We sent a confirmation link to <span className="font-medium text-foreground">{email}</span>.
+            We sent a confirmation link to{" "}
+            <span className="font-medium text-foreground">{email}</span>.
             Click it to activate your account.
           </p>
         </div>
@@ -144,8 +156,8 @@ function Register() {
                   />
                 </div>
                 {error && <p className="text-sm text-destructive">{error}</p>}
-                <Button type="submit" className="w-full" size="lg" disabled={loading}>
-                  {loading ? "Creating account…" : "Create account"}
+                <Button type="submit" className="w-full" size="lg" disabled={submitting}>
+                  {submitting ? "Creating account…" : "Create account"}
                 </Button>
                 <p className="text-sm text-muted-foreground text-center">
                   Already have an account?{" "}

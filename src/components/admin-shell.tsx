@@ -1,9 +1,9 @@
+import { useEffect } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
 import { LayoutDashboard, Users, CreditCard, BarChart3, Settings, LogOut, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { isAdmin, clearRole } from "@/lib/auth-mock";
+import { useAuth } from "@/lib/auth-context";
 
 const nav = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true as boolean },
@@ -14,27 +14,31 @@ const nav = [
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { session, profile, loading, signOut } = useAuth();
   const navigate = useNavigate();
-  const [ready, setReady] = useState(false);
-  const [allowed, setAllowed] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
-    setAllowed(isAdmin());
-    setReady(true);
-  }, []);
+    if (loading) return;
+    if (!session) {
+      navigate({ to: "/admin/login", replace: true });
+    }
+  }, [loading, session, navigate]);
 
-  if (!ready) return null;
-  if (!allowed) {
+  if (loading) return null;
+
+  // Signed in but not an admin — show a clear error rather than silently redirecting,
+  // since the user may have a regular account and navigated here by mistake.
+  if (session && profile && profile.role !== "admin") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[oklch(0.985_0.01_220)] p-6">
+      <div className="min-h-screen flex items-center justify-center bg-foreground/2 p-6">
         <div className="max-w-md text-center space-y-4">
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
             <ShieldCheck className="h-6 w-6" />
           </div>
           <h1 className="text-2xl font-semibold">Unauthorized Access</h1>
           <p className="text-muted-foreground text-sm">
-            You don't have permission to view the Admin Portal. Please sign in with an administrator account.
+            Your account does not have admin privileges. Please sign in with an administrator account.
           </p>
           <Button onClick={() => navigate({ to: "/admin/login" })}>Go to Admin Login</Button>
         </div>
@@ -42,8 +46,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Still waiting for profile to load after session is established
+  if (!profile) return null;
+
+  async function handleSignOut() {
+    await signOut();
+    navigate({ to: "/admin/login", replace: true });
+  }
+
   return (
-    <div className="flex min-h-screen bg-[oklch(0.985_0.01_220)]">
+    <div className="flex min-h-screen bg-foreground/2">
       <aside className="hidden md:flex w-64 flex-col border-r border-border bg-sidebar">
         <div className="px-5 py-5 border-b border-border flex items-center gap-2">
           <div className="h-8 w-8 rounded-lg bg-foreground text-background flex items-center justify-center">
@@ -78,11 +90,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <AvatarFallback className="bg-foreground text-background">AD</AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <p className="text-sm font-medium truncate">Admin</p>
-              <p className="text-xs text-muted-foreground truncate">Platform owner</p>
+              <p className="text-sm font-medium truncate">{profile.full_name ?? "Admin"}</p>
+              <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
             </div>
             <button
-              onClick={() => { clearRole(); navigate({ to: "/admin/login" }); }}
+              onClick={handleSignOut}
               className="ml-auto text-muted-foreground hover:text-foreground"
               aria-label="Sign out"
             >

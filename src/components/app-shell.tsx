@@ -1,8 +1,10 @@
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { LayoutDashboard, Sparkles, History, CreditCard, LogOut, Palette, Settings } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useAuth } from "@/lib/auth-context";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -14,7 +16,29 @@ const nav = [
 ] as const;
 
 export function AppShell() {
+  const { session, profile, loading, signOut } = useAuth();
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  useEffect(() => {
+    if (!loading && !session) {
+      navigate({ to: "/login", replace: true });
+    }
+  }, [loading, session, navigate]);
+
+  if (loading || !session) return null;
+
+  const initials = profile?.full_name
+    ? profile.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+    : "DR";
+
+  const displayName = profile?.full_name ?? profile?.email ?? "Doctor";
+
+  async function handleSignOut() {
+    await signOut();
+    navigate({ to: "/login", replace: true });
+  }
+
   return (
     <div className="flex min-h-screen bg-[oklch(0.985_0.01_220)]">
       <aside className="hidden md:flex w-64 flex-col border-r border-border bg-sidebar">
@@ -44,23 +68,27 @@ export function AppShell() {
         <div className="p-3 border-t border-border">
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
             <Avatar className="h-9 w-9">
-              <AvatarFallback className="bg-[color:var(--teal)] text-white">DR</AvatarFallback>
+              <AvatarFallback className="bg-(--teal) text-white">{initials}</AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <p className="text-sm font-medium truncate">Dr. Rhea Patel</p>
-              <p className="text-xs text-muted-foreground truncate">Pro plan</p>
+              <p className="text-sm font-medium truncate">{displayName}</p>
+              <p className="text-xs text-muted-foreground truncate">Free plan</p>
             </div>
-            <Link to="/" className="ml-auto text-muted-foreground hover:text-foreground" aria-label="Sign out">
+            <button
+              onClick={handleSignOut}
+              className="ml-auto text-muted-foreground hover:text-foreground"
+              aria-label="Sign out"
+            >
               <LogOut className="h-4 w-4" />
-            </Link>
+            </button>
           </div>
         </div>
       </aside>
       <main className="flex-1 min-w-0">
         <header className="md:hidden flex items-center justify-between border-b border-border bg-background px-4 py-3">
           <Brand to="/dashboard" />
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/">Exit</Link>
+          <Button variant="ghost" size="sm" onClick={handleSignOut}>
+            Sign out
           </Button>
         </header>
         <div className="p-6 md:p-10 max-w-6xl mx-auto">
