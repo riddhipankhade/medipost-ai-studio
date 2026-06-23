@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -14,7 +15,9 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Upload, Trash2, Building2, User, Image as ImageIcon, Save, Palette, X } from "lucide-react";
-import { useBrandKit, fileToDataUrl, defaultBrandKit, type BrandKit } from "@/lib/brand-kit";
+import { fileToDataUrl } from "@/lib/brand-kit";
+import { useAuth } from "@/lib/auth-context";
+import { useDbBrandKit, useSaveBrandKit } from "@/lib/use-brand-kit-db";
 import { specialties } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/_app/brand")({
@@ -22,27 +25,113 @@ export const Route = createFileRoute("/_app/brand")({
   component: BrandKitPage,
 });
 
+type LocalKit = {
+  clinicName: string;
+  doctorName: string;
+  specialty: string;
+  phone: string;
+  website: string;
+  address: string;
+  primaryColor: string;
+  secondaryColor: string;
+  logo?: string;
+  doctorPhoto?: string;
+  clinicPhoto?: string;
+  coverPhoto?: string;
+  teamPhoto?: string;
+};
+
+const emptyKit: LocalKit = {
+  clinicName: "",
+  doctorName: "",
+  specialty: "",
+  phone: "",
+  website: "",
+  address: "",
+  primaryColor: "#0E7C7B",
+  secondaryColor: "#1f4e79",
+};
+
 function BrandKitPage() {
-  const [kit, save] = useBrandKit();
-  const [draft, setDraft] = useState<BrandKit>(kit);
+  const { user, profile } = useAuth();
+  const { data: dbKit, isLoading } = useDbBrandKit(user?.id);
+  const { mutate: saveToDb, isPending: isSaving } = useSaveBrandKit(user?.id);
 
-  // keep draft in sync if storage changes underneath
-  if (kit !== draft && draft.clinicName === defaultBrandKit.clinicName && kit.clinicName !== defaultBrandKit.clinicName) {
-    setDraft(kit);
-  }
+  const metaName = (user?.user_metadata?.full_name as string | undefined)?.trim();
+  const authDoctorName = profile?.full_name?.trim() || metaName || "";
+  const authSpecialty = (user?.user_metadata?.specialty as string | undefined) || "";
 
-  const update = <K extends keyof BrandKit>(k: K, v: BrandKit[K]) =>
+  const [draft, setDraft] = useState<LocalKit>(emptyKit);
+  const [seeded, setSeeded] = useState(false);
+
+  useEffect(() => {
+    if (isLoading || seeded) return;
+    if (dbKit) {
+      // DB record exists — always prefer DB values
+      const colors = dbKit.brand_colors ?? { primary: "#0E7C7B", secondary: "#1f4e79" };
+      setDraft((d) => ({
+        ...d,
+        clinicName: dbKit.clinic_name ?? "",
+        doctorName: dbKit.doctor_name ?? "",
+        specialty: dbKit.specialty ?? "",
+        phone: dbKit.phone ?? "",
+        website: dbKit.website ?? "",
+        address: dbKit.address ?? "",
+        primaryColor: colors.primary,
+        secondaryColor: colors.secondary,
+      }));
+    } else {
+      // No saved brand kit — prefill from authenticated profile
+      setDraft((d) => ({
+        ...d,
+        doctorName: authDoctorName,
+        specialty: authSpecialty,
+      }));
+    }
+    setSeeded(true);
+  }, [isLoading, dbKit, seeded, authDoctorName, authSpecialty]);
+
+  const update = <K extends keyof LocalKit>(k: K, v: LocalKit[K]) =>
     setDraft((d) => ({ ...d, [k]: v }));
 
   function onSave() {
-    save(draft);
-    toast.success("Brand kit saved. It will be applied to all generated content.");
+    saveToDb(
+      {
+        clinic_name: draft.clinicName,
+        doctor_name: draft.doctorName,
+        specialty: draft.specialty,
+        phone: draft.phone,
+        website: draft.website,
+        address: draft.address,
+        brand_colors: {
+          primary: draft.primaryColor,
+          secondary: draft.secondaryColor,
+          accent: "#F97316",
+        },
+      },
+      {
+        onSuccess: () => toast.success("Brand kit saved. It will be applied to all generated content."),
+        onError: (e) => toast.error(`Failed to save: ${(e as Error).message}`),
+      }
+    );
   }
 
   function reset() {
-    setDraft(defaultBrandKit);
-    save(defaultBrandKit);
-    toast.message("Brand kit reset to defaults");
+    setDraft({
+      ...emptyKit,
+      doctorName: authDoctorName,
+      specialty: authSpecialty,
+    });
+    toast.message("Brand kit reset");
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-96 w-full rounded-xl" />
+      </div>
+    );
   }
 
   return (
@@ -59,8 +148,8 @@ function BrandKitPage() {
           <Button variant="outline" onClick={reset} className="gap-2">
             <Trash2 className="h-4 w-4" /> Reset
           </Button>
-          <Button onClick={onSave} className="gap-2">
-            <Save className="h-4 w-4" /> Save Brand Kit
+          <Button onClick={onSave} disabled={isSaving} className="gap-2">
+            <Save className="h-4 w-4" />{isSaving ? "Saving…" : "Save Brand Kit"}
           </Button>
         </div>
       </div>
@@ -71,7 +160,7 @@ function BrandKitPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-[color:var(--teal)]" /> Clinic Details
+                <Building2 className="h-4 w-4 text-(--teal)" /> Clinic Details
               </CardTitle>
             </CardHeader>
             <CardContent className="grid sm:grid-cols-2 gap-4">
@@ -108,7 +197,7 @@ function BrandKitPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Palette className="h-4 w-4 text-[color:var(--teal)]" /> Brand Colors
+                <Palette className="h-4 w-4 text-(--teal)" /> Brand Colors
               </CardTitle>
             </CardHeader>
             <CardContent className="grid sm:grid-cols-2 gap-4">
@@ -128,7 +217,7 @@ function BrandKitPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <ImageIcon className="h-4 w-4 text-[color:var(--teal)]" /> Brand Assets
+                <ImageIcon className="h-4 w-4 text-(--teal)" /> Brand Assets
               </CardTitle>
             </CardHeader>
             <CardContent className="grid sm:grid-cols-2 gap-4">
@@ -171,7 +260,7 @@ function BrandKitPage() {
           <Card className="lg:sticky lg:top-4">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <User className="h-4 w-4 text-[color:var(--teal)]" /> Live Preview
+                <User className="h-4 w-4 text-(--teal)" /> Live Preview
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -284,7 +373,7 @@ function UploadField({
       <Label>{label}</Label>
       <div
         className={`relative rounded-lg border border-dashed border-border bg-accent/30 overflow-hidden ${
-          aspect === "square" ? "aspect-square max-w-[180px]" : "aspect-video"
+          aspect === "square" ? "aspect-square max-w-45" : "aspect-video"
         }`}
       >
         {value ? (

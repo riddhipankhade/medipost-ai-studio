@@ -44,7 +44,8 @@ function Dashboard() {
   const { data: sub, isLoading } = useSubscription(user?.id);
 
   const specialty = user?.user_metadata?.specialty as string | undefined;
-  const displayName = profile?.full_name?.trim() || profile?.email || "Doctor";
+  const metaName = (user?.user_metadata?.full_name as string | undefined)?.trim();
+  const displayName = profile?.full_name?.trim() || metaName || profile?.email || user?.email || "Doctor";
 
   const used = sub?.generations_used ?? 0;
   const limit = sub?.plans.ai_generations_limit ?? 10;

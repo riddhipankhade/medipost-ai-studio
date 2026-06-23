@@ -30,11 +30,12 @@ export function AppShell() {
 
   if (loading || !session) return null;
 
-  const initials = profile?.full_name
-    ? profile.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+  const metaName = (user?.user_metadata?.full_name as string | undefined)?.trim();
+  const nameForDisplay = profile?.full_name?.trim() || metaName;
+  const initials = nameForDisplay
+    ? nameForDisplay.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "DR";
-
-  const displayName = profile?.full_name ?? profile?.email ?? "Doctor";
+  const displayName = nameForDisplay || profile?.email || user?.email || "Doctor";
 
   async function handleSignOut() {
     await signOut();

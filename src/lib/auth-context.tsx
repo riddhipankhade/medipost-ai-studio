@@ -26,6 +26,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // getSession() awaits token-refresh before deciding the user is logged out.
+    // Without this, an expired access token causes onAuthStateChange to fire
+    // INITIAL_SESSION with null — the shell redirects to /login before the
+    // refresh completes and the profile is never fetched.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (!session) setLoading(false);
+    });
+
     // Keep the callback synchronous — making Supabase DB calls inside
     // onAuthStateChange is unreliable because the client may not have
     // committed the new JWT yet, causing RLS (auth.uid()) to resolve as null.
