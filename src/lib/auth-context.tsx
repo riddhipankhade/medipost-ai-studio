@@ -26,29 +26,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // onAuthStateChange fires INITIAL_SESSION immediately, covering cold-start
-    // session restoration without a separate getSession() call.
+    // getSession() awaits token-refresh before deciding the user is logged out.
+    // Without this, an expired access token causes onAuthStateChange to fire
+    // INITIAL_SESSION with null — the shell redirects to /login before the
+    // refresh completes and the profile is never fetched.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (!session) setLoading(false);
+    });
+
+    // Keep the callback synchronous — making Supabase DB calls inside
+    // onAuthStateChange is unreliable because the client may not have
+    // committed the new JWT yet, causing RLS (auth.uid()) to resolve as null.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
         setSession(session);
-
-        if (session) {
-          const { data } = await supabase
-            .from("profiles")
-            .select("id, email, full_name, role, is_active")
-            .eq("id", session.user.id)
-            .single();
-          setProfile(data ?? null);
-        } else {
+        if (!session) {
           setProfile(null);
+          setLoading(false);
         }
-
-        setLoading(false);
       }
     );
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Fetch the profile in a separate effect so it runs after onAuthStateChange
+  // has fully committed the session JWT to the Supabase client.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    supabase
+      .from("profiles")
+      .select("id, email, full_name, role, is_active")
+      .eq("id", session.user.id)
+      .single()
+      .then(({ data, error }) => {
+        if (error) console.error("[auth] profile fetch failed:", error.message);
+        setProfile(data ?? null);
+        setLoading(false);
+      });
+  }, [session?.user?.id]);
 
   async function signOut() {
     await supabase.auth.signOut();
