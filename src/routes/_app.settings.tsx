@@ -29,7 +29,7 @@ function Settings() {
       // Name from profiles table
       const { data: profile } = await supabase
         .from("profiles")
-        .select("display_name")
+        .select("full_name")
         .eq("id", user.id)
         .single();
 
@@ -40,7 +40,7 @@ function Settings() {
         .eq("user_id", user.id)
         .single();
 
-      setName((profile as any)?.display_name ?? "");
+      setName((profile as any)?.full_name ?? "");
       setEmail(user.email ?? "");
       setOrigEmail(user.email ?? "");
       setClinic((brand as any)?.clinic_name ?? "");
@@ -56,10 +56,10 @@ function Settings() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // 1. Update display_name in profiles
+      // 1. Update full_name in profiles
       const { error: profileError } = await supabase
         .from("profiles")
-        .update({ display_name: name.trim() })
+        .update({ full_name: name.trim() })
         .eq("id", user.id);
       if (profileError) throw profileError;
 
