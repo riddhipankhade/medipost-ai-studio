@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +70,7 @@ import {
   type SlideLayout,
 } from "@/lib/carousel-themes";
 import { useBrandKit } from "@/lib/brand-kit";
+import { supabase } from "@/lib/supabase";
 import { Phone, Globe, Image as ImagePlus, ImageDown, RefreshCw, Wand } from "lucide-react";
 
 export const Route = createFileRoute("/_app/generate")({
@@ -95,7 +96,91 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 
 function GeneratePage() {
   const callGenerate = useServerFn(generateContent);
-  const [brand] = useBrandKit();
+  const [brand, setBrand] = useBrandKit(); // used by preview sub-components
+
+  const [outOfCredits, setOutOfCredits] = useState(false);
+  const [supabaseBrand, setSupabaseBrand] = useState({
+    clinicName:     "",
+    doctorName:     "",
+    primaryColor:   "#0d9488",
+    secondaryColor: "#134e4a",
+    website:        "",
+    phone:          "",
+    hasLogo:        false,
+    hasDoctorPhoto: false,
+    hasClinicPhoto: false,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBrand() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+
+      const { data } = await supabase
+        .from("brand_kits")
+        .select(
+          "clinic_name, doctor_name, logo_url, doctor_photo_url, " +
+          "clinic_photo_url, brand_colors, phone, website"
+        )
+        .eq("user_id", user.id)
+        .single();
+
+      if (!data || cancelled) return;
+      const d = data as unknown as Record<string, unknown>;
+      const colors = ((d.brand_colors ?? {}) as Record<string, string>);
+
+      const logoUrl        = (d.logo_url           as string) ?? "";
+      const doctorUrl      = (d.doctor_photo_url    as string) ?? "";
+      const clinicUrl      = (d.clinic_photo_url    as string) ?? "";
+      const clinicName     = (d.clinic_name         as string) ?? "";
+      const doctorName     = (d.doctor_name         as string) ?? "";
+      const primaryColor   = colors.primary                    ?? "#0d9488";
+      const secondaryColor = colors.secondary                  ?? "#134e4a";
+      const website        = (d.website             as string) ?? "";
+      const phone          = (d.phone               as string) ?? "";
+
+      // Sync DB values into localStorage so all preview sub-components
+      // (which call useBrandKit() internally) see fresh data immediately.
+      setBrand({
+        ...brand,
+        clinicName,
+        doctorName,
+        primaryColor,
+        secondaryColor,
+        website,
+        phone,
+        logo:        logoUrl,
+        doctorPhoto: doctorUrl,
+        clinicPhoto: clinicUrl,
+      });
+
+      setSupabaseBrand({
+        clinicName,
+        doctorName,
+        primaryColor,
+        secondaryColor,
+        website,
+        phone,
+        hasLogo:        Boolean(logoUrl),
+        hasDoctorPhoto: Boolean(doctorUrl),
+        hasClinicPhoto: Boolean(clinicUrl),
+      });
+    }
+
+    loadBrand();
+
+    // Re-load when the user switches back to this tab after editing Brand Kit
+    const handleVisibility = () => { if (!document.hidden) loadBrand(); };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [kind, setKind] = useState<WorkflowKind>("single");
   const [category, setCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
@@ -139,6 +224,7 @@ function GeneratePage() {
     setLoading(true);
     setStage(0);
     setResult(null);
+    setOutOfCredits(false);
     const ticker = setInterval(() => {
       setStage((s) => Math.min(s + 1, PROGRESS_STAGES.length - 1));
     }, 900);
@@ -148,23 +234,23 @@ function GeneratePage() {
           kind,
           ...form,
           category,
-          brand: {
-            clinicName: brand.clinicName,
-            doctorName: brand.doctorName,
-            primaryColor: brand.primaryColor,
-            secondaryColor: brand.secondaryColor,
-            website: brand.website,
-            phone: brand.phone,
-            hasLogo: Boolean(brand.logo),
-            hasDoctorPhoto: Boolean(brand.doctorPhoto),
-            hasClinicPhoto: Boolean(brand.clinicPhoto || brand.coverPhoto),
-          },
+          brand: supabaseBrand,
         },
       });
       setResult(out);
       toast.success("Your content is ready");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Generation failed");
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("INSUFFICIENT_CREDITS")) {
+        setOutOfCredits(true);
+        toast.error("You've used all your AI generations this period. Upgrade your plan to continue.");
+      } else if (msg.includes("SUBSCRIPTION_NOT_FOUND")) {
+        toast.error("No active subscription found. Visit the Subscription page to activate a plan.");
+      } else if (msg.includes("GEMINI") || msg.includes("503")) {
+        toast.error("AI service is busy — please try again in a moment.");
+      } else {
+        toast.error(msg || "Generation failed. Please try again.");
+      }
     } finally {
       clearInterval(ticker);
       setLoading(false);
@@ -395,7 +481,25 @@ function GeneratePage() {
         <div className="lg:col-span-3 space-y-6">
           {loading && <LoadingPanel stage={stage} />}
 
-          {!loading && !result && (
+          {/* Out of credits banner */}
+          {!loading && outOfCredits && (
+            <Card className="border-destructive/50 bg-destructive/5">
+              <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
+                <p className="text-sm font-medium">
+                  You've run out of AI generations for this period.
+                </p>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => window.location.href = "/subscription"}
+                >
+                  Upgrade Plan
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {!loading && !result && !outOfCredits && (
             <Card className="border-border/60 border-dashed">
               <CardContent className="grid place-items-center text-center py-20 text-muted-foreground">
                 <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[color:var(--teal)]/20 to-primary/20 grid place-items-center mb-4">
@@ -701,10 +805,6 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
   const [loadingSlide, setLoadingSlide] = useState<number | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
 
-  // Reset image state if the carousel content itself changes.
-  // (post is recreated on every generate, so reference equality is fine.)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  // — intentionally tied to post identity below
   if (slideImages.length !== post.slides.length) {
     setSlideImages(post.slides.map(() => null));
   }
@@ -738,8 +838,6 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
     try {
       for (let i = 0; i < post.slides.length; i++) {
         if (slideImages[i]) continue;
-        // sequential to stay polite to rate limits
-        // eslint-disable-next-line no-await-in-loop
         await genSlideImage(i);
       }
       toast.success("All slide visuals ready");
@@ -938,12 +1036,10 @@ function SlideCanvas(p: SlideCanvasProps) {
       )}
       {p.imageLoading && <ImageLoadingOverlay />}
 
-      {/* Contextual visual background */}
       {p.showIcons && !p.imageUrl && (
         <ContextualBackground specialty={p.specialty} opacity={p.theme.iconOpacity} color={p.theme.heading} />
       )}
 
-      {/* Layout */}
       {p.imageUrl ? (
         <FullImageOverlayLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
       ) : p.layout === "centered" ? (
@@ -958,12 +1054,10 @@ function SlideCanvas(p: SlideCanvasProps) {
         <ModernCardLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
       )}
 
-      {/* Page indicator */}
       <div className="absolute top-3 right-4 z-20 text-[10px] font-medium opacity-80" style={{ color: p.theme.heading }}>
         {p.slideIndex + 1} / {p.totalSlides}
       </div>
 
-      {/* Progress dots */}
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex gap-1">
         {Array.from({ length: p.totalSlides }).map((_, i) => (
           <span
@@ -1127,9 +1221,7 @@ function SplitLayout(p: LayoutProps) {
         </p>
         <CtaPill p={p} />
         <div className="mt-auto">
-          <BrandFooter
-            p={{ ...p, theme: { ...p.theme, heading: "#222", text: "#555" } }}
-          />
+          <BrandFooter p={{ ...p, theme: { ...p.theme, heading: "#222", text: "#555" } }} />
         </div>
       </div>
     </div>
@@ -1168,7 +1260,6 @@ function ModernCardLayout(p: LayoutProps) {
   );
 }
 
-/** Layout used when the slide has a real AI-generated background image. */
 function FullImageOverlayLayout(p: LayoutProps) {
   return (
     <div className="absolute inset-0 z-10 p-6 flex flex-col text-white">
@@ -1232,7 +1323,6 @@ function ContextualBackground({
   color: string;
 }) {
   const Icons = iconsFor(specialty);
-  // Deterministic scattered icon positions to evoke topic-specific visuals.
   const positions = [
     { top: "8%", left: "10%", size: 56, rot: -10 },
     { top: "20%", left: "78%", size: 38, rot: 18 },
@@ -1341,9 +1431,7 @@ function StudioControls(props: {
 
       <div>
         <div className="flex items-center justify-between">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-            Font size
-          </Label>
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Font size</Label>
           <span className="text-xs font-mono">{Math.round(props.fontScale * 100)}%</span>
         </div>
         <input
@@ -1456,32 +1544,30 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
             )}
             <ContextualBackground specialty={specialty} opacity={0.08} color="#ffffff" />
             <div className="relative z-10 flex flex-col h-full">
-            <div className="flex gap-1">
-              <span className="h-0.5 flex-1 bg-white rounded" />
-              <span className="h-0.5 flex-1 bg-white/40 rounded" />
-              <span className="h-0.5 flex-1 bg-white/40 rounded" />
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              {brand.logo ? (
-                <img src={brand.logo} alt="" className="h-7 w-7 rounded-full object-cover bg-white" />
-              ) : (
-                <div className="h-7 w-7 rounded-full bg-white/30 grid place-items-center text-[10px] font-bold">
-                  {(brand.clinicName || specialty).slice(0, 2).toUpperCase()}
-                </div>
-              )}
-              <p className="text-xs font-medium truncate">{handle}</p>
-            </div>
-
-            <div className="flex-1 grid place-items-center text-center">
-              <div>
-                <p className="text-2xl font-bold leading-tight">{post.headline}</p>
-                <p className="text-sm mt-3 opacity-95">{post.message}</p>
+              <div className="flex gap-1">
+                <span className="h-0.5 flex-1 bg-white rounded" />
+                <span className="h-0.5 flex-1 bg-white/40 rounded" />
+                <span className="h-0.5 flex-1 bg-white/40 rounded" />
               </div>
-            </div>
-
-            <div className="rounded-full bg-white text-sm font-semibold py-2.5 text-center shadow" style={{ color: c1 }}>
-              {post.cta}
-            </div>
+              <div className="mt-3 flex items-center gap-2">
+                {brand.logo ? (
+                  <img src={brand.logo} alt="" className="h-7 w-7 rounded-full object-cover bg-white" />
+                ) : (
+                  <div className="h-7 w-7 rounded-full bg-white/30 grid place-items-center text-[10px] font-bold">
+                    {(brand.clinicName || specialty).slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <p className="text-xs font-medium truncate">{handle}</p>
+              </div>
+              <div className="flex-1 grid place-items-center text-center">
+                <div>
+                  <p className="text-2xl font-bold leading-tight">{post.headline}</p>
+                  <p className="text-sm mt-3 opacity-95">{post.message}</p>
+                </div>
+              </div>
+              <div className="rounded-full bg-white text-sm font-semibold py-2.5 text-center shadow" style={{ color: c1 }}>
+                {post.cta}
+              </div>
             </div>
           </div>
         </div>
@@ -1581,9 +1667,7 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-            Post Ideas
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Post Ideas</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {plan.postIdeas.map((p, i) => (
               <div key={i} className="rounded-lg border border-border bg-card p-3 text-sm flex gap-3">
@@ -1600,7 +1684,7 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
             Suggested Weekly Schedule
           </p>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-1">
+          <div className="grid gap-2">
             {plan.weeklySchedule.map((d, i) => (
               <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
                 <div className="h-10 w-10 shrink-0 rounded-lg bg-[color:var(--teal)]/10 text-[color:var(--teal)] grid place-items-center font-semibold text-sm">
@@ -1616,9 +1700,7 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-            CTA Suggestions
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">CTA Suggestions</p>
           <div className="flex flex-wrap gap-2">
             {plan.ctaSuggestions.map((c, i) => (
               <Badge key={i} variant="secondary" className="text-xs py-1.5 px-3">{c}</Badge>
@@ -1668,21 +1750,21 @@ function FestivePreview({ post, specialty }: { post: FestivePost; specialty: str
             </div>
             <ContextualBackground specialty={specialty} opacity={0.07} color="#ffffff" />
             <div className="relative z-10 flex flex-col h-full">
-            <p className="text-xs uppercase tracking-[0.3em] opacity-80">Happy</p>
-            <p className="text-4xl font-bold mt-1 mb-6">{post.festival}</p>
-            <p className="text-base leading-relaxed flex-1">{post.greeting}</p>
-            <div className="mt-6 pt-4 border-t border-white/30 flex items-center gap-3">
-              {brand.logo && (
-                <img src={brand.logo} alt="" className="h-9 w-9 rounded-lg object-cover bg-white" />
-              )}
-              <div className="min-w-0">
-              <p className="text-xs uppercase tracking-wide opacity-80">With warm wishes from</p>
-              <p className="text-sm font-semibold truncate">{brand.clinicName || `${specialty.toLowerCase()}.clinic`}</p>
-              {brand.doctorName && (
-                <p className="text-[11px] opacity-80 truncate">{brand.doctorName}</p>
-              )}
+              <p className="text-xs uppercase tracking-[0.3em] opacity-80">Happy</p>
+              <p className="text-4xl font-bold mt-1 mb-6">{post.festival}</p>
+              <p className="text-base leading-relaxed flex-1">{post.greeting}</p>
+              <div className="mt-6 pt-4 border-t border-white/30 flex items-center gap-3">
+                {brand.logo && (
+                  <img src={brand.logo} alt="" className="h-9 w-9 rounded-lg object-cover bg-white" />
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wide opacity-80">With warm wishes from</p>
+                  <p className="text-sm font-semibold truncate">{brand.clinicName || `${specialty.toLowerCase()}.clinic`}</p>
+                  {brand.doctorName && (
+                    <p className="text-[11px] opacity-80 truncate">{brand.doctorName}</p>
+                  )}
+                </div>
               </div>
-            </div>
             </div>
           </div>
         </div>
@@ -1738,18 +1820,29 @@ function VisualCanvas({
   const photo = brand?.coverPhoto || brand?.clinicPhoto || brand?.doctorPhoto;
   const PrimaryIcon = specialty ? primaryIconFor(specialty) : ImageIcon;
 
-  // When an AI-generated image is available, render image-led creative.
   if (imageUrl) {
     return (
       <div className="relative aspect-square w-full overflow-hidden text-white">
         <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/0" />
-        <div className="absolute inset-x-0 bottom-0 p-5 z-10">
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/0" />
+        <div className="absolute inset-x-0 bottom-0 p-4 z-10">
           <p className="text-xl font-bold leading-tight drop-shadow-md">{headline}</p>
-          {brand?.clinicName && (
-            <p className="text-[10px] uppercase tracking-[0.25em] mt-2 opacity-90">
-              {brand.clinicName}
-            </p>
+          {(brand?.clinicName || brand?.phone) && (
+            <div className="mt-3 pt-2.5 border-t border-white/30 flex items-center gap-3 flex-wrap">
+              {brand?.logo && (
+                <img src={brand.logo} alt="" className="h-6 w-6 rounded-md object-cover bg-white/80 shrink-0" />
+              )}
+              {brand?.clinicName && (
+                <span className="text-[11px] font-semibold tracking-wide truncate">
+                  {brand.clinicName}
+                </span>
+              )}
+              {brand?.phone && (
+                <span className="ml-auto text-[11px] opacity-90 whitespace-nowrap flex items-center gap-1">
+                  <Phone className="h-3 w-3" /> {brand.phone}
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1777,22 +1870,37 @@ function VisualCanvas({
       {specialty && (
         <ContextualBackground specialty={specialty} opacity={0.08} color="#ffffff" />
       )}
-      <div className="absolute inset-0 grid place-items-center p-6 text-center">
-        <div className="relative z-10">
-          <div
-            className="h-12 w-12 rounded-full mx-auto mb-4 grid place-items-center backdrop-blur"
-            style={{ background: "rgba(255,255,255,0.18)", color: "#fff" }}
-          >
-            <PrimaryIcon className="h-5 w-5" />
+      <div className="absolute inset-0 flex flex-col p-5 pb-0">
+        <div className="flex-1 grid place-items-center text-center">
+          <div className="relative z-10">
+            <div
+              className="h-12 w-12 rounded-full mx-auto mb-4 grid place-items-center backdrop-blur"
+              style={{ background: "rgba(255,255,255,0.18)", color: "#fff" }}
+            >
+              <PrimaryIcon className="h-5 w-5" />
+            </div>
+            <p className="text-xl font-bold leading-tight">{headline}</p>
+            <p className="text-[11px] mt-3 opacity-80 italic line-clamp-2">{visual.concept}</p>
           </div>
-          <p className="text-xl font-bold leading-tight">{headline}</p>
-          <p className="text-[11px] mt-3 opacity-80 italic line-clamp-2">{visual.concept}</p>
         </div>
       </div>
-      {brand?.clinicName && (
-        <div className="absolute bottom-3 left-0 right-0 z-10 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.2em] opacity-90">
-          {brand.logo && <img src={brand.logo} alt="" className="h-4 w-4 rounded-sm object-cover bg-white/80" />}
-          <span>{brand.clinicName}</span>
+      {(brand?.clinicName || brand?.phone) && (
+        <div className="absolute bottom-0 left-0 right-0 z-10 px-4 py-3 flex items-center gap-3"
+          style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)" }}
+        >
+          {brand?.logo && (
+            <img src={brand.logo} alt="" className="h-6 w-6 rounded-md object-cover bg-white/80 shrink-0" />
+          )}
+          {brand?.clinicName && (
+            <span className="text-[11px] font-semibold tracking-wide truncate flex-1">
+              {brand.clinicName}
+            </span>
+          )}
+          {brand?.phone && (
+            <span className="text-[11px] opacity-90 whitespace-nowrap flex items-center gap-1 shrink-0">
+              <Phone className="h-3 w-3" /> {brand.phone}
+            </span>
+          )}
         </div>
       )}
     </div>

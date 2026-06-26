@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -14,10 +13,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Upload, Trash2, Building2, User, Image as ImageIcon, Save, Palette, X } from "lucide-react";
-import { fileToDataUrl } from "@/lib/brand-kit";
-import { useAuth } from "@/lib/auth-context";
-import { useDbBrandKit, useSaveBrandKit } from "@/lib/use-brand-kit-db";
+import {
+  Upload, Trash2, Building2, User, Image as ImageIcon,
+  Save, Palette, X, Loader2,
+} from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { specialties } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/_app/brand")({
@@ -25,111 +25,163 @@ export const Route = createFileRoute("/_app/brand")({
   component: BrandKitPage,
 });
 
-type LocalKit = {
-  clinicName: string;
-  doctorName: string;
-  specialty: string;
-  phone: string;
-  website: string;
-  address: string;
-  primaryColor: string;
-  secondaryColor: string;
-  logo?: string;
-  doctorPhoto?: string;
-  clinicPhoto?: string;
-  coverPhoto?: string;
-  teamPhoto?: string;
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type Draft = {
+  clinic_name:      string;
+  doctor_name:      string;
+  specialty:        string;
+  phone:            string;
+  website:          string;
+  address:          string;
+  primaryColor:     string;   // maps to brand_colors.primary
+  secondaryColor:   string;   // maps to brand_colors.secondary
+  logo_url:         string;
+  doctor_photo_url: string;
+  clinic_photo_url: string;
 };
 
-const emptyKit: LocalKit = {
-  clinicName: "",
-  doctorName: "",
-  specialty: "",
-  phone: "",
-  website: "",
-  address: "",
-  primaryColor: "#0E7C7B",
-  secondaryColor: "#1f4e79",
+const DEFAULT: Draft = {
+  clinic_name:      "",
+  doctor_name:      "",
+  specialty:        "",
+  phone:            "",
+  website:          "",
+  address:          "",
+  primaryColor:     "#0d9488",
+  secondaryColor:   "#134e4a",
+  logo_url:         "",
+  doctor_photo_url: "",
+  clinic_photo_url: "",
 };
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload  = () => res(reader.result as string);
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 function BrandKitPage() {
-  const { user, profile } = useAuth();
-  const { data: dbKit, isLoading } = useDbBrandKit(user?.id);
-  const { mutate: saveToDb, isPending: isSaving } = useSaveBrandKit(user?.id);
+  const [draft,   setDraft]   = useState<Draft>(DEFAULT);
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
 
-  const metaName = (user?.user_metadata?.full_name as string | undefined)?.trim();
-  const authDoctorName = profile?.full_name?.trim() || metaName || "";
-  const authSpecialty = (user?.user_metadata?.specialty as string | undefined) || "";
-
-  const [draft, setDraft] = useState<LocalKit>(emptyKit);
-  const [seeded, setSeeded] = useState(false);
-
+  // ── Load from Supabase ────────────────────────────────────────────────────
   useEffect(() => {
-    if (isLoading || seeded) return;
-    if (dbKit) {
-      // DB record exists — always prefer DB values
-      const colors = dbKit.brand_colors ?? { primary: "#0E7C7B", secondary: "#1f4e79" };
-      setDraft((d) => ({
-        ...d,
-        clinicName: dbKit.clinic_name ?? "",
-        doctorName: dbKit.doctor_name ?? "",
-        specialty: dbKit.specialty ?? "",
-        phone: dbKit.phone ?? "",
-        website: dbKit.website ?? "",
-        address: dbKit.address ?? "",
-        primaryColor: colors.primary,
-        secondaryColor: colors.secondary,
-      }));
-    } else {
-      // No saved brand kit — prefill from authenticated profile
-      setDraft((d) => ({
-        ...d,
-        doctorName: authDoctorName,
-        specialty: authSpecialty,
-      }));
-    }
-    setSeeded(true);
-  }, [isLoading, dbKit, seeded, authDoctorName, authSpecialty]);
+    let cancelled = false;
 
-  const update = <K extends keyof LocalKit>(k: K, v: LocalKit[K]) =>
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
+
+      const { data, error } = await supabase
+        .from("brand_kits")
+        .select(
+          "clinic_name, doctor_name, specialty, phone, website, address, " +
+          "logo_url, doctor_photo_url, clinic_photo_url, brand_colors"
+        )
+        .eq("user_id", user.id)
+        .single();
+
+      if (cancelled) return;
+
+      if (error && error.code !== "PGRST116") {
+        // PGRST116 = no row found (handle_new_user may not have run yet)
+        toast.error("Could not load brand kit: " + error.message);
+      }
+
+      type BrandKitRow = {
+        clinic_name: string | null; doctor_name: string | null; specialty: string | null;
+        phone: string | null; website: string | null; address: string | null;
+        logo_url: string | null; doctor_photo_url: string | null; clinic_photo_url: string | null;
+        brand_colors: Record<string, string> | null;
+      };
+
+      if (data) {
+        const row = data as unknown as BrandKitRow;
+        const colors = (row.brand_colors ?? {}) as Record<string, string>;
+        setDraft({
+          clinic_name:      row.clinic_name      ?? "",
+          doctor_name:      row.doctor_name      ?? "",
+          specialty:        row.specialty         ?? "",
+          phone:            row.phone             ?? "",
+          website:          row.website           ?? "",
+          address:          row.address           ?? "",
+          primaryColor:     colors.primary         ?? DEFAULT.primaryColor,
+          secondaryColor:   colors.secondary       ?? DEFAULT.secondaryColor,
+          logo_url:         row.logo_url          ?? "",
+          doctor_photo_url: row.doctor_photo_url  ?? "",
+          clinic_photo_url: row.clinic_photo_url  ?? "",
+        });
+      }
+
+      setLoading(false);
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Save to Supabase ──────────────────────────────────────────────────────
+  async function onSave() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { toast.error("Not signed in."); return; }
+
+    setSaving(true);
+
+    const { error } = await supabase
+      .from("brand_kits")
+      .upsert(
+        {
+          user_id:          user.id,
+          clinic_name:      draft.clinic_name,
+          doctor_name:      draft.doctor_name,
+          specialty:        draft.specialty,
+          phone:            draft.phone,
+          website:          draft.website,
+          address:          draft.address,
+          logo_url:         draft.logo_url      || null,
+          doctor_photo_url: draft.doctor_photo_url || null,
+          clinic_photo_url: draft.clinic_photo_url || null,
+          brand_colors: {
+            primary:   draft.primaryColor,
+            secondary: draft.secondaryColor,
+            accent:    draft.secondaryColor,   // mirror secondary until accent picker added
+          },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      );
+
+    setSaving(false);
+
+    if (error) {
+      toast.error("Save failed: " + error.message);
+    } else {
+      toast.success("Brand kit saved — applied to all generated content.");
+    }
+  }
+
+  async function reset() {
+    setDraft(DEFAULT);
+    toast.message("Reset to defaults — press Save to persist.");
+  }
+
+  const up = <K extends keyof Draft>(k: K, v: Draft[K]) =>
     setDraft((d) => ({ ...d, [k]: v }));
 
-  function onSave() {
-    saveToDb(
-      {
-        clinic_name: draft.clinicName,
-        doctor_name: draft.doctorName,
-        specialty: draft.specialty,
-        phone: draft.phone,
-        website: draft.website,
-        address: draft.address,
-        brand_colors: {
-          primary: draft.primaryColor,
-          secondary: draft.secondaryColor,
-          accent: "#F97316",
-        },
-      },
-      {
-        onSuccess: () => toast.success("Brand kit saved. It will be applied to all generated content."),
-        onError: (e) => toast.error(`Failed to save: ${(e as Error).message}`),
-      }
-    );
-  }
-
-  function reset() {
-    setDraft({
-      ...emptyKit,
-      doctorName: authDoctorName,
-      specialty: authSpecialty,
-    });
-    toast.message("Brand kit reset");
-  }
-
-  if (isLoading) {
+  // ── Render ────────────────────────────────────────────────────────────────
+  if (loading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-9 w-64" />
-        <Skeleton className="h-96 w-full rounded-xl" />
+      <div className="flex items-center justify-center py-24 gap-2 text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading brand kit…
       </div>
     );
   }
@@ -140,16 +192,19 @@ function BrandKitPage() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Clinic Brand Kit</h1>
           <p className="text-muted-foreground mt-1 max-w-2xl">
-            Upload your logo, photos, and brand colors once — Medipost will apply them
-            automatically to every generated post, carousel, story and greeting.
+            Fill in your clinic details and brand colors once — Medipost applies them
+            automatically to every generated post, carousel, story, and greeting.
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={reset} className="gap-2">
             <Trash2 className="h-4 w-4" /> Reset
           </Button>
-          <Button onClick={onSave} disabled={isSaving} className="gap-2">
-            <Save className="h-4 w-4" />{isSaving ? "Saving…" : "Save Brand Kit"}
+          <Button onClick={onSave} disabled={saving} className="gap-2">
+            {saving
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Save className="h-4 w-4" />}
+            Save Brand Kit
           </Button>
         </div>
       </div>
@@ -157,98 +212,108 @@ function BrandKitPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left: editor */}
         <div className="lg:col-span-2 space-y-6">
+
+          {/* Clinic Details */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-(--teal)" /> Clinic Details
+                <Building2 className="h-4 w-4 text-[color:var(--teal)]" /> Clinic Details
               </CardTitle>
             </CardHeader>
             <CardContent className="grid sm:grid-cols-2 gap-4">
               <Field label="Clinic Name">
-                <Input value={draft.clinicName} onChange={(e) => update("clinicName", e.target.value)} />
+                <Input
+                  value={draft.clinic_name}
+                  onChange={(e) => up("clinic_name", e.target.value)}
+                />
               </Field>
               <Field label="Doctor Name">
-                <Input value={draft.doctorName} onChange={(e) => update("doctorName", e.target.value)} />
+                <Input
+                  value={draft.doctor_name}
+                  onChange={(e) => up("doctor_name", e.target.value)}
+                />
               </Field>
               <Field label="Specialty">
-                <Select value={draft.specialty} onValueChange={(v) => update("specialty", v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Select
+                  value={draft.specialty}
+                  onValueChange={(v) => up("specialty", v)}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select specialty" /></SelectTrigger>
                   <SelectContent>
-                    {specialties.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    {specialties.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </Field>
               <Field label="Contact Number">
-                <Input value={draft.phone} onChange={(e) => update("phone", e.target.value)} />
+                <Input
+                  value={draft.phone}
+                  onChange={(e) => up("phone", e.target.value)}
+                />
               </Field>
               <Field label="Website">
-                <Input value={draft.website} onChange={(e) => update("website", e.target.value)} placeholder="example.clinic" />
+                <Input
+                  value={draft.website}
+                  onChange={(e) => up("website", e.target.value)}
+                  placeholder="example.clinic"
+                />
               </Field>
               <Field label="Address">
                 <Textarea
                   rows={2}
                   value={draft.address}
-                  onChange={(e) => update("address", e.target.value)}
+                  onChange={(e) => up("address", e.target.value)}
                 />
               </Field>
             </CardContent>
           </Card>
 
+          {/* Brand Colors */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Palette className="h-4 w-4 text-(--teal)" /> Brand Colors
+                <Palette className="h-4 w-4 text-[color:var(--teal)]" /> Brand Colors
               </CardTitle>
             </CardHeader>
             <CardContent className="grid sm:grid-cols-2 gap-4">
               <ColorField
                 label="Primary Color"
                 value={draft.primaryColor}
-                onChange={(v) => update("primaryColor", v)}
+                onChange={(v) => up("primaryColor", v)}
               />
               <ColorField
                 label="Secondary Color"
                 value={draft.secondaryColor}
-                onChange={(v) => update("secondaryColor", v)}
+                onChange={(v) => up("secondaryColor", v)}
               />
             </CardContent>
           </Card>
 
+          {/* Brand Assets */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <ImageIcon className="h-4 w-4 text-(--teal)" /> Brand Assets
+                <ImageIcon className="h-4 w-4 text-[color:var(--teal)]" /> Brand Assets
               </CardTitle>
             </CardHeader>
             <CardContent className="grid sm:grid-cols-2 gap-4">
               <UploadField
                 label="Clinic Logo"
-                value={draft.logo}
-                onChange={(v) => update("logo", v)}
+                value={draft.logo_url}
+                onChange={(v) => up("logo_url", v ?? "")}
                 aspect="square"
               />
               <UploadField
                 label="Doctor Profile Photo"
-                value={draft.doctorPhoto}
-                onChange={(v) => update("doctorPhoto", v)}
+                value={draft.doctor_photo_url}
+                onChange={(v) => up("doctor_photo_url", v ?? "")}
                 aspect="square"
               />
               <UploadField
                 label="Clinic Photo"
-                value={draft.clinicPhoto}
-                onChange={(v) => update("clinicPhoto", v)}
-                aspect="video"
-              />
-              <UploadField
-                label="Cover Image"
-                value={draft.coverPhoto}
-                onChange={(v) => update("coverPhoto", v)}
-                aspect="video"
-              />
-              <UploadField
-                label="Team Photo"
-                value={draft.teamPhoto}
-                onChange={(v) => update("teamPhoto", v)}
+                value={draft.clinic_photo_url}
+                onChange={(v) => up("clinic_photo_url", v ?? "")}
                 aspect="video"
               />
             </CardContent>
@@ -260,7 +325,7 @@ function BrandKitPage() {
           <Card className="lg:sticky lg:top-4">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <User className="h-4 w-4 text-(--teal)" /> Live Preview
+                <User className="h-4 w-4 text-[color:var(--teal)]" /> Live Preview
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -272,26 +337,38 @@ function BrandKitPage() {
               >
                 <div className="p-5 text-white">
                   <div className="flex items-center gap-3">
-                    {draft.logo ? (
-                      <img src={draft.logo} alt="Logo" className="h-12 w-12 rounded-lg object-cover bg-white" />
+                    {draft.logo_url ? (
+                      <img
+                        src={draft.logo_url}
+                        alt="Logo"
+                        className="h-12 w-12 rounded-lg object-cover bg-white"
+                      />
                     ) : (
                       <div className="h-12 w-12 rounded-lg bg-white/20 grid place-items-center text-xs font-semibold">
                         LOGO
                       </div>
                     )}
                     <div className="min-w-0">
-                      <p className="font-semibold truncate">{draft.clinicName || "Your Clinic"}</p>
-                      <p className="text-xs opacity-80 truncate">{draft.doctorName} · {draft.specialty}</p>
+                      <p className="font-semibold truncate">
+                        {draft.clinic_name || "Your Clinic"}
+                      </p>
+                      <p className="text-xs opacity-80 truncate">
+                        {draft.doctor_name} · {draft.specialty}
+                      </p>
                     </div>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="rounded-md bg-white/15 px-2 py-1.5 truncate">📞 {draft.phone || "—"}</div>
-                    <div className="rounded-md bg-white/15 px-2 py-1.5 truncate">🌐 {draft.website || "—"}</div>
+                    <div className="rounded-md bg-white/15 px-2 py-1.5 truncate">
+                      📞 {draft.phone || "—"}
+                    </div>
+                    <div className="rounded-md bg-white/15 px-2 py-1.5 truncate">
+                      🌐 {draft.website || "—"}
+                    </div>
                   </div>
                 </div>
-                {draft.clinicPhoto || draft.coverPhoto ? (
+                {draft.clinic_photo_url ? (
                   <img
-                    src={draft.clinicPhoto || draft.coverPhoto}
+                    src={draft.clinic_photo_url}
                     alt="Clinic"
                     className="w-full h-32 object-cover"
                   />
@@ -302,7 +379,7 @@ function BrandKitPage() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-3">
-                These details + colors are auto-applied to all generated content (header, footer, accents).
+                Colors and details are auto-applied to all generated content.
               </p>
             </CardContent>
           </Card>
@@ -312,7 +389,15 @@ function BrandKitPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
@@ -340,7 +425,11 @@ function ColorField({
           onChange={(e) => onChange(e.target.value)}
           className="h-10 w-14 rounded border border-border cursor-pointer bg-transparent"
         />
-        <Input value={value} onChange={(e) => onChange(e.target.value)} className="font-mono" />
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="font-mono"
+        />
       </div>
     </div>
   );
@@ -352,33 +441,39 @@ function UploadField({
   onChange,
   aspect,
 }: {
-  label: string;
-  value?: string;
+  label:    string;
+  value?:   string;
   onChange: (v: string | undefined) => void;
-  aspect: "square" | "video";
+  aspect:   "square" | "video";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 2 * 1024 * 1024) {
-      toast.error("Image too large (max 2MB for the prototype)");
+      toast.error("Image too large — max 2 MB");
       return;
     }
     const url = await fileToDataUrl(f);
     onChange(url);
   }
+
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
       <div
         className={`relative rounded-lg border border-dashed border-border bg-accent/30 overflow-hidden ${
-          aspect === "square" ? "aspect-square max-w-45" : "aspect-video"
+          aspect === "square" ? "aspect-square max-w-[180px]" : "aspect-video"
         }`}
       >
         {value ? (
           <>
-            <img src={value} alt={label} className="absolute inset-0 w-full h-full object-cover" />
+            <img
+              src={value}
+              alt={label}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
             <button
               type="button"
               onClick={() => onChange(undefined)}
@@ -401,7 +496,13 @@ function UploadField({
           </button>
         )}
       </div>
-      <input ref={inputRef} type="file" accept="image/*" hidden onChange={onPick} />
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={onPick}
+      />
     </div>
   );
 }

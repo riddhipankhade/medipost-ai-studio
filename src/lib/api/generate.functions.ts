@@ -1,15 +1,179 @@
+/**
+ * src/lib/api/generate.functions.ts
+ *
+ * Aligned to the REAL Supabase schema (confirmed from information_schema query):
+ *
+ * Table mapping corrections:
+ *   generated_contents  → content_generations
+ *   subscription_plans  → plans
+ *   usage_tracking      → REMOVED (credit data lives in subscriptions + plans)
+ *   usage_logs          → REMOVED (content_generations is the audit trail)
+ *
+ * Column mapping corrections (content_generations):
+ *   content_type        → workflow_kind   (stores 'single','carousel', etc.)
+ *   generated_content   → generated_text
+ *   audience            → (no column — dropped)
+ *   language            → (no column — dropped)
+ *   + added: content_category, specialty, hashtags, status, ai_model
+ *
+ * Column mapping corrections (brand_kits):
+ *   brand_color (text)  → brand_colors (jsonb: {primary, secondary, accent})
+ *
+ * Credit management:
+ *   subscriptions.generations_used       = count used this period
+ *   plans.ai_generations_limit           = monthly ceiling
+ *   credits_remaining = limit - used     (computed, not stored)
+ *   deduct_credit() / refund_credit()    = SQL RPCs in 00008_credit_functions.sql
+ */
+
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { createServerClient, parseCookieHeader } from "@supabase/ssr";
+import { getRequestHeader } from "@tanstack/react-start/server";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENV VALIDATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+function validateEnv(): { supabaseUrl: string; supabaseAnonKey: string; geminiApiKey: string } {
+  const supabaseUrl     = process.env.SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+  const geminiApiKey    = process.env.GEMINI_API_KEY;
+
+  if (!supabaseUrl)     throw new Error("Missing env: SUPABASE_URL");
+  if (!supabaseAnonKey) throw new Error("Missing env: SUPABASE_ANON_KEY");
+  if (!geminiApiKey)    throw new Error("Missing env: GEMINI_API_KEY");
+
+  return { supabaseUrl, supabaseAnonKey, geminiApiKey };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPABASE SERVER CLIENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+function getSupabaseClient(supabaseUrl: string, supabaseAnonKey: string) {
+  const cookieHeader = getRequestHeader("cookie") ?? "";
+
+  return createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return parseCookieHeader(cookieHeader)
+          .filter((c) => c.value !== undefined)
+          .map((c) => ({ name: c.name, value: c.value as string }));
+      },
+      setAll() {
+        // Server functions cannot set response cookies — no-op
+      },
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GEMINI — text generation (gemini-2.5-flash)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function callGeminiText(
+  system:     string,
+  userPrompt: string,
+  apiKey:     string,
+): Promise<string> {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+  const body = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+    generationConfig: {
+      temperature:      0.85,
+      topK:             40,
+      topP:             0.95,
+      maxOutputTokens:  8192,
+      responseMimeType: "application/json",
+    },
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT",        threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH",       threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
+    ],
+  };
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res = await fetch(endpoint, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(body),
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      const text: string = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      if (!text || text.trim().length < 10)
+        throw new Error("Gemini returned an empty response");
+      return text;
+    }
+
+    const isRetryable = res.status === 429 || res.status === 503;
+    if (attempt < 3 && isRetryable) {
+      const delay = 1000 * Math.pow(2, attempt - 1);
+      console.warn(`[Gemini] Attempt ${attempt} failed (${res.status}). Retrying in ${delay}ms…`);
+      await new Promise((r) => setTimeout(r, delay));
+      continue;
+    }
+
+    const errBody = await res.text().catch(() => "");
+    if (res.status === 429) throw new Error("Rate limit reached. Please try again in a moment.");
+    throw new Error(`AI request failed (${res.status}): ${errBody.slice(0, 200)}`);
+  }
+
+  throw new Error("Gemini: max retries exceeded");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POLLINATIONS.AI — image generation (free, no API key required)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function callPollinationsImage(prompt: string): Promise<string> {
+  const encoded  = encodeURIComponent(prompt);
+  const seed     = Date.now();
+  const url      = `https://image.pollinations.ai/prompt/${encoded}?width=1080&height=1080&model=flux&nologo=true&seed=${seed}`;
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res = await fetch(url);
+
+    if (res.ok) {
+      const buffer   = await res.arrayBuffer();
+      const b64      = Buffer.from(buffer).toString("base64");
+      const mimeType = res.headers.get("content-type") ?? "image/jpeg";
+      return `data:${mimeType};base64,${b64}`;
+    }
+
+    const isRetryable = res.status === 429 || res.status === 503;
+    if (attempt < 3 && isRetryable) {
+      const delay = 1000 * Math.pow(2, attempt - 1);
+      console.warn(`[Pollinations] Attempt ${attempt} failed (${res.status}). Retrying in ${delay}ms…`);
+      await new Promise((r) => setTimeout(r, delay));
+      continue;
+    }
+
+    throw new Error(`Image generation failed (${res.status})`);
+  }
+
+  throw new Error("Pollinations: max retries exceeded");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUT / OUTPUT SCHEMAS
+// ─────────────────────────────────────────────────────────────────────────────
 
 const BrandSchema = z
   .object({
-    clinicName: z.string().optional(),
-    doctorName: z.string().optional(),
-    primaryColor: z.string().optional(),
+    clinicName:     z.string().optional(),
+    doctorName:     z.string().optional(),
+    primaryColor:   z.string().optional(),
     secondaryColor: z.string().optional(),
-    website: z.string().optional(),
-    phone: z.string().optional(),
-    hasLogo: z.boolean().optional(),
+    website:        z.string().optional(),
+    phone:          z.string().optional(),
+    hasLogo:        z.boolean().optional(),
     hasDoctorPhoto: z.boolean().optional(),
     hasClinicPhoto: z.boolean().optional(),
   })
@@ -31,13 +195,13 @@ const CategoryEnum = z.enum([
 ]);
 
 const InputSchema = z.object({
-  kind: z.enum(["single", "carousel", "story", "reel", "campaign", "festive"]),
-  category: CategoryEnum.default("educational"),
-  specialty: z.string().min(1),
-  topic: z.string().min(1),
-  tone: z.string().min(1),
-  audience: z.string().min(1),
-  festival: z.string().optional(),
+  kind:               z.enum(["single", "carousel", "story", "reel", "campaign", "festive"]),
+  category:           CategoryEnum.default("educational"),
+  specialty:          z.string().min(1),
+  topic:              z.string().min(1),
+  tone:               z.string().min(1),
+  audience:           z.string().min(1),
+  festival:           z.string().optional(),
   customInstructions: z.string().max(800).optional(),
   festiveStyle: z
     .enum([
@@ -51,73 +215,73 @@ const InputSchema = z.object({
     ])
     .optional(),
   slideCount: z.number().int().min(5).max(10).optional(),
-  brand: BrandSchema,
+  brand:      BrandSchema,
 });
 
 export type GenerateInput = z.infer<typeof InputSchema>;
 
 export type Visual = {
-  concept: string;
-  colors: string[];
-  style: string;
-  layout: string;
+  concept:     string;
+  colors:      string[];
+  style:       string;
+  layout:      string;
   imagePrompt: string;
   composition: string;
   visualStyle: string;
 };
 
 export type SinglePost = {
-  kind: "single";
+  kind:     "single";
   headline: string;
-  content: string;
-  caption: string;
-  cta: string;
+  content:  string;
+  caption:  string;
+  cta:      string;
   hashtags: string[];
-  visual: Visual;
+  visual:   Visual;
 };
 
 export type CarouselPost = {
-  kind: "carousel";
-  title: string;
-  slides: { title: string; content: string; imagePrompt?: string }[];
-  cta: string;
+  kind:     "carousel";
+  title:    string;
+  slides:   { title: string; content: string; imagePrompt?: string }[];
+  cta:      string;
   hashtags: string[];
-  visual: Visual;
+  visual:   Visual;
 };
 
 export type StoryPost = {
-  kind: "story";
+  kind:     "story";
   headline: string;
-  message: string;
-  cta: string;
-  visual: Visual;
+  message:  string;
+  cta:      string;
+  visual:   Visual;
 };
 
 export type ReelScript = {
-  kind: "reel";
-  hook: string;
+  kind:          "reel";
+  hook:          string;
   talkingPoints: string[];
-  cta: string;
-  visual: Visual;
+  cta:           string;
+  visual:        Visual;
 };
 
 export type Campaign = {
-  kind: "campaign";
-  theme: string;
-  objective: string;
-  postIdeas: string[];
+  kind:           "campaign";
+  theme:          string;
+  objective:      string;
+  postIdeas:      string[];
   weeklySchedule: { day: string; format: string; idea: string }[];
   ctaSuggestions: string[];
-  visual: Visual;
+  visual:         Visual;
 };
 
 export type FestivePost = {
-  kind: "festive";
+  kind:     "festive";
   festival: string;
   greeting: string;
-  caption: string;
+  caption:  string;
   hashtags: string[];
-  visual: Visual;
+  visual:   Visual;
 };
 
 export type GenerateOutput =
@@ -127,6 +291,10 @@ export type GenerateOutput =
   | ReelScript
   | Campaign
   | FestivePost;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROMPT BUILDER
+// ─────────────────────────────────────────────────────────────────────────────
 
 const SHARED_RULES = `CONTENT SAFETY RULES (strict)
 - Be accurate, evidence-aligned, marketing-friendly, and culturally respectful.
@@ -170,112 +338,72 @@ const CATEGORY_HINTS: Record<z.infer<typeof CategoryEnum>, string> = {
     "Write a 3-second scroll-stopper opening line followed by the rest of the script. Hook must create a curiosity gap.",
 };
 
-/** Per-category carousel slide structures (drives slide outlines). */
 function carouselStructureFor(
   category: z.infer<typeof CategoryEnum>,
   n: number,
 ): string {
-  const fill = (count: number, label: string) =>
-    Array.from({ length: count }, (_, i) => `Slide ${i + 2}: ${label} ${i + 1}`).join("\n");
-
   switch (category) {
     case "myth-fact":
-      return `MUST follow exactly this structure (adapt slide count as needed but keep the order):
-Slide 1: HOOK — call out the myth in 4-7 words (e.g. "Brushing harder ≠ cleaner teeth")
-Slide 2: THE MYTH — state the common belief in plain language
-Slide 3: THE FACT — the evidence-based truth
-Slide 4: WHY — short mechanism explanation (1-2 sentences)
-${n >= 5 ? `Slide 5: WHAT TO DO INSTEAD — practical fix\n` : ""}${n >= 6 ? `Slide 6: BONUS TIP — extra value\n` : ""}Slide ${n}: CTA — clear next step + book/consult line`;
+      return `MUST follow exactly this structure:
+Slide 1: HOOK — call out the myth in 4-7 words
+Slide 2: THE MYTH — state the common belief
+Slide 3: THE FACT — evidence-based truth
+Slide 4: WHY — short mechanism (1-2 sentences)
+${n >= 5 ? "Slide 5: WHAT TO DO INSTEAD — practical fix\n" : ""}${n >= 6 ? "Slide 6: BONUS TIP\n" : ""}Slide ${n}: CTA`;
     case "patient-faq":
       return `MUST follow exactly this structure:
-Slide 1: HOOK — frame the question patients actually ask
-Slide 2: QUESTION — the question in patient words
-Slide 3: DIRECT ANSWER — yes/no/it depends in one line + 1-2 sentence explanation
-Slide 4: WHY THIS HAPPENS — the medical reason in plain language
-${n >= 5 ? `Slide 5: WHAT TO DO — patient action steps\n` : ""}${n >= 6 ? `Slide 6: KEY TAKEAWAY — the 'remember this' line\n` : ""}Slide ${n}: CTA — invite them to book / DM / ask`;
-    case "educational":
-      return `MUST follow exactly this structure:
-Slide 1: HOOK — surprising stat or relatable scenario
-Slide 2: KEY POINT 1 — the most important idea
-Slide 3: KEY POINT 2 — supporting idea
-${n >= 4 ? `Slide 4: KEY POINT 3 — supporting idea\n` : ""}${n >= 5 ? `Slide 5: PRACTICAL TIPS — what the reader should do this week\n` : ""}${n >= 6 ? `Slide 6: MYTH BUSTED — a common misconception quickly corrected\n` : ""}Slide ${n}: CTA — book a consultation / save this post`;
+Slide 1: HOOK — frame the question
+Slide 2: QUESTION — in patient words
+Slide 3: DIRECT ANSWER
+Slide 4: WHY THIS HAPPENS
+${n >= 5 ? "Slide 5: WHAT TO DO\n" : ""}${n >= 6 ? "Slide 6: KEY TAKEAWAY\n" : ""}Slide ${n}: CTA`;
     case "warning-signs":
-      return `MUST follow exactly this structure:
-Slide 1: HOOK — "Don't ignore these signs of {topic}"
-Slides 2 to ${n - 1}: ONE warning sign per slide. Title = the symptom in plain language; body = why it matters and when to act.
-Slide ${n}: CTA — "If you notice any of these, book a {specialty} consultation"`;
-    case "prevention":
-      return `MUST follow exactly this structure:
-Slide 1: HOOK — what's at stake without prevention
-Slides 2 to ${n - 1}: ONE prevention habit per slide. Title = habit (3-5 words). Body = how / how often / why it works.
-Slide ${n}: CTA — book a preventive check-up`;
-    case "health-tips":
-      return `MUST follow exactly this structure:
-Slide 1: HOOK — promise of the tips (e.g. "5 dentist-approved tips for whiter teeth")
-Slides 2 to ${n - 1}: ONE tip per slide. Title = the tip itself; body = brief how-to.
-Slide ${n}: CTA — "Save this & share with someone who needs it"`;
-    case "doctor-explains":
-      return `MUST follow exactly this structure, first-person:
-Slide 1: HOOK — "As a {specialty}, here's what most patients get wrong about {topic}"
-Slide 2: THE COMMON BELIEF
-Slide 3: WHAT'S ACTUALLY HAPPENING — clinician-level explanation in plain words
-${n >= 4 ? `Slide 4: WHAT I RECOMMEND — clinical guidance\n` : ""}${n >= 5 ? `Slide 5: WHO SHOULD WORRY — risk groups\n` : ""}Slide ${n}: CTA — book a consult / DM for questions`;
-    case "did-you-know":
-      return `MUST follow exactly this structure:
-Slide 1: HOOK — "Did you know…?" + the surprising fact
-Slides 2 to ${n - 1}: ONE related insight per slide.
+      return `Slide 1: HOOK — "Don't ignore these signs of {topic}"
+Slides 2 to ${n - 1}: ONE warning sign per slide
 Slide ${n}: CTA`;
-    case "awareness":
-      return `MUST follow exactly this structure:
-Slide 1: HOOK — the cause / awareness theme
-Slide 2: THE PROBLEM — scale & stats
-Slide 3: WHO IS AT RISK
-${n >= 4 ? `Slide 4: WHAT YOU CAN DO\n` : ""}${n >= 5 ? `Slide 5: HOW WE HELP AT THE CLINIC\n` : ""}Slide ${n}: CTA — join the movement / share / book a screening`;
-    case "clinic-promo":
-      return `MUST follow exactly this structure:
-Slide 1: HOOK — patient benefit headline
-Slide 2: THE SERVICE / OFFER — what it is in plain language
-Slide 3: WHO IT'S FOR
-${n >= 4 ? `Slide 4: WHAT TO EXPECT — patient journey in 2-3 lines\n` : ""}${n >= 5 ? `Slide 5: WHY OUR CLINIC — credibility / experience\n` : ""}Slide ${n}: CTA — book now / WhatsApp us`;
-    case "greeting":
-      return `Festive carousel:
-Slide 1: Greeting headline tied to the occasion
-Slides 2 to ${n - 1}: One short wellness wish per slide tied to the festival
-Slide ${n}: Warm signoff from the clinic`;
-    case "reel-hook":
-      return `Use the carousel as a teaser:
-Slide 1: 3-second scroll-stop HOOK
-Slides 2 to ${n - 1}: One curiosity beat per slide
-Slide ${n}: CTA — "Watch the full reel" / "Follow for more"`;
+    case "prevention":
+      return `Slide 1: HOOK — what's at stake without prevention
+Slides 2 to ${n - 1}: ONE prevention habit per slide
+Slide ${n}: CTA`;
+    case "health-tips":
+      return `Slide 1: HOOK — promise of the tips
+Slides 2 to ${n - 1}: ONE tip per slide
+Slide ${n}: CTA — "Save this & share"`;
+    case "doctor-explains":
+      return `Slide 1: HOOK — first-person opening
+Slide 2: THE COMMON BELIEF
+Slide 3: WHAT'S ACTUALLY HAPPENING
+${n >= 4 ? "Slide 4: WHAT I RECOMMEND\n" : ""}${n >= 5 ? "Slide 5: WHO SHOULD WORRY\n" : ""}Slide ${n}: CTA`;
+    default:
+      return `Slide 1: HOOK
+Slides 2 to ${n - 1}: one insight per slide
+Slide ${n}: CTA`;
   }
 }
 
 function brandBlock(b: GenerateInput["brand"]): string {
   if (!b) return "BRAND: not provided. Keep content brand-neutral.";
   const lines: string[] = ["BRAND CONTEXT (subtly weave in, do not stuff):"];
-  if (b.clinicName) lines.push(`- Clinic name: ${b.clinicName}`);
-  if (b.doctorName) lines.push(`- Doctor: ${b.doctorName}`);
-  if (b.primaryColor || b.secondaryColor) {
-    lines.push(
-      `- Brand colors (use as visual.colors[0] and visual.colors[1] verbatim): ${b.primaryColor ?? ""} ${b.secondaryColor ?? ""}`.trim(),
-    );
-  }
-  if (b.website) lines.push(`- Website: ${b.website}`);
-  if (b.phone) lines.push(`- Phone: ${b.phone}`);
-  if (b.hasDoctorPhoto) lines.push(`- A doctor headshot is available — reference it in visual.concept where appropriate.`);
-  if (b.hasClinicPhoto) lines.push(`- A clinic photo is available — reference it as a possible background.`);
-  if (b.hasLogo) lines.push(`- A clinic logo is available — mention placing it as a brand mark.`);
+  if (b.clinicName)    lines.push(`- Clinic name: ${b.clinicName}`);
+  if (b.doctorName)    lines.push(`- Doctor: ${b.doctorName}`);
+  if (b.primaryColor || b.secondaryColor)
+    lines.push(`- Brand colors: ${b.primaryColor ?? ""} ${b.secondaryColor ?? ""}`.trim());
+  if (b.website)        lines.push(`- Website: ${b.website}`);
+  if (b.phone)          lines.push(`- Phone: ${b.phone}`);
+  if (b.hasDoctorPhoto) lines.push(`- Doctor headshot available — reference in visual.concept.`);
+  if (b.hasClinicPhoto) lines.push(`- Clinic photo available — reference as possible background.`);
+  if (b.hasLogo)        lines.push(`- Clinic logo available — mention as brand mark.`);
   return lines.join("\n");
 }
 
 const VISUAL_BLOCK = `"visual": {
-    "concept": "one-sentence scene description for the accompanying image",
+    "concept": "one-sentence scene description",
     "colors": ["#RRGGBB","#RRGGBB","#RRGGBB","#RRGGBB"],
-    "style": "short visual style note (e.g. Soft clinical photography)",
-    "layout": "layout recommendation (e.g. Instagram Square Post, 9:16 Vertical, Carousel 1080x1080)",
+    "style": "short visual style note",
+    "layout": "layout recommendation (e.g. Instagram Square Post, 9:16 Vertical)",
     "visualStyle": "pick ONE: 'Modern Healthcare' | 'Premium Clinic' | 'Editorial Infographic' | 'Lifestyle Photography' | 'Awareness Campaign' | 'Luxury Aesthetic'",
-    "composition": "1-line composition instructions (subject placement, camera angle, lighting, color mood)",
-    "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words). Must describe a real, photorealistic or editorial-illustrated healthcare scene related to the topic and specialty. NEVER ask for solid color backgrounds. Include subject, environment, lighting, mood, framing, and 'no text, no watermark, Instagram-ready, premium healthcare marketing'."
+    "composition": "1-line composition instructions",
+    "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words). Real photorealistic or editorial healthcare scene. No text, no watermark, Instagram-ready, premium healthcare marketing."
   }`;
 
 function buildPrompt(d: GenerateInput): { system: string; user: string } {
@@ -300,22 +428,20 @@ ${SHARED_RULES}`;
         user: `${base}
 
 TASK: Generate ONE scroll-stopping single social media post about "${d.topic}".
-The post MUST clearly read as a "${d.category}" piece (see CATEGORY GUIDANCE above).
-The headline must be specific — not a generic platitude.
 
-Return STRICT JSON, no markdown, no commentary:
+Return STRICT JSON, no markdown:
 {
   "headline": "punchy 4-8 word headline",
-  "content": "main body, 60-100 words, friendly and informative, 2-3 short paragraphs separated by \\n\\n",
+  "content": "main body 60-100 words, 2-3 short paragraphs separated by \\n\\n",
   "caption": "1-2 sentence Instagram caption",
-  "cta": "short call to action (e.g. 'Book your check-up today')",
-  "hashtags": ["#tag1","#tag2", "... 8-12 relevant hashtags total"],
+  "cta": "short call to action",
+  "hashtags": ["#tag1","#tag2","... 8-12 hashtags total"],
   ${VISUAL_BLOCK}
 }`,
       };
 
     case "carousel": {
-      const n = d.slideCount ?? 7;
+      const n         = d.slideCount ?? 7;
       const structure = carouselStructureFor(d.category, n);
       return {
         system: "You are Medipost AI. You design educational carousel posts for doctors. Respond ONLY with strict JSON.",
@@ -325,19 +451,18 @@ TASK: Design an Instagram CAROUSEL with exactly ${n} slides on "${d.topic}".
 
 ${structure}
 
-- Each slide title 3-7 words, slide content 20-40 words, plain text.
-- Do NOT repeat the same idea across slides. Each slide must add new value.
-- For EACH slide, write an "imagePrompt": a vivid 40-80 word AI image prompt for that slide that visually communicates the slide's idea (real healthcare scene, doctor/patient/anatomy/lifestyle imagery — NOT solid colors, NOT text-on-background). End each with "no text, no watermark, Instagram-ready, premium healthcare brand aesthetic".
+- Each slide title 3-7 words, body 20-40 words.
+- For each slide write an "imagePrompt": 40-80 word AI image prompt (real healthcare scene, no solid colors, no text-on-background). End each with "no text, no watermark, Instagram-ready, premium healthcare brand aesthetic".
 
 Return STRICT JSON:
 {
   "title": "short carousel title",
   "slides": [
     { "title": "Slide 1 title", "content": "Slide 1 body", "imagePrompt": "..." },
-    ... exactly ${n} slides total
+    ... exactly ${n} slides
   ],
-  "cta": "the final CTA repeated as a single line",
-  "hashtags": ["#tag1", "... 8-12 hashtags"],
+  "cta": "final CTA line",
+  "hashtags": ["#tag1","... 8-12 hashtags"],
   ${VISUAL_BLOCK}
 }`,
       };
@@ -348,14 +473,13 @@ Return STRICT JSON:
         system: "You are Medipost AI. You write tight, vertical-format healthcare Instagram Stories. Respond ONLY with strict JSON.",
         user: `${base}
 
-TASK: Write ONE Instagram Story (9:16) about "${d.topic}".
-Keep total text very short — stories must be readable on a phone in 3 seconds.
+TASK: Write ONE Instagram Story (9:16) about "${d.topic}". Max 25 words total.
 
 Return STRICT JSON:
 {
-  "headline": "4-6 word headline, big text",
-  "message": "short supporting message, max 25 words",
-  "cta": "tap-style CTA (e.g. 'Swipe up to book')",
+  "headline": "4-6 word headline",
+  "message": "supporting message, max 25 words",
+  "cta": "tap-style CTA",
   ${VISUAL_BLOCK}
 }`,
       };
@@ -366,15 +490,12 @@ Return STRICT JSON:
         user: `${base}
 
 TASK: Write a 30-45 second REEL SCRIPT about "${d.topic}".
-- Hook = the first 3 seconds, must stop the scroll.
-- 3-5 main talking points, each one sentence the doctor speaks on camera.
-- End with a CTA.
 
 Return STRICT JSON:
 {
   "hook": "first 3-second hook line",
-  "talkingPoints": ["point 1", "point 2", "point 3", "..."],
-  "cta": "spoken call-to-action at the end",
+  "talkingPoints": ["point 1","point 2","point 3","..."],
+  "cta": "spoken call-to-action",
   ${VISUAL_BLOCK}
 }`,
       };
@@ -385,18 +506,14 @@ Return STRICT JSON:
         user: `${base}
 
 TASK: Plan a 1-week AWARENESS CAMPAIGN around "${d.topic}".
-- Define a clear campaign theme and objective.
-- Provide 6-8 distinct post ideas (mix of formats).
-- Provide a 7-day schedule (Mon-Sun) mapping each day to a content format and idea.
-- Provide 3-5 CTA suggestions usable across the campaign.
 
 Return STRICT JSON:
 {
-  "theme": "campaign theme in 4-8 words",
-  "objective": "what this campaign should achieve, 1-2 sentences",
-  "postIdeas": ["idea 1", "idea 2", "..."],
+  "theme": "campaign theme 4-8 words",
+  "objective": "what this campaign achieves, 1-2 sentences",
+  "postIdeas": ["idea 1","idea 2","..."],
   "weeklySchedule": [
-    { "day": "Mon", "format": "Carousel | Reel | Story | Single Post | Live", "idea": "what to post" },
+    { "day": "Mon", "format": "Carousel | Reel | Story | Single Post", "idea": "what to post" },
     { "day": "Tue", "format": "...", "idea": "..." },
     { "day": "Wed", "format": "...", "idea": "..." },
     { "day": "Thu", "format": "...", "idea": "..." },
@@ -410,53 +527,40 @@ Return STRICT JSON:
       };
 
     case "festive": {
-      const fest = d.festival || "the upcoming festival";
+      const fest      = d.festival || "the upcoming festival";
       const styleNote = d.festiveStyle
-        ? `CREATIVE STYLE: ${d.festiveStyle}. The greeting, caption AND visual must clearly reflect this style.`
+        ? `CREATIVE STYLE: ${d.festiveStyle}. Greeting, caption AND visual must reflect this style.`
         : "";
       const extra = d.customInstructions?.trim()
-        ? `ADDITIONAL INSTRUCTIONS FROM THE CLINIC (must be woven in naturally):
-"""
-${d.customInstructions.trim()}
-"""`
+        ? `ADDITIONAL INSTRUCTIONS:\n"""\n${d.customInstructions!.trim()}\n"""`
         : "";
       return {
         system:
-          "You are Medipost AI, a culturally-aware festive greeting writer for healthcare brands. You write greetings for ANY occasion — religious festivals, national days, awareness days (e.g. World Oral Health Day, Doctor's Day, Women's Day), clinic milestones (anniversaries, new branch launches, patient appreciation weeks), and custom events. Respond ONLY with strict JSON.",
+          "You are Medipost AI, a culturally-aware festive greeting writer for healthcare brands. You write greetings for ANY occasion. Respond ONLY with strict JSON.",
         user: `${base}
 
 TASK: Write a greeting post for "${fest}" from a ${d.specialty}'s clinic.
-- Treat "${fest}" as the occasion — do NOT default to a generic festival. It may be a religious festival (Diwali, Christmas, Eid), an awareness day (World Oral Health Day, World Heart Day), a national day (Doctor's Day, Women's Day, Mother's Day), or a clinic milestone (Clinic Anniversary, New Branch Launch, Patient Appreciation Week).
-- The greeting must feel specific to "${fest}" — references, symbols, language, and warmth appropriate to that exact occasion.
-- Tie the wish gracefully to health/wellness without being preachy. Be culturally respectful.
+- Must feel specific to "${fest}" — not generic.
+- Tie the wish gracefully to health/wellness without being preachy.
 ${styleNote}
 ${extra}
-
-VISUAL DIRECTION (very important):
-The visual.imagePrompt MUST be occasion-specific and avoid generic gradient backgrounds.
-Examples of occasion-appropriate visual cues to draw from when relevant:
-- Diwali → diyas, rangoli, warm golden lighting, marigolds
-- Christmas → pine, snow, warm reds and greens, soft string lights
-- Eid → crescent moon, elegant Islamic geometric patterns, green and gold
-- Doctor's Day / Nurses Day → healthcare professionals, stethoscope, gratitude scene
-- World Oral Health Day → bright smiles, dental imagery, hygiene visuals
-- Mother's Day → mother-and-child warmth, soft pastels
-- Children's Day → joyful kids, bright friendly palette
-- Clinic Anniversary / New Branch Launch → modern clinic interior, ribbon-cut moment, team photo energy
-If the occasion has obvious symbols, use them. Otherwise, build a tasteful scene that captures the spirit of the occasion combined with healthcare warmth.
 
 Return STRICT JSON:
 {
   "festival": "${fest}",
-  "greeting": "main greeting message, 2-3 sentences, ready to render on a card",
-  "caption": "matching social media caption, 1-2 sentences",
-  "hashtags": ["#tag1", "... 6-10 festive + healthcare hashtags"],
+  "greeting": "main greeting, 2-3 sentences, ready to render on a card",
+  "caption": "matching social caption, 1-2 sentences",
+  "hashtags": ["#tag1","... 6-10 festive + healthcare hashtags"],
   ${VISUAL_BLOCK}
 }`,
       };
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NORMALIZERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 function extractJson(text: string): unknown {
   const trimmed = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
@@ -472,10 +576,10 @@ function extractJson(text: string): unknown {
 function normalizeVisual(v: unknown): Visual {
   const obj = (v ?? {}) as Partial<Visual>;
   return {
-    concept: String(obj.concept ?? ""),
-    colors: Array.isArray(obj.colors) ? obj.colors.slice(0, 6).map(String) : [],
-    style: String(obj.style ?? ""),
-    layout: String(obj.layout ?? ""),
+    concept:     String(obj.concept ?? ""),
+    colors:      Array.isArray(obj.colors) ? obj.colors.slice(0, 6).map(String) : [],
+    style:       String(obj.style ?? ""),
+    layout:      String(obj.layout ?? ""),
     imagePrompt: String((obj as any).imagePrompt ?? ""),
     composition: String((obj as any).composition ?? ""),
     visualStyle: String((obj as any).visualStyle ?? ""),
@@ -487,56 +591,56 @@ function normalize(kind: GenerateInput["kind"], raw: any): GenerateOutput {
   switch (kind) {
     case "single":
       return {
-        kind: "single",
+        kind:     "single",
         headline: String(raw?.headline ?? ""),
-        content: String(raw?.content ?? ""),
-        caption: String(raw?.caption ?? ""),
-        cta: String(raw?.cta ?? ""),
+        content:  String(raw?.content ?? ""),
+        caption:  String(raw?.caption ?? ""),
+        cta:      String(raw?.cta ?? ""),
         hashtags: Array.isArray(raw?.hashtags) ? raw.hashtags.map(String) : [],
         visual,
       };
     case "carousel":
       return {
-        kind: "carousel",
+        kind:  "carousel",
         title: String(raw?.title ?? ""),
         slides: Array.isArray(raw?.slides)
           ? raw.slides.map((s: any) => ({
-              title: String(s?.title ?? ""),
-              content: String(s?.content ?? ""),
+              title:       String(s?.title ?? ""),
+              content:     String(s?.content ?? ""),
               imagePrompt: s?.imagePrompt ? String(s.imagePrompt) : undefined,
             }))
           : [],
-        cta: String(raw?.cta ?? ""),
+        cta:      String(raw?.cta ?? ""),
         hashtags: Array.isArray(raw?.hashtags) ? raw.hashtags.map(String) : [],
         visual,
       };
     case "story":
       return {
-        kind: "story",
+        kind:     "story",
         headline: String(raw?.headline ?? ""),
-        message: String(raw?.message ?? ""),
-        cta: String(raw?.cta ?? ""),
+        message:  String(raw?.message ?? ""),
+        cta:      String(raw?.cta ?? ""),
         visual,
       };
     case "reel":
       return {
-        kind: "reel",
-        hook: String(raw?.hook ?? ""),
+        kind:          "reel",
+        hook:          String(raw?.hook ?? ""),
         talkingPoints: Array.isArray(raw?.talkingPoints) ? raw.talkingPoints.map(String) : [],
-        cta: String(raw?.cta ?? ""),
+        cta:           String(raw?.cta ?? ""),
         visual,
       };
     case "campaign":
       return {
-        kind: "campaign",
-        theme: String(raw?.theme ?? ""),
+        kind:      "campaign",
+        theme:     String(raw?.theme ?? ""),
         objective: String(raw?.objective ?? ""),
         postIdeas: Array.isArray(raw?.postIdeas) ? raw.postIdeas.map(String) : [],
         weeklySchedule: Array.isArray(raw?.weeklySchedule)
           ? raw.weeklySchedule.map((s: any) => ({
-              day: String(s?.day ?? ""),
+              day:    String(s?.day ?? ""),
               format: String(s?.format ?? ""),
-              idea: String(s?.idea ?? ""),
+              idea:   String(s?.idea ?? ""),
             }))
           : [],
         ctaSuggestions: Array.isArray(raw?.ctaSuggestions) ? raw.ctaSuggestions.map(String) : [],
@@ -544,57 +648,152 @@ function normalize(kind: GenerateInput["kind"], raw: any): GenerateOutput {
       };
     case "festive":
       return {
-        kind: "festive",
+        kind:     "festive",
         festival: String(raw?.festival ?? ""),
         greeting: String(raw?.greeting ?? ""),
-        caption: String(raw?.caption ?? ""),
+        caption:  String(raw?.caption ?? ""),
         hashtags: Array.isArray(raw?.hashtags) ? raw.hashtags.map(String) : [],
         visual,
       };
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVER FUNCTION: generateContent
+//
+// Credit flow (race-condition safe):
+//   1. deduct_credit() — locks subscriptions row with FOR UPDATE
+//   2. Call Gemini
+//   3. On Gemini failure → refund_credit()
+//   4. Save to content_generations
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const generateContent = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => InputSchema.parse(data))
+  .validator((data: unknown) => InputSchema.parse(data))
   .handler(async ({ data }): Promise<GenerateOutput> => {
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+    try {
 
-    const { system, user } = buildPrompt(data);
+    // ── Validate env ─────────────────────────────────────────
+    const { supabaseUrl, supabaseAnonKey, geminiApiKey } = validateEnv();
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Lovable-API-Key": apiKey,
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      if (res.status === 429) throw new Error("Rate limit reached. Please try again in a moment.");
-      if (res.status === 402) throw new Error("AI credits exhausted. Please add credits to continue.");
-      throw new Error(`AI request failed (${res.status}): ${body.slice(0, 200)}`);
+    // ── Authenticate ─────────────────────────────────────────
+    const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      throw new Error("Unauthorized. Please sign in to generate content.");
     }
 
-    const json = await res.json();
-    const content: string = json?.choices?.[0]?.message?.content ?? "";
-    const parsed = extractJson(content);
-    return normalize(data.kind, parsed);
+    // ── Deduct credit BEFORE generation (race-condition safe) ─
+    // deduct_credit() uses FOR UPDATE row lock on subscriptions.
+    // Reads plans.ai_generations_limit to enforce the ceiling.
+    // Returns credits_remaining after deduction.
+    const { data: creditsAfter, error: creditError } = await supabase
+      .rpc("deduct_credit", { p_user_id: user.id });
+
+    if (creditError) {
+      if (creditError.message.includes("INSUFFICIENT_CREDITS"))
+        throw new Error("Credits exhausted. Please upgrade your plan to continue.");
+      if (creditError.message.includes("SUBSCRIPTION_NOT_FOUND"))
+        throw new Error("No active subscription found. Please contact support.");
+      throw new Error(`Credit processing failed: ${creditError.message}`);
+    }
+
+    // ── Load brand kit ────────────────────────────────────────
+    // brand_colors is jsonb: { "primary": "#...", "secondary": "#...", "accent": "#..." }
+    const { data: brandKit } = await supabase
+      .from("brand_kits")
+      .select("clinic_name, doctor_name, brand_colors, website, phone")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    // ── Deep brand merge ─────────────────────────────────────
+    // Caller value wins; DB value fills any gap.
+    const brandColors = brandKit?.brand_colors as
+      | { primary?: string; secondary?: string; accent?: string }
+      | null;
+
+    const mergedBrand = {
+      clinicName:     data.brand?.clinicName     ?? brandKit?.clinic_name   ?? undefined,
+      doctorName:     data.brand?.doctorName     ?? brandKit?.doctor_name   ?? undefined,
+      primaryColor:   data.brand?.primaryColor   ?? brandColors?.primary    ?? undefined,
+      secondaryColor: data.brand?.secondaryColor ?? brandColors?.secondary  ?? undefined,
+      website:        data.brand?.website        ?? brandKit?.website       ?? undefined,
+      phone:          data.brand?.phone          ?? brandKit?.phone         ?? undefined,
+      hasLogo:        data.brand?.hasLogo,
+      hasDoctorPhoto: data.brand?.hasDoctorPhoto,
+      hasClinicPhoto: data.brand?.hasClinicPhoto,
+    };
+
+    // ── Build prompt ─────────────────────────────────────────
+    const { system, user: userPrompt } = buildPrompt({ ...data, brand: mergedBrand });
+
+    // ── Call Gemini (refund credit on failure) ────────────────
+    let rawText: string;
+    try {
+      rawText = await callGeminiText(system, userPrompt, geminiApiKey);
+    } catch (geminiErr: any) {
+      try {
+        await supabase.rpc("refund_credit", { p_user_id: user.id });
+      } catch (e: any) {
+        console.error("[generateContent] Refund failed:", e.message);
+      }
+      throw geminiErr;
+    }
+
+    // ── Parse + normalise ─────────────────────────────────────
+    const parsed = extractJson(rawText);
+    const result = normalize(data.kind, parsed);
+
+    // ── Save to content_generations ───────────────────────────
+    // Column mapping (actual DB schema):
+    //   workflow_kind    = data.kind          ('single','carousel',…)
+    //   content_category = data.category      ('educational','myth-fact',…)
+    //   specialty        = data.specialty
+    //   tone             = data.tone
+    //   topic            = data.topic
+    //   generated_text   = JSON of the result
+    //   hashtags         = string[] from result
+    //   status           = 'completed'
+    //   ai_model         = 'gemini-2.5-flash'
+    const hashtags =
+      "hashtags" in result && Array.isArray(result.hashtags)
+        ? result.hashtags
+        : [];
+
+    const { error: saveError } = await supabase
+      .from("content_generations")
+      .insert({
+        user_id:          user.id,
+        workflow_kind:    data.kind,
+        content_category: data.category,
+        specialty:        data.specialty,
+        tone:             data.tone,
+        topic:            data.topic.trim(),
+        generated_text:   JSON.stringify(result),
+        hashtags,
+        status:           "completed",
+        ai_model:         "gemini-2.5-flash",
+      });
+
+    if (saveError) {
+      // Non-fatal — content was generated; don't block the response
+      console.error("[generateContent] DB save failed:", saveError.message);
+    }
+
+    return result;
+
+    } catch (error: any) {
+      console.error("FULL SERVER ERROR:", error);
+      throw error;
+    }
   });
 
-/* ============================ AI Image Generation ============================ */
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVER FUNCTION: generateImage
+// ─────────────────────────────────────────────────────────────────────────────
 
 const ImageInputSchema = z.object({
-  prompt: z.string().min(3).max(2000),
+  prompt:      z.string().min(3).max(2000),
   visualStyle: z.string().optional(),
 });
 
@@ -606,52 +805,92 @@ const STYLE_DIRECTIVES: Record<string, string> = {
   "Premium Clinic":
     "premium private clinic editorial photography, luxurious interiors, warm neutral palette, cinematic lighting",
   "Editorial Infographic":
-    "clean editorial healthcare illustration, flat vector style, minimal palette, infographic feel, isometric details",
+    "clean editorial healthcare illustration, flat vector style, minimal palette, infographic feel",
   "Lifestyle Photography":
-    "real lifestyle photography of patients and doctors, candid moments, natural light, documentary feel, authentic skin tones",
+    "real lifestyle photography of patients and doctors, candid moments, natural light, documentary feel",
   "Awareness Campaign":
-    "bold awareness campaign visual, high contrast, emotive subject, public health poster energy, single hero subject",
+    "bold awareness campaign visual, high contrast, emotive subject, public health poster energy",
   "Luxury Aesthetic":
     "luxury aesthetic clinic visual, marble and gold accents, soft beige and ivory tones, fashion-editorial composition",
 };
 
 export const generateImage = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => ImageInputSchema.parse(data))
+  .validator((data: unknown) => ImageInputSchema.parse(data))
   .handler(async ({ data }): Promise<GenerateImageOutput> => {
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+    try {
 
-    const directive = data.visualStyle ? STYLE_DIRECTIVES[data.visualStyle] : "";
+    // ── Validate env ─────────────────────────────────────────
+    const { supabaseUrl, supabaseAnonKey, geminiApiKey } = validateEnv();
+
+    // ── Authenticate ─────────────────────────────────────────
+    const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      throw new Error("Unauthorized. Please sign in to generate images.");
+    }
+
+    // ── Deduct credit before generation ──────────────────────
+    const { data: creditsAfter, error: creditError } = await supabase
+      .rpc("deduct_credit", { p_user_id: user.id });
+
+    if (creditError) {
+      if (creditError.message.includes("INSUFFICIENT_CREDITS"))
+        throw new Error("Credits exhausted. Please upgrade your plan to generate images.");
+      if (creditError.message.includes("SUBSCRIPTION_NOT_FOUND"))
+        throw new Error("No active subscription found. Please contact support.");
+      throw new Error(`Credit processing failed: ${creditError.message}`);
+    }
+
+    // ── Build enriched prompt ─────────────────────────────────
+    const directive = data.visualStyle ? (STYLE_DIRECTIVES[data.visualStyle] ?? "") : "";
     const fullPrompt = [
       data.prompt,
       directive,
-      "Square 1:1 composition, Instagram-ready, premium healthcare marketing creative, no text, no watermark, no logos, no captions, photorealistic where appropriate.",
+      "Square 1:1 composition, Instagram-ready, premium healthcare marketing creative, no text, no watermark, no logos, photorealistic where appropriate.",
     ]
       .filter(Boolean)
       .join(" ");
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/images/generations", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Lovable-API-Key": apiKey,
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3.1-flash-image-preview",
-        messages: [{ role: "user", content: fullPrompt }],
-        modalities: ["image", "text"],
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      if (res.status === 429) throw new Error("Image rate limit reached. Try again in a moment.");
-      if (res.status === 402) throw new Error("AI credits exhausted. Please add credits to continue.");
-      throw new Error(`Image generation failed (${res.status}): ${body.slice(0, 200)}`);
+    // ── Call Pollinations (refund credit on failure) ──────────
+    let dataUrl: string;
+    try {
+      dataUrl = await callPollinationsImage(fullPrompt);
+    } catch (imgErr: any) {
+      try {
+        await supabase.rpc("refund_credit", { p_user_id: user.id });
+      } catch (e: any) {
+        console.error("[generateImage] Refund failed:", e.message);
+      }
+      throw imgErr;
     }
 
-    const json = await res.json();
-    const b64: string | undefined = json?.data?.[0]?.b64_json;
-    if (!b64) throw new Error("Image generation returned no image data");
-    return { dataUrl: `data:image/png;base64,${b64}` };
+    // ── Save image reference to content_generations ───────────
+    const { error: saveError } = await supabase
+      .from("content_generations")
+      .insert({
+        user_id:           user.id,
+        workflow_kind:     "single",
+        content_category:  "educational",
+        specialty:         "",
+        tone:              "Professional",
+        topic:             data.prompt.slice(0, 200),
+        generated_text:    "",
+        generated_image_url: dataUrl.startsWith("data:")
+          ? "[base64 image — stored client-side]"
+          : dataUrl,
+        hashtags:          [],
+        status:            "completed",
+        ai_model:          "pollinations-flux",
+      });
+
+    if (saveError) {
+      console.error("[generateImage] DB save failed:", saveError.message);
+    }
+
+    return { dataUrl };
+
+    } catch (error: any) {
+      console.error("FULL SERVER ERROR:", error);
+      throw error;
+    }
   });
