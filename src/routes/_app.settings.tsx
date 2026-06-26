@@ -80,7 +80,7 @@ function Settings() {
         toast.success("Profile saved");
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Save failed";
+      const msg = (err as any)?.message ?? (err as any)?.error_description ?? JSON.stringify(err) ?? "Save failed";
       toast.error("Could not save", { description: msg });
     } finally {
       setSaving(false);
