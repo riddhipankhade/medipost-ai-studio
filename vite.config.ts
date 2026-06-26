@@ -10,10 +10,12 @@ export default defineConfig({
   tanstackStart: {
     server: {
       entry: "server",
-      preset: "vercel",
     },
     serverFns: {
       disableCsrfMiddlewareWarning: true,
     },
+  },
+  nitro: {
+    preset: "vercel",
   },
 });
