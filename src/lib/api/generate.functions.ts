@@ -1,29 +1,5 @@
 /**
  * src/lib/api/generate.functions.ts
- *
- * Aligned to the REAL Supabase schema (confirmed from information_schema query):
- *
- * Table mapping corrections:
- *   generated_contents  → content_generations
- *   subscription_plans  → plans
- *   usage_tracking      → REMOVED (credit data lives in subscriptions + plans)
- *   usage_logs          → REMOVED (content_generations is the audit trail)
- *
- * Column mapping corrections (content_generations):
- *   content_type        → workflow_kind   (stores 'single','carousel', etc.)
- *   generated_content   → generated_text
- *   audience            → (no column — dropped)
- *   language            → (no column — dropped)
- *   + added: content_category, specialty, hashtags, status, ai_model
- *
- * Column mapping corrections (brand_kits):
- *   brand_color (text)  → brand_colors (jsonb: {primary, secondary, accent})
- *
- * Credit management:
- *   subscriptions.generations_used       = count used this period
- *   plans.ai_generations_limit           = monthly ceiling
- *   credits_remaining = limit - used     (computed, not stored)
- *   deduct_credit() / refund_credit()    = SQL RPCs in 00008_credit_functions.sql
  */
 
 import { createServerFn } from "@tanstack/react-start";
@@ -61,15 +37,13 @@ function getSupabaseClient(supabaseUrl: string, supabaseAnonKey: string) {
           .filter((c) => c.value !== undefined)
           .map((c) => ({ name: c.name, value: c.value as string }));
       },
-      setAll() {
-        // Server functions cannot set response cookies — no-op
-      },
+      setAll() {},
     },
   });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GEMINI — text generation (gemini-2.5-flash)
+// GEMINI — text generation
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function callGeminiText(
@@ -97,7 +71,8 @@ async function callGeminiText(
     ],
   };
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  const MAX_ATTEMPTS = 5; // extra retries for 503 high-demand spikes
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const res = await fetch(endpoint, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -113,7 +88,8 @@ async function callGeminiText(
     }
 
     const isRetryable = res.status === 429 || res.status === 503;
-    if (attempt < 3 && isRetryable) {
+    if (attempt < MAX_ATTEMPTS && isRetryable) {
+      // Exponential backoff: 1s, 2s, 4s, 8s
       const delay = 1000 * Math.pow(2, attempt - 1);
       console.warn(`[Gemini] Attempt ${attempt} failed (${res.status}). Retrying in ${delay}ms…`);
       await new Promise((r) => setTimeout(r, delay));
@@ -121,44 +97,69 @@ async function callGeminiText(
     }
 
     const errBody = await res.text().catch(() => "");
-    if (res.status === 429) throw new Error("Rate limit reached. Please try again in a moment.");
+    if (res.status === 429) throw new Error("AI rate limit reached. Please try again in a minute.");
+    if (res.status === 503) throw new Error("AI service is currently busy. Please try again in 30 seconds.");
     throw new Error(`AI request failed (${res.status}): ${errBody.slice(0, 200)}`);
   }
 
-  throw new Error("Gemini: max retries exceeded");
+  throw new Error("AI service is overloaded right now. Please try again in a moment.");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POLLINATIONS.AI — image generation (free, no API key required)
+// POLLINATIONS.AI — image generation
+// FIX: now returns BOTH the dataUrl (for immediate display) AND the
+//      imageUrl (the public Pollinations URL stored in the DB).
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function callPollinationsImage(prompt: string): Promise<string> {
+async function callPollinationsImage(
+  prompt: string,
+): Promise<{ dataUrl: string; imageUrl: string }> {
   const encoded  = encodeURIComponent(prompt);
   const seed     = Date.now();
-  const url      = `https://image.pollinations.ai/prompt/${encoded}?width=1080&height=1080&model=flux&nologo=true&seed=${seed}`;
+  // Store this URL — it's publicly accessible and doesn't expire
+  const imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1080&height=1080&model=flux&nologo=true&seed=${seed}`;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const res = await fetch(url);
+    let res: Response;
+    try {
+      res = await fetch(imageUrl, { signal: AbortSignal.timeout(30_000) });
+    } catch (networkErr: any) {
+      // fetch() itself threw — network down, DNS failure, or timeout
+      console.warn(`[Pollinations] Network error on attempt ${attempt}:`, networkErr?.message);
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        continue;
+      }
+      throw new Error(
+        "Image generation service is temporarily unreachable. " +
+        "Please wait a moment and try again."
+      );
+    }
 
     if (res.ok) {
       const buffer   = await res.arrayBuffer();
       const b64      = Buffer.from(buffer).toString("base64");
       const mimeType = res.headers.get("content-type") ?? "image/jpeg";
-      return `data:${mimeType};base64,${b64}`;
+      return {
+        dataUrl:  `data:${mimeType};base64,${b64}`,
+        imageUrl, // ← the public URL we'll persist to the DB
+      };
     }
 
     const isRetryable = res.status === 429 || res.status === 503;
     if (attempt < 3 && isRetryable) {
-      const delay = 1000 * Math.pow(2, attempt - 1);
-      console.warn(`[Pollinations] Attempt ${attempt} failed (${res.status}). Retrying in ${delay}ms…`);
+      const delay = 1500 * Math.pow(2, attempt - 1);
+      console.warn(`[Pollinations] Attempt ${attempt} got ${res.status}. Retrying in ${delay}ms…`);
       await new Promise((r) => setTimeout(r, delay));
       continue;
     }
 
-    throw new Error(`Image generation failed (${res.status})`);
+    if (res.status === 429)
+      throw new Error("Image generation is rate-limited. Please wait 30 seconds and try again.");
+    throw new Error(`Image generation failed (${res.status}). Please try again.`);
   }
 
-  throw new Error("Pollinations: max retries exceeded");
+  throw new Error("Image generation failed after 3 attempts. Please try again in a moment.");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -660,36 +661,19 @@ function normalize(kind: GenerateInput["kind"], raw: any): GenerateOutput {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SERVER FUNCTION: generateContent
-//
-// Credit flow (race-condition safe):
-//   1. deduct_credit() — locks subscriptions row with FOR UPDATE
-//   2. Call Gemini
-//   3. On Gemini failure → refund_credit()
-//   4. Save to content_generations
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const generateContent = createServerFn({ method: "POST" })
   .validator((data: unknown) => InputSchema.parse(data))
   .handler(async ({ data }): Promise<GenerateOutput> => {
     try {
-
-    // ── Validate env ─────────────────────────────────────────
     const { supabaseUrl, supabaseAnonKey, geminiApiKey } = validateEnv();
 
-    // ── Authenticate ─────────────────────────────────────────
     const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      throw new Error("Unauthorized. Please sign in to generate content.");
-    }
+    if (authError || !user) throw new Error("Unauthorized. Please sign in to generate content.");
 
-    // ── Deduct credit BEFORE generation (race-condition safe) ─
-    // deduct_credit() uses FOR UPDATE row lock on subscriptions.
-    // Reads plans.ai_generations_limit to enforce the ceiling.
-    // Returns credits_remaining after deduction.
-    const { data: creditsAfter, error: creditError } = await supabase
-      .rpc("deduct_credit", { p_user_id: user.id });
-
+    const { error: creditError } = await supabase.rpc("deduct_credit", { p_user_id: user.id });
     if (creditError) {
       if (creditError.message.includes("INSUFFICIENT_CREDITS"))
         throw new Error("Credits exhausted. Please upgrade your plan to continue.");
@@ -698,16 +682,12 @@ export const generateContent = createServerFn({ method: "POST" })
       throw new Error(`Credit processing failed: ${creditError.message}`);
     }
 
-    // ── Load brand kit ────────────────────────────────────────
-    // brand_colors is jsonb: { "primary": "#...", "secondary": "#...", "accent": "#..." }
     const { data: brandKit } = await supabase
       .from("brand_kits")
       .select("clinic_name, doctor_name, brand_colors, website, phone")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    // ── Deep brand merge ─────────────────────────────────────
-    // Caller value wins; DB value fills any gap.
     const brandColors = brandKit?.brand_colors as
       | { primary?: string; secondary?: string; accent?: string }
       | null;
@@ -724,43 +704,24 @@ export const generateContent = createServerFn({ method: "POST" })
       hasClinicPhoto: data.brand?.hasClinicPhoto,
     };
 
-    // ── Build prompt ─────────────────────────────────────────
     const { system, user: userPrompt } = buildPrompt({ ...data, brand: mergedBrand });
 
-    // ── Call Gemini (refund credit on failure) ────────────────
     let rawText: string;
     try {
       rawText = await callGeminiText(system, userPrompt, geminiApiKey);
     } catch (geminiErr: any) {
-      try {
-        await supabase.rpc("refund_credit", { p_user_id: user.id });
-      } catch (e: any) {
-        console.error("[generateContent] Refund failed:", e.message);
-      }
+      try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
       throw geminiErr;
     }
 
-    // ── Parse + normalise ─────────────────────────────────────
     const parsed = extractJson(rawText);
     const result = normalize(data.kind, parsed);
 
-    // ── Save to content_generations ───────────────────────────
-    // Column mapping (actual DB schema):
-    //   workflow_kind    = data.kind          ('single','carousel',…)
-    //   content_category = data.category      ('educational','myth-fact',…)
-    //   specialty        = data.specialty
-    //   tone             = data.tone
-    //   topic            = data.topic
-    //   generated_text   = JSON of the result
-    //   hashtags         = string[] from result
-    //   status           = 'completed'
-    //   ai_model         = 'gemini-2.5-flash'
     const hashtags =
-      "hashtags" in result && Array.isArray(result.hashtags)
-        ? result.hashtags
-        : [];
+      "hashtags" in result && Array.isArray(result.hashtags) ? result.hashtags : [];
 
-    const { error: saveError } = await supabase
+    // Select back the id so the client can link the image to this row
+    const { data: inserted, error: saveError } = await supabase
       .from("content_generations")
       .insert({
         user_id:          user.id,
@@ -773,15 +734,14 @@ export const generateContent = createServerFn({ method: "POST" })
         hashtags,
         status:           "completed",
         ai_model:         "gemini-2.5-flash",
-      });
+      })
+      .select("id")
+      .single();
 
-    if (saveError) {
-      // Non-fatal — content was generated; don't block the response
-      console.error("[generateContent] DB save failed:", saveError.message);
-    }
+    if (saveError) console.error("[generateContent] DB save failed:", saveError.message);
 
-    return result;
-
+    // Attach _rowId so the client can pass it to generateImage
+    return { ...result, _rowId: inserted?.id ?? undefined } as typeof result & { _rowId?: string };
     } catch (error: any) {
       console.error("FULL SERVER ERROR:", error);
       throw error;
@@ -790,11 +750,15 @@ export const generateContent = createServerFn({ method: "POST" })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SERVER FUNCTION: generateImage
+// FIX: now stores the public Pollinations URL in generated_image_url
+//      instead of the "[base64 image — stored client-side]" placeholder.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ImageInputSchema = z.object({
   prompt:      z.string().min(3).max(2000),
   visualStyle: z.string().optional(),
+  // If provided, UPDATE this existing row instead of inserting a new one
+  contentId:   z.string().uuid().optional(),
 });
 
 export type GenerateImageOutput = { dataUrl: string };
@@ -818,21 +782,13 @@ export const generateImage = createServerFn({ method: "POST" })
   .validator((data: unknown) => ImageInputSchema.parse(data))
   .handler(async ({ data }): Promise<GenerateImageOutput> => {
     try {
+    const { supabaseUrl, supabaseAnonKey } = validateEnv();
 
-    // ── Validate env ─────────────────────────────────────────
-    const { supabaseUrl, supabaseAnonKey, geminiApiKey } = validateEnv();
-
-    // ── Authenticate ─────────────────────────────────────────
     const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      throw new Error("Unauthorized. Please sign in to generate images.");
-    }
+    if (authError || !user) throw new Error("Unauthorized. Please sign in to generate images.");
 
-    // ── Deduct credit before generation ──────────────────────
-    const { data: creditsAfter, error: creditError } = await supabase
-      .rpc("deduct_credit", { p_user_id: user.id });
-
+    const { error: creditError } = await supabase.rpc("deduct_credit", { p_user_id: user.id });
     if (creditError) {
       if (creditError.message.includes("INSUFFICIENT_CREDITS"))
         throw new Error("Credits exhausted. Please upgrade your plan to generate images.");
@@ -841,7 +797,6 @@ export const generateImage = createServerFn({ method: "POST" })
       throw new Error(`Credit processing failed: ${creditError.message}`);
     }
 
-    // ── Build enriched prompt ─────────────────────────────────
     const directive = data.visualStyle ? (STYLE_DIRECTIVES[data.visualStyle] ?? "") : "";
     const fullPrompt = [
       data.prompt,
@@ -851,44 +806,45 @@ export const generateImage = createServerFn({ method: "POST" })
       .filter(Boolean)
       .join(" ");
 
-    // ── Call Pollinations (refund credit on failure) ──────────
+    // FIX: destructure both dataUrl (returned to client) and imageUrl (stored in DB)
     let dataUrl: string;
+    let imageUrl: string;
     try {
-      dataUrl = await callPollinationsImage(fullPrompt);
+      ({ dataUrl, imageUrl } = await callPollinationsImage(fullPrompt));
     } catch (imgErr: any) {
-      try {
-        await supabase.rpc("refund_credit", { p_user_id: user.id });
-      } catch (e: any) {
-        console.error("[generateImage] Refund failed:", e.message);
-      }
+      try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
       throw imgErr;
     }
 
-    // ── Save image reference to content_generations ───────────
-    const { error: saveError } = await supabase
-      .from("content_generations")
-      .insert({
-        user_id:           user.id,
-        workflow_kind:     "single",
-        content_category:  "educational",
-        specialty:         "",
-        tone:              "Professional",
-        topic:             data.prompt.slice(0, 200),
-        generated_text:    "",
-        generated_image_url: dataUrl.startsWith("data:")
-          ? "[base64 image — stored client-side]"
-          : dataUrl,
-        hashtags:          [],
-        status:            "completed",
-        ai_model:          "pollinations-flux",
-      });
-
-    if (saveError) {
-      console.error("[generateImage] DB save failed:", saveError.message);
+    // If a contentId was passed, UPDATE that row's image URL (links image to text).
+    // Otherwise INSERT a standalone image row (backward compatible).
+    if (data.contentId) {
+      const { error: updateError } = await supabase
+        .from("content_generations")
+        .update({ generated_image_url: imageUrl })
+        .eq("id", data.contentId)
+        .eq("user_id", user.id);   // security: only update own rows
+      if (updateError) console.error("[generateImage] DB update failed:", updateError.message);
+    } else {
+      const { error: saveError } = await supabase
+        .from("content_generations")
+        .insert({
+          user_id:             user.id,
+          workflow_kind:       "single",
+          content_category:    "educational",
+          specialty:           "",
+          tone:                "Professional",
+          topic:               data.prompt.slice(0, 200),
+          generated_text:      "",
+          generated_image_url: imageUrl,
+          hashtags:            [],
+          status:              "completed",
+          ai_model:            "pollinations-flux",
+        });
+      if (saveError) console.error("[generateImage] DB save failed:", saveError.message);
     }
 
     return { dataUrl };
-
     } catch (error: any) {
       console.error("FULL SERVER ERROR:", error);
       throw error;
