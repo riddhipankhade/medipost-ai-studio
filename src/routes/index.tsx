@@ -1,9 +1,17 @@
+import type { ComponentType } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Brand } from "@/components/brand";
-import { FadeIn, Stagger, StaggerItem } from "@/components/motion";
-import { Sparkles, Instagram, FileText, BookOpen, Check, Stethoscope, Clock, Shield } from "lucide-react";
+import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
+import { MeshGlow } from "@/components/landing/mesh-glow";
+import { BrowserFrame } from "@/components/landing/browser-frame";
+import { FloatingPill } from "@/components/landing/floating-pill";
+import { ContentStudioShowcase } from "@/components/landing/content-studio-showcase";
+import { GeneratedPostPreview } from "@/components/landing/generated-post-preview";
+import { AnimatedNumber } from "@/components/landing/animated-number";
+import { LandingNav } from "@/components/landing/landing-nav";
+import { Sparkles, Check, Palette, History, Smile } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -19,28 +27,15 @@ export const Route = createFileRoute("/")({
 
 function Landing() {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Brand />
-          <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-            <a href="#features" className="hover:text-foreground transition-colors">Features</a>
-            <a href="#how" className="hover:text-foreground transition-colors">How it works</a>
-            <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
-          </nav>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild><Link to="/login">Sign in</Link></Button>
-            <Button size="sm" asChild><Link to="/register">Get started</Link></Button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-background relative">
+      <div aria-hidden className="fixed inset-0 z-40 bg-noise pointer-events-none" />
 
+      <LandingNav />
+
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden">
-        <div
-          className="absolute inset-0 -z-10"
-          style={{ background: "radial-gradient(60% 55% at 50% 0%, var(--surface), transparent 70%)" }}
-        />
-        <FadeIn className="max-w-6xl mx-auto px-6 pt-20 pb-16 md:pt-28 md:pb-20 text-center">
+        <MeshGlow variant="hero" />
+        <Reveal className="max-w-6xl mx-auto px-6 pt-20 pb-14 md:pt-28 text-center">
           <Badge variant="outline" className="mb-6 gap-1.5 border-primary/25 bg-primary/5 text-primary">
             <Sparkles className="h-3 w-3" /> Built for healthcare professionals
           </Badge>
@@ -52,103 +47,169 @@ function Landing() {
           </p>
           <div className="mt-9 flex flex-wrap justify-center gap-3">
             <Button size="lg" asChild className="gap-2"><Link to="/register"><Sparkles className="h-4 w-4" /> Start free</Link></Button>
-            <Button size="lg" variant="outline" asChild><Link to="/dashboard">View live demo</Link></Button>
           </div>
-          <p className="mt-5 text-sm text-muted-foreground">No credit card required · 5 free generations</p>
-        </FadeIn>
-        <FadeIn delay={0.12} className="max-w-5xl mx-auto px-6 pb-20">
-          <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-lg">
-            <div className="flex items-center gap-1.5 px-4 py-3 border-b border-border bg-muted/40">
-              <span className="h-2.5 w-2.5 rounded-full bg-border" />
-              <span className="h-2.5 w-2.5 rounded-full bg-border" />
-              <span className="h-2.5 w-2.5 rounded-full bg-border" />
-              <span className="ml-3 text-xs text-muted-foreground">medipost.ai / generate</span>
-            </div>
-            <div className="grid md:grid-cols-2 gap-0">
-              <div className="p-7 border-r border-border">
-                <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">Brief</p>
-                <div className="space-y-2 text-sm">
-                  <Row label="Specialty" value="Dentist" />
-                  <Row label="Content type" value="Instagram Post" />
-                  <Row label="Topic" value="Daily oral hygiene" />
-                  <Row label="Tone" value="Friendly" />
+          <p className="mt-5 text-sm text-muted-foreground">No credit card required · 10 free generations</p>
+        </Reveal>
+
+        <Reveal direction="scale" delay={0.1} className="max-w-4xl mx-auto px-6 pb-28 md:pb-36">
+          <div className="relative">
+            <FloatingPill label="AI Generated" className="-left-6 -top-4" delay={0} />
+            <FloatingPill label="Patient Friendly" className="-right-8 top-1/4" delay={0.6} />
+            <FloatingPill label="Clinic Ready" className="-left-8 bottom-1/4" delay={1.1} />
+            <FloatingPill label="Instagram Ready" className="-right-6 -bottom-4" delay={1.7} />
+
+            <BrowserFrame title="medipost.ai / generate" tilt>
+              <div className="grid md:grid-cols-2 gap-0">
+                <div className="p-7 border-r border-border">
+                  <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">Brief</p>
+                  <div className="space-y-2 text-sm">
+                    <Row label="Specialty" value="Dentist" />
+                    <Row label="Content type" value="Instagram Post" />
+                    <Row label="Topic" value="Daily oral hygiene" />
+                    <Row label="Tone" value="Friendly" />
+                  </div>
+                  <Button size="sm" className="mt-5 gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Generate</Button>
                 </div>
-                <Button size="sm" className="mt-5 gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Generate</Button>
+                <GeneratedPostPreview
+                  className="bg-surface"
+                  icon={Smile}
+                  heading="A brighter smile starts with small daily habits!"
+                  body="Brush twice a day, floss before bed, swap soda for water, and visit your dentist every 6 months."
+                  hashtags="#DentalCare #HealthySmile #OralHygiene"
+                />
               </div>
-              <div className="p-7 bg-surface">
-                <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">Generated</p>
-                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground/90">{`✨ A brighter smile starts with small daily habits!\n\n1. Brush twice a day (2 min each!)\n2. Floss before bed\n3. Swap soda for water\n4. Visit your dentist every 6 months\n\n#DentalCare #HealthySmile`}</pre>
-              </div>
-            </div>
+            </BrowserFrame>
           </div>
-        </FadeIn>
+        </Reveal>
       </section>
 
-      <section id="features" className="py-20 md:py-24 bg-surface border-y border-border/60">
+      {/* ── Content Studio (interactive) ───────────────────────────────────── */}
+      <section id="features" className="relative py-20 md:py-28 border-y border-border/60">
+        <MeshGlow variant="soft" className="opacity-60" />
         <div className="max-w-6xl mx-auto px-6">
-          <FadeIn className="text-center max-w-2xl mx-auto mb-14">
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Everything a modern practice needs</h2>
-            <p className="text-muted-foreground mt-3 leading-relaxed">From social posts to patient handouts — built around the way doctors actually work.</p>
-          </FadeIn>
-          <Stagger className="grid md:grid-cols-3 gap-5">
-            <StaggerItem><Feature icon={Instagram} title="Instagram posts" desc="Engaging, on-brand captions with the right hashtags for your specialty." /></StaggerItem>
-            <StaggerItem><Feature icon={FileText} title="Patient education" desc="Clear, friendly handouts your patients can take home and understand." /></StaggerItem>
-            <StaggerItem><Feature icon={BookOpen} title="Blog articles" desc="Long-form, SEO-friendly articles to grow your clinic's online presence." /></StaggerItem>
-            <StaggerItem><Feature icon={Stethoscope} title="Specialty-aware" desc="Dental, derma, cardio, GP — content adapts to your field automatically." /></StaggerItem>
-            <StaggerItem><Feature icon={Clock} title="30-second drafts" desc="From idea to publishable draft faster than writing the first line yourself." /></StaggerItem>
-            <StaggerItem><Feature icon={Shield} title="Medically grounded" desc="Built-in guardrails to keep content safe, factual and patient-appropriate." /></StaggerItem>
-          </Stagger>
+          <Reveal className="max-w-2xl mb-14">
+            <Badge variant="outline" className="mb-4 border-primary/25 bg-primary/5 text-primary">Content Studio</Badge>
+            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-balance">One studio. Every format your practice needs.</h2>
+            <p className="text-muted-foreground mt-3 leading-relaxed">
+              Pick a format on the left — the preview updates instantly on the right.
+            </p>
+          </Reveal>
+          <Reveal direction="scale" delay={0.05}>
+            <ContentStudioShowcase />
+          </Reveal>
         </div>
       </section>
 
-      <section id="how" className="py-20 md:py-24">
+      {/* ── Product showcase (alternating) ─────────────────────────────────── */}
+      <section className="relative py-20 md:py-28 overflow-hidden">
+        <div className="max-w-6xl mx-auto px-6 space-y-28 md:space-y-36">
+          <Showcase
+            eyebrow="Brand Kit"
+            icon={Palette}
+            title="Content that always sounds like your clinic."
+            desc="Set your specialty, tone and visual identity once. Every post, story and handout Medipost generates stays consistent with your brand — no re-explaining yourself every time."
+            chips={["Tone presets", "Color palette", "Specialty-aware voice"]}
+            direction="left"
+          >
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-2">
+                {["oklch(0.58 0.1 199)", "oklch(0.7 0.12 60)", "oklch(0.6 0.15 25)", "oklch(0.5 0.02 235)"].map((c) => (
+                  <span key={c} className="h-9 w-9 rounded-full border border-border/70 shadow-sm" style={{ background: c }} />
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {["Friendly", "Reassuring", "Clinical", "Warm"].map((t) => (
+                  <Badge key={t} variant="secondary">{t}</Badge>
+                ))}
+              </div>
+            </div>
+          </Showcase>
+
+          <Showcase
+            eyebrow="Content History"
+            icon={History}
+            title="Never lose a post you've already written."
+            desc="Every generation is saved and instantly searchable — find exactly what you posted last month in a couple of clicks."
+            chips={["Full-text search", "Filter by format"]}
+            direction="right"
+          >
+            <div className="p-6 space-y-3">
+              {[
+                { t: "Instagram Post", s: "Dentist", d: "2d ago" },
+                { t: "Patient Education", s: "Cardiology", d: "5d ago" },
+                { t: "Reel Script", s: "Dermatology", d: "1w ago" },
+              ].map((r) => (
+                <div key={r.t} className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background px-3.5 py-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant="secondary" className="text-[10px]">{r.s}</Badge>
+                    </div>
+                    <p className="text-sm font-medium truncate">{r.t}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{r.d}</span>
+                </div>
+              ))}
+            </div>
+          </Showcase>
+        </div>
+      </section>
+
+      {/* ── How it works ────────────────────────────────────────────────────── */}
+      <section id="how" className="relative py-20 md:py-28 border-y border-border/60 bg-surface">
         <div className="max-w-5xl mx-auto px-6">
-          <FadeIn className="text-center max-w-2xl mx-auto mb-14">
+          <Reveal className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">How it works</h2>
             <p className="text-muted-foreground mt-3 leading-relaxed">Three steps from blank page to published post.</p>
-          </FadeIn>
-          <Stagger className="grid md:grid-cols-3 gap-8 text-center">
+          </Reveal>
+          <RevealGroup className="relative grid md:grid-cols-3 gap-10 text-center">
+            <div aria-hidden className="hidden md:block absolute top-5 left-[16.5%] right-[16.5%] h-px bg-linear-to-r from-transparent via-border to-transparent" />
             {[
               { n: "1", t: "Pick your brief", d: "Specialty, content type, topic, tone." },
               { n: "2", t: "Generate in seconds", d: "Medipost drafts content tailored to your patients." },
               { n: "3", t: "Copy, save, post", d: "Share to Instagram or print as a handout." },
             ].map((s) => (
-              <StaggerItem key={s.n}>
-                <div className="mx-auto h-11 w-11 rounded-full grid place-items-center bg-primary text-primary-foreground font-semibold">{s.n}</div>
+              <RevealItem key={s.n} direction="scale" className="relative">
+                <div className="mx-auto h-11 w-11 rounded-full grid place-items-center bg-primary text-primary-foreground font-semibold shadow-md">{s.n}</div>
                 <h3 className="mt-4 font-semibold">{s.t}</h3>
                 <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{s.d}</p>
-              </StaggerItem>
+              </RevealItem>
             ))}
-          </Stagger>
+          </RevealGroup>
         </div>
       </section>
 
-      <section id="pricing" className="py-20 md:py-24 bg-surface border-y border-border/60">
+      {/* ── Pricing ──────────────────────────────────────────────────────────── */}
+      <section id="pricing" className="relative py-20 md:py-28 overflow-hidden">
+        <MeshGlow variant="soft" className="opacity-50" />
         <div className="max-w-6xl mx-auto px-6">
-          <FadeIn className="text-center max-w-2xl mx-auto mb-14">
+          <Reveal className="text-center max-w-2xl mx-auto mb-14">
             <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Simple, doctor-friendly pricing</h2>
             <p className="text-muted-foreground mt-3 leading-relaxed">Start small. Upgrade when your practice grows.</p>
-          </FadeIn>
-          <Stagger className="grid md:grid-cols-3 gap-5 items-start">
-            <StaggerItem><Plan name="Starter" price="₹499" gens="50 generations / month" features={["All content types", "Copy & save", "Email support"]} /></StaggerItem>
-            <StaggerItem><Plan name="Pro" price="₹1,999" gens="300 generations / month" highlight features={["Everything in Starter", "Priority generation", "Content history & search", "Brand tone presets"]} /></StaggerItem>
-            <StaggerItem><Plan name="Clinic" price="₹6,999" gens="Unlimited generations" features={["Everything in Pro", "Up to 10 doctor seats", "Team library", "Dedicated success manager"]} /></StaggerItem>
-          </Stagger>
+          </Reveal>
+          <RevealGroup className="grid md:grid-cols-3 gap-5 items-start">
+            <RevealItem direction="scale"><Plan name="Starter" price={499} gens="50 generations / month" features={["All content types", "Copy & save", "Email support"]} /></RevealItem>
+            <RevealItem direction="scale"><Plan name="Pro" price={1999} gens="300 generations / month" highlight features={["Everything in Starter", "Priority generation", "Content history & search", "Brand tone presets"]} /></RevealItem>
+            <RevealItem direction="scale"><Plan name="Clinic" price={6999} gens="Unlimited generations" features={["Everything in Pro", "Up to 10 doctor seats", "Team library", "Dedicated success manager"]} /></RevealItem>
+          </RevealGroup>
         </div>
       </section>
 
-      <FadeIn className="py-20 md:py-24">
+      {/* ── Final CTA ────────────────────────────────────────────────────────── */}
+      <Reveal className="relative py-20 md:py-28">
+        <MeshGlow variant="soft" />
         <div className="max-w-3xl mx-auto px-6 text-center">
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Ready to delight your patients?</h2>
           <p className="text-muted-foreground mt-3 leading-relaxed">Join 1,200+ doctors creating with Medipost AI.</p>
           <div className="mt-8 flex justify-center gap-3">
-            <Button size="lg" asChild className="gap-2"><Link to="/register"><Sparkles className="h-4 w-4" /> Start free</Link></Button>
+            <Button size="lg" asChild className="gap-2 shadow-[0_0_0_1px_var(--color-primary)_inset,0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.5)]">
+              <Link to="/register"><Sparkles className="h-4 w-4" /> Start free</Link>
+            </Button>
             <Button size="lg" variant="outline" asChild><Link to="/login">Sign in</Link></Button>
           </div>
         </div>
-      </FadeIn>
+      </Reveal>
 
-      <footer className="border-t border-border/70 py-8">
+      <footer className="relative border-t border-border/70 py-8">
         <div className="max-w-6xl mx-auto px-6 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
           <Brand />
           <p>© 2026 Medipost AI · Built for healthcare professionals</p>
@@ -167,29 +228,82 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Feature({ icon: Icon, title, desc }: { icon: any; title: string; desc: string }) {
+function Showcase({
+  eyebrow,
+  icon: Icon,
+  title,
+  desc,
+  chips,
+  direction,
+  children,
+}: {
+  eyebrow: string;
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+  title: string;
+  desc: string;
+  chips: string[];
+  direction: "left" | "right";
+  children: React.ReactNode;
+}) {
+  const textFirst = direction === "left";
   return (
-    <div className="group rounded-2xl border border-border/70 bg-card p-6 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/25">
-      <div className="h-10 w-10 grid place-items-center rounded-lg bg-primary/10 text-primary mb-4 transition-transform duration-200 group-hover:scale-105">
-        <Icon className="h-5 w-5" strokeWidth={1.9} />
-      </div>
-      <p className="font-semibold">{title}</p>
-      <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{desc}</p>
+    <div className="grid lg:grid-cols-2 gap-12 items-center">
+      <Reveal direction={textFirst ? "left" : "right"} className={textFirst ? "lg:order-1" : "lg:order-2"}>
+        <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center mb-5">
+          <Icon className="h-5 w-5" strokeWidth={1.9} />
+        </div>
+        <Badge variant="outline" className="mb-3 border-primary/25 bg-primary/5 text-primary">{eyebrow}</Badge>
+        <h3 className="text-2xl md:text-3xl font-semibold tracking-tight text-balance">{title}</h3>
+        <p className="text-muted-foreground mt-4 leading-relaxed max-w-md">{desc}</p>
+        <div className="flex flex-wrap gap-2 mt-6">
+          {chips.map((c) => (
+            <span key={c} className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium">
+              <Check className="h-3 w-3 text-primary" /> {c}
+            </span>
+          ))}
+        </div>
+      </Reveal>
+      <Reveal direction="scale" delay={0.1} className={cnOrder(textFirst)}>
+        <div className="relative">
+          <MeshGlow variant="corner" className={textFirst ? "-right-10 -top-10" : "-left-10 -top-10"} />
+          <BrowserFrame title="medipost.ai" glow={false}>
+            {children}
+          </BrowserFrame>
+        </div>
+      </Reveal>
     </div>
   );
 }
 
-function Plan({ name, price, gens, features, highlight }: { name: string; price: string; gens: string; features: string[]; highlight?: boolean }) {
+function cnOrder(textFirst: boolean) {
+  return textFirst ? "lg:order-2" : "lg:order-1";
+}
+
+function Plan({
+  name,
+  price,
+  gens,
+  features,
+  highlight,
+}: {
+  name: string;
+  price: number;
+  gens: string;
+  features: string[];
+  highlight?: boolean;
+}) {
   return (
     <div
       className={`relative rounded-2xl border bg-card p-7 transition-shadow duration-200 ${
-        highlight ? "border-primary/30 shadow-lg" : "border-border/70 shadow-sm hover:shadow-md"
+        highlight ? "border-primary/30 shadow-lg ring-1 ring-primary/15" : "border-border/70 shadow-sm hover:shadow-md"
       }`}
     >
       {highlight && <Badge className="absolute -top-3 left-6 bg-primary text-primary-foreground border-transparent">Most popular</Badge>}
       <p className="text-sm font-medium text-muted-foreground">{name}</p>
       <div className="flex items-baseline gap-1 mt-2">
-        <span className="text-3xl font-semibold tracking-tight">{price}</span>
+        <span className="text-3xl font-semibold tracking-tight">
+          <AnimatedNumber value={price} prefix="₹" />
+        </span>
         <span className="text-sm text-muted-foreground">/month</span>
       </div>
       <p className="text-sm text-primary mt-1.5 font-medium">{gens}</p>
