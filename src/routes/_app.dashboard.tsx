@@ -285,11 +285,11 @@ function Dashboard() {
         )}
 
         {!loading && recent.length > 0 && (
-          <FadeIn className="grid gap-3">
+          <FadeIn className="grid grid-cols-1 gap-3 min-w-0">
             {recent.map((c) => (
-              <Card key={c.id} className="hover:shadow-md hover:-translate-y-px transition-all duration-200">
-                <CardContent className="flex items-center justify-between gap-4 py-4">
-                  <div className="min-w-0">
+              <Card key={c.id} className="min-w-0 overflow-hidden hover:shadow-md hover:-translate-y-px transition-all duration-200">
+                <CardContent className="flex items-center justify-between gap-4 py-4 min-w-0">
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     <div className="flex items-center gap-2 mb-1.5">
                       <Badge variant="secondary" className="text-[10px] capitalize">
                         {c.workflow_kind}
@@ -303,7 +303,7 @@ function Dashboard() {
                       {bodySnippet(c.generated_text)}
                     </p>
                   </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
                     {new Date(c.created_at).toLocaleDateString()}
                   </span>
                 </CardContent>

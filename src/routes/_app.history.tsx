@@ -476,16 +476,16 @@ function History() {
       {!loading && error && <p className="text-center text-destructive py-12">{error}</p>}
 
       {!loading && !error && (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 gap-3 min-w-0">
           {items.map((c) => (
             <Card
               key={c.id}
-              className="border-border/60 cursor-pointer hover:shadow-md transition-shadow"
+              className="min-w-0 overflow-hidden border-border/60 cursor-pointer hover:shadow-md transition-shadow"
               onClick={() => setSelected(c)}
             >
-              <CardContent className="py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
+              <CardContent className="py-4 min-w-0">
+                <div className="flex items-start justify-between gap-4 min-w-0">
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     {/* Badges + date */}
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <Badge variant="secondary">{KIND_LABELS[c.workflow_kind] ?? c.workflow_kind}</Badge>
@@ -508,7 +508,7 @@ function History() {
                     </div>
 
                     {/* Topic */}
-                    <p className="font-semibold text-foreground">{c.topic}</p>
+                    <p className="font-semibold text-foreground truncate">{c.topic}</p>
 
                     {/* Preview */}
                     <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">

@@ -44,8 +44,8 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-screen bg-surface">
-      <aside className="hidden md:flex w-64 flex-col border-r border-border/70 bg-sidebar">
+    <div className="flex h-screen overflow-hidden bg-surface">
+      <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-border/70 bg-sidebar">
         <div className="px-5 py-5 border-b border-border/70">
           <Brand to="/dashboard" />
         </div>
@@ -101,14 +101,14 @@ export function AppShell() {
           </div>
         </div>
       </aside>
-      <main className="flex-1 min-w-0">
+      <main className="flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden">
         <header className="md:hidden sticky top-0 z-20 flex items-center justify-between border-b border-border/70 bg-background/90 backdrop-blur-md px-4 py-3">
           <Brand to="/dashboard" />
           <Button variant="ghost" size="sm" onClick={handleSignOut}>
             Sign out
           </Button>
         </header>
-        <div className="p-6 md:p-10 max-w-6xl mx-auto">
+        <div className="p-6 md:p-10 max-w-6xl mx-auto min-w-0">
           <Outlet />
         </div>
       </main>
