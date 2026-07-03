@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { LayoutDashboard, Sparkles, History, CreditCard, LogOut, Palette, Settings } from "lucide-react";
+import { motion } from "framer-motion";
 import { Brand } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -43,9 +44,9 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[oklch(0.985_0.01_220)]">
-      <aside className="hidden md:flex w-64 flex-col border-r border-border bg-sidebar">
-        <div className="px-5 py-5 border-b border-border">
+    <div className="flex min-h-screen bg-surface">
+      <aside className="hidden md:flex w-64 flex-col border-r border-border/70 bg-sidebar">
+        <div className="px-5 py-5 border-b border-border/70">
           <Brand to="/dashboard" />
         </div>
         <nav className="flex-1 p-3 space-y-1">
@@ -56,22 +57,35 @@ export function AppShell() {
               <Link
                 key={item.to}
                 to={item.to}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-accent text-accent-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
-                }`}
+                className="relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
+                {active && (
+                  <motion.span
+                    layoutId="sidebar-active"
+                    className="absolute inset-0 rounded-lg bg-sidebar-accent"
+                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                  />
+                )}
+                {active && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-primary" />
+                )}
+                <Icon
+                  className={`relative h-4 w-4 shrink-0 ${active ? "text-primary" : ""}`}
+                  strokeWidth={2}
+                />
+                <span className={`relative ${active ? "text-sidebar-accent-foreground" : ""}`}>
+                  {item.label}
+                </span>
               </Link>
             );
           })}
         </nav>
-        <div className="p-3 border-t border-border">
+        <div className="p-3 border-t border-border/70">
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
             <Avatar className="h-9 w-9">
-              <AvatarFallback className="bg-(--teal) text-white">{initials}</AvatarFallback>
+              <AvatarFallback className="bg-primary text-primary-foreground font-medium">
+                {initials}
+              </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
               <p className="text-sm font-medium truncate">{displayName}</p>
@@ -79,7 +93,7 @@ export function AppShell() {
             </div>
             <button
               onClick={handleSignOut}
-              className="ml-auto text-muted-foreground hover:text-foreground"
+              className="ml-auto rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label="Sign out"
             >
               <LogOut className="h-4 w-4" />
@@ -88,7 +102,7 @@ export function AppShell() {
         </div>
       </aside>
       <main className="flex-1 min-w-0">
-        <header className="md:hidden flex items-center justify-between border-b border-border bg-background px-4 py-3">
+        <header className="md:hidden sticky top-0 z-20 flex items-center justify-between border-b border-border/70 bg-background/90 backdrop-blur-md px-4 py-3">
           <Brand to="/dashboard" />
           <Button variant="ghost" size="sm" onClick={handleSignOut}>
             Sign out
