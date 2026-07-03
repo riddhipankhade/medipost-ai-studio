@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Brand } from "@/components/brand";
+import { FadeIn } from "@/components/motion";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 
@@ -51,28 +52,28 @@ function Login() {
   if (loading) return null;
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2">
-      <div className="hidden lg:flex flex-col justify-between p-12 text-white" style={{ background: "var(--brand-gradient)" }}>
+    <div className="min-h-screen grid lg:grid-cols-2 bg-background">
+      <div className="hidden lg:flex flex-col justify-between p-12 bg-primary text-primary-foreground">
         <Brand to="/" />
         <div>
-          <h2 className="text-3xl font-semibold leading-tight">
+          <h2 className="text-3xl font-semibold leading-tight tracking-tight">
             Content your patients<br />actually read.
           </h2>
-          <p className="mt-3 text-white/85 max-w-sm">
+          <p className="mt-3 text-primary-foreground/80 max-w-sm leading-relaxed">
             Medipost AI helps healthcare professionals create educational, on-brand content in seconds.
           </p>
         </div>
-        <p className="text-sm text-white/70">© 2026 Medipost AI</p>
+        <p className="text-sm text-primary-foreground/70">© 2026 Medipost AI</p>
       </div>
       <div className="flex items-center justify-center p-6">
-        <div className="w-full max-w-md space-y-6">
+        <FadeIn className="w-full max-w-md space-y-7">
           <div className="lg:hidden"><Brand to="/" /></div>
           <div>
-            <h1 className="text-2xl font-semibold">Welcome back</h1>
-            <p className="text-muted-foreground text-sm mt-1">Sign in to continue creating.</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+            <p className="text-muted-foreground text-sm mt-1.5">Sign in to continue creating.</p>
           </div>
-          <Card className="border-border/60">
-            <CardContent className="p-6">
+          <Card className="shadow-md">
+            <CardContent className="p-7">
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
@@ -102,12 +103,12 @@ function Login() {
                 </Button>
                 <p className="text-sm text-muted-foreground text-center">
                   New to Medipost?{" "}
-                  <Link to="/register" className="text-(--teal) font-medium">Create an account</Link>
+                  <Link to="/register" className="text-primary font-medium">Create an account</Link>
                 </p>
               </form>
             </CardContent>
           </Card>
-        </div>
+        </FadeIn>
       </div>
     </div>
   );

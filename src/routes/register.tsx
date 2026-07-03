@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Brand } from "@/components/brand";
+import { FadeIn } from "@/components/motion";
 import { specialties } from "@/lib/mock-data";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
@@ -71,39 +72,39 @@ function Register() {
 
   if (emailSent) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="w-full max-w-md space-y-4 text-center">
-          <Brand to="/" />
-          <h1 className="text-2xl font-semibold mt-6">Check your email</h1>
-          <p className="text-muted-foreground text-sm">
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <FadeIn className="w-full max-w-md space-y-4 text-center">
+          <div className="flex justify-center"><Brand to="/" /></div>
+          <h1 className="text-2xl font-semibold tracking-tight mt-6">Check your email</h1>
+          <p className="text-muted-foreground text-sm leading-relaxed">
             We sent a confirmation link to{" "}
             <span className="font-medium text-foreground">{email}</span>.
             Click it to activate your account.
           </p>
-        </div>
+        </FadeIn>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2">
-      <div className="hidden lg:flex flex-col justify-between p-12 text-white" style={{ background: "var(--brand-gradient)" }}>
+    <div className="min-h-screen grid lg:grid-cols-2 bg-background">
+      <div className="hidden lg:flex flex-col justify-between p-12 bg-primary text-primary-foreground">
         <Brand to="/" />
         <div>
-          <h2 className="text-3xl font-semibold leading-tight">Join 1,200+ doctors<br />creating with AI.</h2>
-          <p className="mt-3 text-white/85 max-w-sm">Start free. Generate your first 5 posts on us.</p>
+          <h2 className="text-3xl font-semibold leading-tight tracking-tight">Join 1,200+ doctors<br />creating with AI.</h2>
+          <p className="mt-3 text-primary-foreground/80 max-w-sm leading-relaxed">Start free. Generate your first 5 posts on us.</p>
         </div>
-        <p className="text-sm text-white/70">© 2026 Medipost AI</p>
+        <p className="text-sm text-primary-foreground/70">© 2026 Medipost AI</p>
       </div>
       <div className="flex items-center justify-center p-6">
-        <div className="w-full max-w-md space-y-6">
+        <FadeIn className="w-full max-w-md space-y-7">
           <div className="lg:hidden"><Brand to="/" /></div>
           <div>
-            <h1 className="text-2xl font-semibold">Create your account</h1>
-            <p className="text-muted-foreground text-sm mt-1">Built for doctors, dentists &amp; clinics.</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
+            <p className="text-muted-foreground text-sm mt-1.5">Built for doctors, dentists &amp; clinics.</p>
           </div>
-          <Card className="border-border/60">
-            <CardContent className="p-6">
+          <Card className="shadow-md">
+            <CardContent className="p-7">
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
@@ -161,12 +162,12 @@ function Register() {
                 </Button>
                 <p className="text-sm text-muted-foreground text-center">
                   Already have an account?{" "}
-                  <Link to="/login" className="text-(--teal) font-medium">Sign in</Link>
+                  <Link to="/login" className="text-primary font-medium">Sign in</Link>
                 </p>
               </form>
             </CardContent>
           </Card>
-        </div>
+        </FadeIn>
       </div>
     </div>
   );

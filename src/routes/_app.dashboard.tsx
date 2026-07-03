@@ -4,7 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, FileText, History, ArrowRight, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Stagger, StaggerItem, FadeIn } from "@/components/motion";
+import { Sparkles, FileText, History, ArrowRight, CreditCard, Gauge } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/_app/dashboard")({
@@ -121,15 +123,15 @@ function Dashboard() {
   const greeting = name ? `Dr. ${name}` : "Doctor";
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">Welcome back,</p>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            {loading ? "…" : `${greeting} 👋`}
+          <h1 className="text-3xl font-semibold tracking-tight mt-0.5">
+            {loading ? <Skeleton className="h-9 w-56" /> : `${greeting} 👋`}
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-1.5">
             Let's create something your patients will love today.
           </p>
         </div>
@@ -141,114 +143,119 @@ function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <Stagger className="grid gap-5 md:grid-cols-3">
         {/* Plan */}
-        <Card className="border-border/60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Current Subscription
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-semibold">{planName}</span>
-                  <Badge className="bg-[color:var(--teal)] text-white hover:bg-[color:var(--teal)] capitalize">
+        <StaggerItem>
+          <Card className="h-full hover:shadow-md transition-shadow duration-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
+                  <CreditCard className="h-5 w-5" strokeWidth={1.9} />
+                </div>
+                {!loading && (
+                  <Badge variant="success" className="capitalize">
                     {sub?.status ?? "—"}
                   </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {renewDate ? `Renews ${renewDate}` : "—"}
-                  {price ? ` · ₹${price.toLocaleString("en-IN")}/mo` : ""}
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+                )}
+              </div>
+              <p className="text-sm font-medium text-muted-foreground mt-4">Current subscription</p>
+              {loading ? (
+                <Skeleton className="h-8 w-28 mt-1.5" />
+              ) : (
+                <span className="text-2xl font-semibold tracking-tight">{planName}</span>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                {renewDate ? `Renews ${renewDate}` : "—"}
+                {price ? ` · ₹${price.toLocaleString("en-IN")}/mo` : ""}
+              </p>
+            </CardContent>
+          </Card>
+        </StaggerItem>
 
         {/* Credits */}
-        <Card className="border-border/60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Generations Remaining
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            ) : (
-              <>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-semibold">{remaining}</span>
+        <StaggerItem>
+          <Card className="h-full hover:shadow-md transition-shadow duration-200">
+            <CardContent className="p-6">
+              <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
+                <Gauge className="h-5 w-5" strokeWidth={1.9} />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground mt-4">Generations remaining</p>
+              {loading ? (
+                <Skeleton className="h-8 w-24 mt-1.5" />
+              ) : (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-semibold tracking-tight">{remaining}</span>
                   <span className="text-sm text-muted-foreground">/ {total}</span>
                 </div>
-                <Progress
-                  value={total > 0 ? ((remaining / total) * 100) : 0}
-                  className="mt-3"
-                />
-              </>
-            )}
-          </CardContent>
-        </Card>
+              )}
+              <Progress
+                value={loading ? 0 : total > 0 ? (remaining / total) * 100 : 0}
+                className="mt-4"
+              />
+            </CardContent>
+          </Card>
+        </StaggerItem>
 
         {/* Content this month */}
-        <Card className="border-border/60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Content this month
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            ) : (
-              <>
+        <StaggerItem>
+          <Card className="h-full hover:shadow-md transition-shadow duration-200">
+            <CardContent className="p-6">
+              <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
+                <FileText className="h-5 w-5" strokeWidth={1.9} />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground mt-4">Content this month</p>
+              {loading ? (
+                <Skeleton className="h-8 w-16 mt-1.5" />
+              ) : (
                 <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-semibold">{used}</span>
-                  <span className="text-sm text-[color:var(--teal)]">generations used</span>
+                  <span className="text-2xl font-semibold tracking-tight">{used}</span>
+                  <span className="text-sm text-primary">generations used</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {total - remaining === 0
-                    ? "No content generated yet"
-                    : `${usedPct}% of your monthly limit used`}
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                {total - remaining === 0
+                  ? "No content generated yet"
+                  : `${usedPct}% of your monthly limit used`}
+              </p>
+            </CardContent>
+          </Card>
+        </StaggerItem>
+      </Stagger>
 
       {/* Quick actions */}
       <section>
-        <h2 className="text-lg font-semibold mb-3">Quick actions</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          <QuickAction
-            to="/generate"
-            icon={Sparkles}
-            title="Generate Instagram post"
-            desc="Engaging post in under 30 seconds"
-          />
-          <QuickAction
-            to="/generate"
-            icon={FileText}
-            title="Patient education sheet"
-            desc="Clear, friendly handout for your clinic"
-          />
-          <QuickAction
-            to="/history"
-            icon={History}
-            title="Browse past content"
-            desc="Reuse and repurpose anytime"
-          />
-        </div>
+        <h2 className="text-lg font-semibold mb-4">Quick actions</h2>
+        <Stagger className="grid gap-4 md:grid-cols-3">
+          <StaggerItem>
+            <QuickAction
+              to="/generate"
+              icon={Sparkles}
+              title="Generate Instagram post"
+              desc="Engaging post in under 30 seconds"
+            />
+          </StaggerItem>
+          <StaggerItem>
+            <QuickAction
+              to="/generate"
+              icon={FileText}
+              title="Patient education sheet"
+              desc="Clear, friendly handout for your clinic"
+            />
+          </StaggerItem>
+          <StaggerItem>
+            <QuickAction
+              to="/history"
+              icon={History}
+              title="Browse past content"
+              desc="Reuse and repurpose anytime"
+            />
+          </StaggerItem>
+        </Stagger>
       </section>
 
       {/* Recent content */}
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Recent content</h2>
           <Button variant="ghost" size="sm" asChild className="gap-1">
             <Link to="/history">
@@ -258,17 +265,18 @@ function Dashboard() {
         </div>
 
         {loading && (
-          <div className="flex items-center gap-2 text-muted-foreground py-6">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span className="text-sm">Loading recent content…</span>
+          <div className="grid gap-3">
+            <Skeleton className="h-18.5 w-full rounded-2xl" />
+            <Skeleton className="h-18.5 w-full rounded-2xl" />
+            <Skeleton className="h-18.5 w-full rounded-2xl" />
           </div>
         )}
 
         {!loading && recent.length === 0 && (
-          <Card className="border-border/60 border-dashed">
-            <CardContent className="py-10 text-center text-muted-foreground text-sm">
+          <Card className="border-dashed">
+            <CardContent className="py-12 text-center text-muted-foreground text-sm">
               No content yet — hit{" "}
-              <Link to="/generate" className="text-[color:var(--teal)] font-medium">
+              <Link to="/generate" className="text-primary font-medium">
                 New Generation
               </Link>{" "}
               to get started.
@@ -277,12 +285,12 @@ function Dashboard() {
         )}
 
         {!loading && recent.length > 0 && (
-          <div className="grid gap-3">
+          <FadeIn className="grid gap-3">
             {recent.map((c) => (
-              <Card key={c.id} className="border-border/60 hover:shadow-sm transition-shadow">
+              <Card key={c.id} className="hover:shadow-md hover:-translate-y-px transition-all duration-200">
                 <CardContent className="flex items-center justify-between gap-4 py-4">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1.5">
                       <Badge variant="secondary" className="text-[10px] capitalize">
                         {c.workflow_kind}
                       </Badge>
@@ -301,7 +309,7 @@ function Dashboard() {
                 </CardContent>
               </Card>
             ))}
-          </div>
+          </FadeIn>
         )}
       </section>
     </div>
@@ -334,20 +342,20 @@ function QuickAction({
   desc,
 }: {
   to: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   title: string;
   desc: string;
 }) {
   return (
     <Link
       to={to}
-      className="group rounded-xl border border-border bg-card p-5 hover:border-[color:var(--teal)] transition-colors block"
+      className="group rounded-2xl border border-border/70 bg-card p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-primary/25 transition-all duration-200 block h-full"
     >
-      <div className="h-10 w-10 grid place-items-center rounded-lg bg-accent text-accent-foreground mb-3">
-        <Icon className="h-5 w-5" />
+      <div className="h-10 w-10 grid place-items-center rounded-xl bg-primary/10 text-primary mb-3.5 transition-transform duration-200 group-hover:scale-105">
+        <Icon className="h-5 w-5" strokeWidth={1.9} />
       </div>
       <p className="font-medium">{title}</p>
-      <p className="text-sm text-muted-foreground mt-1">{desc}</p>
+      <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{desc}</p>
     </Link>
   );
 }
