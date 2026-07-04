@@ -25,7 +25,7 @@ export function AppShell() {
 
   useEffect(() => {
     if (!loading && !session) {
-      navigate({ to: "/login", replace: true });
+      navigate({ to: "/", replace: true });
     }
   }, [loading, session, navigate]);
 
@@ -40,7 +40,6 @@ export function AppShell() {
 
   async function handleSignOut() {
     await signOut();
-    navigate({ to: "/login", replace: true });
   }
 
   return (
