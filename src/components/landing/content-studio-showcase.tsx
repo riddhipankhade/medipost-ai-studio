@@ -38,10 +38,9 @@ const contentTypes: ContentType[] = [
     blurb: "A polished, on-brand Instagram post with caption and hashtags — ready in one shot.",
     preview: (
       <GeneratedPostPreview
-        icon={Instagram}
-        heading="Your heart's urgent message: listen."
-        body="Ever felt a sudden, unfamiliar squeeze in your chest? Here's what it could mean — and when to see a cardiologist."
-        hashtags="#HeartHealth #Cardiology #PatientEducation"
+        image="/showcase/serif-card.jpg"
+        imageAlt="Generated Instagram post — editorial headline card about brushing myths on a warm gradient"
+        hashtags="#DentalCare #BrushingMyths #OralHealth"
       />
     ),
   },
@@ -52,18 +51,20 @@ const contentTypes: ContentType[] = [
     blurb: "Multi-slide carousels that walk patients through a topic, slide by slide.",
     preview: (
       <div className="p-6">
-        <div className="relative h-52 mb-4">
-          <div className="absolute inset-x-8 top-3 h-48 rounded-xl bg-primary/10 rotate-3" />
-          <div className="absolute inset-x-4 top-1.5 h-48 rounded-xl bg-primary/15 -rotate-2" />
-          <div className="absolute inset-x-0 top-0 h-48 rounded-xl border border-border shadow-md overflow-hidden">
-            <PhotoPattern icon={Layers} />
-            <div className="absolute inset-x-3 bottom-3 rounded-lg bg-background/95 backdrop-blur px-3 py-2">
-              <p className="text-xs font-semibold">Skin hydration: myth vs. fact</p>
-            </div>
-            <span className="absolute top-2 right-2.5 text-[10px] font-medium text-white/90 bg-black/30 rounded-full px-2 py-0.5">1 / 5</span>
+        <div className="relative max-w-xs mx-auto mb-4">
+          <div className="absolute inset-0 translate-x-3.5 translate-y-2 rounded-xl bg-primary/10 rotate-2" />
+          <div className="absolute inset-0 -translate-x-3.5 translate-y-1 rounded-xl bg-primary/15 -rotate-2" />
+          <div className="relative rounded-xl border border-border shadow-md overflow-hidden">
+            <img
+              src="/showcase/callout-diagram.jpg"
+              alt="Generated carousel slide — dental tips arranged around a tooth illustration"
+              loading="lazy"
+              decoding="async"
+              className="block w-full h-auto"
+            />
           </div>
         </div>
-        <Lines n={2} />
+        <Lines n={2} className="max-w-xs mx-auto" />
       </div>
     ),
   },
@@ -74,16 +75,14 @@ const contentTypes: ContentType[] = [
     blurb: "Vertical, full-screen stories with quick tips patients can tap through.",
     preview: (
       <div className="p-6 flex justify-center">
-        <div className="relative w-36 rounded-2xl overflow-hidden aspect-9/16 p-2.5">
-          <PhotoPattern icon={Camera} />
-          <div className="relative flex gap-1 mb-3">
-            <div className="h-1 flex-1 rounded-full bg-white/90" />
-            <div className="h-1 flex-1 rounded-full bg-white/35" />
-            <div className="h-1 flex-1 rounded-full bg-white/35" />
-          </div>
-          <div className="absolute inset-x-2.5 bottom-2.5 rounded-md bg-background/95 backdrop-blur px-2.5 py-2">
-            <p className="text-[11px] font-semibold leading-tight">3 signs you shouldn't ignore</p>
-          </div>
+        <div className="w-48 rounded-2xl overflow-hidden border border-border shadow-md">
+          <img
+            src="/showcase/story-stat.jpg"
+            alt="Generated Instagram story — statistic hook about flossing with a booking call-to-action"
+            loading="lazy"
+            decoding="async"
+            className="block w-full h-auto"
+          />
         </div>
       </div>
     ),

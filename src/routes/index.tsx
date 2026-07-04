@@ -11,7 +11,7 @@ import { ContentStudioShowcase } from "@/components/landing/content-studio-showc
 import { GeneratedPostPreview } from "@/components/landing/generated-post-preview";
 import { AnimatedNumber } from "@/components/landing/animated-number";
 import { LandingNav } from "@/components/landing/landing-nav";
-import { Sparkles, Check, Palette, History, Smile } from "lucide-react";
+import { Sparkles, Check, Palette, History } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -65,16 +65,15 @@ function Landing() {
                   <div className="space-y-2 text-sm">
                     <Row label="Specialty" value="Dentist" />
                     <Row label="Content type" value="Instagram Post" />
-                    <Row label="Topic" value="Daily oral hygiene" />
+                    <Row label="Topic" value="Brushing myths" />
                     <Row label="Tone" value="Friendly" />
                   </div>
                   <Button size="sm" className="mt-5 gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Generate</Button>
                 </div>
                 <GeneratedPostPreview
                   className="bg-surface"
-                  icon={Smile}
-                  heading="A brighter smile starts with small daily habits!"
-                  body="Brush twice a day, floss before bed, swap soda for water, and visit your dentist every 6 months."
+                  image="/showcase/faq-photo.jpg"
+                  imageAlt="Generated Instagram post — question and answer bubbles about brushing technique over an AI photo"
                   hashtags="#DentalCare #HealthySmile #OralHygiene"
                 />
               </div>
