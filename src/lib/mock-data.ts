@@ -169,7 +169,7 @@ export const workflows: {
   icon: string;
 }[] = [
   { kind: "single", title: "Single Post", tagline: "One scroll-stopping post", icon: "square" },
-  { kind: "carousel", title: "Carousel Post", tagline: "5–10 swipeable slides", icon: "layers" },
+  { kind: "carousel", title: "Carousel Post", tagline: "2–10 swipeable slides", icon: "layers" },
   { kind: "story", title: "Story", tagline: "9:16 vertical story", icon: "smartphone" },
   { kind: "reel", title: "Reel Script", tagline: "Hook · Points · CTA", icon: "film" },
   { kind: "campaign", title: "Awareness Campaign", tagline: "Weekly content plan", icon: "calendar" },

@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+﻿import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,12 +71,33 @@ import {
 } from "@/lib/carousel-themes";
 import { useBrandKit } from "@/lib/brand-kit";
 import { supabase } from "@/lib/supabase";
-import { Phone, Globe, Image as ImagePlus, ImageDown, RefreshCw, Wand } from "lucide-react";
+import { Phone, ImageDown, RefreshCw, Wand } from "lucide-react";
+import {
+  type SlideCanvasProps,
+  CenteredLayout,
+  ImageLeftLayout,
+  FullImageLayout,
+  SplitLayout,
+  ModernCardLayout,
+  FullImageOverlayLayout,
+  ContextualBackground,
+  HeroCard,
+  IconGrid,
+  StatisticHero,
+  ComparisonSplit,
+  ProcessFlow,
+  CalloutDiagram,
+  Timeline,
+  FaqCards,
+  Checklist,
+  RadialDiagram,
+} from "@/components/carousel-layouts";
+import { resolveVisualStrategy } from "@/lib/visual-strategy";
 
-// ── NEW: PostCard + download ────────────────────────────────────────────────
+// ---- NEW: PostCard + download ----
 import PostCard from "@/components/PostCard";
 import { useDownloadPost } from "@/hooks/useDownloadPost";
-// ───────────────────────────────────────────────────────────────────────────
+// ------------------------------------------------------------------
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
@@ -408,7 +429,7 @@ function GeneratePage() {
             {kind === "carousel" && (
               <Field label={`Slides — ${form.slideCount}`}>
                 <input
-                  type="range" min={5} max={10} value={form.slideCount}
+                  type="range" min={2} max={10} value={form.slideCount}
                   onChange={(e) => update("slideCount", Number(e.target.value))}
                   className="w-full accent-[color:var(--teal)]"
                 />
@@ -474,7 +495,7 @@ function GeneratePage() {
 
           {!loading && result && (
             <>
-              <ResultPreview result={result} specialty={form.specialty} rowId={rowId} />
+              <ResultPreview result={result} specialty={form.specialty} rowId={rowId} category={category} topic={form.topic} />
               <VisualConceptCard visual={result.visual} />
             </>
           )}
@@ -532,10 +553,10 @@ function LoadingPanel({ stage }: { stage: number }) {
   );
 }
 
-function ResultPreview({ result, specialty, rowId }: { result: GenerateOutput; specialty: string; rowId: string | null }) {
+function ResultPreview({ result, specialty, rowId, category, topic }: { result: GenerateOutput; specialty: string; rowId: string | null; category: ContentCategory; topic: string }) {
   switch (result.kind) {
     case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} />;
-    case "carousel": return <CarouselPreview post={result} specialty={specialty} />;
+    case "carousel": return <CarouselPreview post={result} specialty={specialty} category={category} topic={topic} />;
     case "story":    return <StoryPreview post={result} specialty={specialty} />;
     case "reel":     return <ReelPreview post={result} specialty={specialty} />;
     case "campaign": return <CampaignPreview plan={result} />;
@@ -592,7 +613,7 @@ function AiImageButton({ loading, hasImage, onClick, size = "sm", label }: { loa
   );
 }
 
-/* ---- Single Post ── PostCard + Download ---- */
+/* ---- Single Post — PostCard + Download ---- */
 function SinglePostPreview({ post, specialty, rowId }: { post: SinglePost; specialty: string; rowId?: string | null }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
@@ -646,12 +667,13 @@ function SinglePostPreview({ post, specialty, rowId }: { post: SinglePost; speci
 }
 
 /* ---- Carousel ---- */
-function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: string }) {
+function CarouselPreview({ post, specialty, category, topic }: { post: CarouselPost; specialty: string; category: ContentCategory; topic: string }) {
   const [brand] = useBrandKit();
   const callImage = useServerFn(generateImage);
   const [idx, setIdx] = useState(0);
   const [themeId, setThemeId] = useState<string>(() => suggestThemeId(specialty));
   const [layout, setLayout] = useState<SlideLayout>("centered");
+  const [autoLayout, setAutoLayout] = useState(true);
   const [fontFamily, setFontFamily] = useState<string>(carouselThemes[0].fontFamily);
   const [fontScale, setFontScale] = useState<number>(1);
   const [headingColor, setHeadingColor] = useState<string | null>(null);
@@ -662,8 +684,44 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
   const [slideImages, setSlideImages] = useState<(string | null)[]>(() => post.slides.map(() => null));
   const [loadingSlide, setLoadingSlide] = useState<number | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  // full-size capture nodes rendered inside the scaled-down thumbnails — one per slide
+  const thumbCaptureRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   if (slideImages.length !== post.slides.length) setSlideImages(post.slides.map(() => null));
+
+  async function captureSlidePng(i: number): Promise<string | null> {
+    const node = thumbCaptureRefs.current[i];
+    if (!node) return null;
+    const { toPng } = await import("html-to-image");
+    return toPng(node, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+  }
+
+  function savePng(dataUrl: string, name: string) {
+    const link = document.createElement("a");
+    link.download = name;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  async function downloadSlides(indices: number[]) {
+    setDownloading(true);
+    try {
+      for (const i of indices) {
+        const png = await captureSlidePng(i);
+        if (!png) { toast.error(`Slide ${i + 1} could not be captured`); continue; }
+        savePng(png, `medipost-slide-${i + 1}-of-${post.slides.length}.png`);
+      }
+      toast.success(indices.length === 1 ? "Slide downloaded" : `${indices.length} slides downloaded`);
+    } catch (e) {
+      console.error("[CarouselPreview] slide download failed:", e);
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   async function genSlideImage(i: number) {
     const s = post.slides[i];
@@ -708,6 +766,9 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
   const slide = post.slides[idx];
   if (!slide) return null;
 
+  const strategy = resolveVisualStrategy(slide, category, { slideIndex: idx, totalSlides: total, isCta: idx === total - 1 });
+  const effectiveLayout: SlideLayout = autoLayout ? strategy.archetype : layout;
+
   const fullText = post.slides.map((s, i) => `Slide ${i + 1} — ${s.title}\n${s.content}`).join("\n\n") + `\n\nCTA: ${post.cta}\n${post.hashtags.join(" ")}`;
 
   return (
@@ -725,6 +786,16 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
             {bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
             {bulkLoading ? "Generating all…" : "Generate all slide visuals"}
           </Button>
+          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8"
+            disabled={downloading} onClick={() => downloadSlides([idx])}>
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+            Download slide
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8"
+            disabled={downloading} onClick={() => downloadSlides(post.slides.map((_, i) => i))}>
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+            Download all
+          </Button>
         </div>
 
         <div className="grid gap-5 md:grid-cols-[1fr_280px]">
@@ -732,9 +803,10 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
             <div className="relative mx-auto w-full max-w-md">
               <SlideCanvas
                 slideTitle={slide.title} slideBody={slide.content} slideIndex={idx} totalSlides={total}
-                isCta={idx === total - 1} cta={post.cta} specialty={specialty} theme={theme} layout={layout}
+                isCta={idx === total - 1} cta={post.cta} specialty={specialty} theme={theme} layout={effectiveLayout}
                 fontScale={fontScale} showIcons={showIcons} brand={brand}
                 imageUrl={slideImages[idx]} imageLoading={loadingSlide === idx}
+                topic={topic} category={category} composition={strategy.composition}
               />
               <button onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={idx === 0}
                 className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 h-10 w-10 grid place-items-center rounded-full bg-background border border-border shadow disabled:opacity-40">
@@ -746,25 +818,42 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
               </button>
             </div>
 
-            <div className="mt-4 grid gap-2 grid-cols-3 sm:grid-cols-4 md:grid-cols-5">
-              {post.slides.map((s, i) => (
-                <button key={i} onClick={() => setIdx(i)}
-                  className={`group text-left rounded-md border overflow-hidden transition-all ${i === idx ? "border-[color:var(--teal)] ring-2 ring-[color:var(--teal)]/30" : "border-border hover:border-[color:var(--teal)]/50"}`}
-                  title={s.title}>
-                  <div className="aspect-square p-1.5 text-[8px] leading-tight flex flex-col"
-                    style={{ background: theme.bg, color: theme.text, fontFamily: theme.fontFamily }}>
-                    <span className="opacity-60">{i + 1}</span>
-                    <span className="font-bold line-clamp-3 mt-auto" style={{ color: theme.heading }}>{s.title}</span>
+            {/* offscreen full-size render of every slide — capture source for the PNG
+                downloads only, never visible (thumbnail strip removed intentionally:
+                too small to read; arrows + in-slide dots handle navigation) */}
+            <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
+              {post.slides.map((s, i) => {
+                const st = resolveVisualStrategy(s, category, { slideIndex: i, totalSlides: total, isCta: i === total - 1 });
+                const captureLayout: SlideLayout = autoLayout ? st.archetype : layout;
+                return (
+                  <div key={i} ref={(el) => { thumbCaptureRefs.current[i] = el; }}>
+                    <SlideCanvas
+                      slideTitle={s.title} slideBody={s.content} slideIndex={i} totalSlides={total}
+                      isCta={i === total - 1} cta={post.cta} specialty={specialty} theme={theme} layout={captureLayout}
+                      fontScale={fontScale} showIcons={showIcons} brand={brand}
+                      imageUrl={slideImages[i]}
+                      topic={topic} category={category} composition={st.composition}
+                    />
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           <StudioControls
             themeId={themeId}
-            setThemeId={(id) => { setThemeId(id); setFontFamily(getTheme(id).fontFamily); }}
-            layout={layout} setLayout={setLayout}
+            setThemeId={(id) => {
+              // picking a theme applies ALL of it: background, palette, font.
+              // Brand-color override + manual color tweaks are reset so the click
+              // visibly changes the slide (re-enable via the brand-colors toggle).
+              setThemeId(id); setFontFamily(getTheme(id).fontFamily);
+              setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
+            }}
+            layout={effectiveLayout}
+            setLayout={(v) => { setAutoLayout(false); setLayout(v); }}
+            autoLayout={autoLayout}
+            setAutoLayout={setAutoLayout}
+            recommendedLayout={strategy.archetype}
             fontFamily={fontFamily} setFontFamily={setFontFamily}
             fontScale={fontScale} setFontScale={setFontScale}
             headingColor={headingColor ?? theme.heading} setHeadingColor={setHeadingColor}
@@ -781,16 +870,12 @@ function CarouselPreview({ post, specialty }: { post: CarouselPost; specialty: s
   );
 }
 
-type SlideCanvasProps = {
-  slideTitle: string; slideBody: string; slideIndex: number; totalSlides: number;
-  isCta: boolean; cta: string; specialty: string;
-  theme: ReturnType<typeof getTheme> & { fontFamily: string };
-  layout: SlideLayout; fontScale: number; showIcons: boolean;
-  brand: ReturnType<typeof useBrandKit>[0];
-  imageUrl?: string | null; imageLoading?: boolean;
-};
+/** Layouts with no photo-aware rendering of their own — an AI-generated slide image
+ *  still routes these through FullImageOverlayLayout. The 10 content-driven archetypes
+ *  are not in this set: they accept p.imageUrl directly (see carousel-layouts.tsx). */
+const LEGACY_PHOTO_LAYOUTS = new Set<SlideLayout>(["centered", "image-left", "full-image", "split", "modern-card"]);
 
-function SlideCanvas(p: SlideCanvasProps) {
+export function SlideCanvas(p: SlideCanvasProps) {
   const PrimaryIcon = primaryIconFor(p.specialty);
   const titleSize = 22 * p.fontScale;
   const bodySize = 14 * p.fontScale;
@@ -808,12 +893,26 @@ function SlideCanvas(p: SlideCanvasProps) {
       {p.showIcons && !p.imageUrl && (
         <ContextualBackground specialty={p.specialty} opacity={p.theme.iconOpacity} color={p.theme.heading} />
       )}
-      {p.imageUrl ? <FullImageOverlayLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+      {/* The 5 original manual-format layouts have no photo-aware treatment of their own,
+          so an AI-generated slide image still forces the dedicated overlay layout for them.
+          The 10 content-driven archetypes below accept p.imageUrl directly and render their
+          own contrast-safe treatment on top of it instead of being bypassed. */}
+      {p.imageUrl && LEGACY_PHOTO_LAYOUTS.has(p.layout) ? <FullImageOverlayLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
         : p.layout === "centered" ? <CenteredLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
         : p.layout === "image-left" ? <ImageLeftLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
         : p.layout === "full-image" ? <FullImageLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
         : p.layout === "split" ? <SplitLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
-        : <ModernCardLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />}
+        : p.layout === "modern-card" ? <ModernCardLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+        : p.layout === "hero-card" ? <HeroCard {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+        : p.layout === "icon-grid" ? <IconGrid {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+        : p.layout === "statistic-hero" ? <StatisticHero {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+        : p.layout === "comparison-split" ? <ComparisonSplit {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+        : p.layout === "process-flow" ? <ProcessFlow {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+        : p.layout === "callout-diagram" ? <CalloutDiagram {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+        : p.layout === "timeline" ? <Timeline {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+        : p.layout === "faq-card" ? <FaqCards {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+        : p.layout === "checklist" ? <Checklist {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
+        : <RadialDiagram {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />}
       <div className="absolute top-3 right-4 z-20 text-[10px] font-medium opacity-80" style={{ color: p.theme.heading }}>
         {p.slideIndex + 1} / {p.totalSlides}
       </div>
@@ -827,182 +926,10 @@ function SlideCanvas(p: SlideCanvasProps) {
   );
 }
 
-type LayoutProps = SlideCanvasProps & {
-  titleSize: number; bodySize: number;
-  PrimaryIcon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-};
-
-function BrandHeader({ p }: { p: LayoutProps }) {
-  return (
-    <div className="flex items-center gap-2 relative z-10">
-      {p.brand.logo
-        ? <img src={p.brand.logo} alt="" className="h-8 w-8 rounded-md object-cover bg-white" />
-        : <div className="h-8 w-8 rounded-md grid place-items-center" style={{ background: `${p.theme.heading}22`, color: p.theme.heading }}>
-            <p.PrimaryIcon className="h-4 w-4" />
-          </div>}
-      <p className="text-[11px] font-semibold tracking-wide truncate" style={{ color: p.theme.heading }}>{p.brand.clinicName}</p>
-    </div>
-  );
-}
-
-function BrandFooter({ p }: { p: LayoutProps }) {
-  return (
-    <div className="flex items-center gap-3 text-[9px] relative z-10 pt-2 border-t" style={{ borderColor: `${p.theme.heading}33`, color: p.theme.text }}>
-      <span className="inline-flex items-center gap-1 truncate"><Globe className="h-2.5 w-2.5" /> {p.brand.website}</span>
-      <span className="inline-flex items-center gap-1 truncate"><Phone className="h-2.5 w-2.5" /> {p.brand.phone}</span>
-    </div>
-  );
-}
-
-function CtaPill({ p }: { p: LayoutProps }) {
-  if (!p.isCta) return null;
-  return <div className="inline-block px-4 py-2 rounded-full text-xs font-semibold mt-3" style={{ background: p.theme.accent, color: "#fff" }}>{p.cta}</div>;
-}
-
-function CenteredLayout(p: LayoutProps) {
-  return (
-    <div className="absolute inset-0 z-10 p-6 flex flex-col">
-      <BrandHeader p={p} />
-      <div className="flex-1 grid place-items-center text-center px-2">
-        <div>
-          <div className="h-10 w-10 rounded-full grid place-items-center mx-auto mb-3" style={{ background: `${p.theme.accent}33`, color: p.theme.accent }}>
-            <p.PrimaryIcon className="h-5 w-5" />
-          </div>
-          <h3 className="font-bold leading-tight" style={{ color: p.theme.heading, fontSize: p.titleSize }}>{p.slideTitle}</h3>
-          <p className="mt-3 leading-relaxed" style={{ color: p.theme.text, fontSize: p.bodySize }}>{p.slideBody}</p>
-          <CtaPill p={p} />
-        </div>
-      </div>
-      <BrandFooter p={p} />
-    </div>
-  );
-}
-
-function ImageLeftLayout(p: LayoutProps) {
-  return (
-    <div className="absolute inset-0 z-10 p-5 flex flex-col">
-      <BrandHeader p={p} />
-      <div className="flex-1 grid grid-cols-[40%_1fr] gap-3 mt-3">
-        <ImagePlaceholder p={p} />
-        <div className="flex flex-col justify-center">
-          <h3 className="font-bold leading-tight" style={{ color: p.theme.heading, fontSize: p.titleSize * 0.85 }}>{p.slideTitle}</h3>
-          <p className="mt-2 leading-relaxed" style={{ color: p.theme.text, fontSize: p.bodySize * 0.95 }}>{p.slideBody}</p>
-          <CtaPill p={p} />
-        </div>
-      </div>
-      <BrandFooter p={p} />
-    </div>
-  );
-}
-
-function FullImageLayout(p: LayoutProps) {
-  const photo = p.brand.coverPhoto || p.brand.clinicPhoto;
-  return (
-    <>
-      {photo ? <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover" /> : <ImagePlaceholder p={p} full />}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
-      <div className="absolute inset-0 z-10 p-6 flex flex-col text-white">
-        <BrandHeader p={{ ...p, theme: { ...p.theme, heading: "#fff", text: "#fff" } }} />
-        <div className="flex-1" />
-        <div>
-          <h3 className="font-bold leading-tight" style={{ fontSize: p.titleSize }}>{p.slideTitle}</h3>
-          <p className="mt-2 opacity-90" style={{ fontSize: p.bodySize }}>{p.slideBody}</p>
-          <CtaPill p={p} />
-        </div>
-        <BrandFooter p={{ ...p, theme: { ...p.theme, heading: "#fff", text: "#fff" } }} />
-      </div>
-    </>
-  );
-}
-
-function SplitLayout(p: LayoutProps) {
-  return (
-    <div className="absolute inset-0 z-10 flex flex-col">
-      <div className="h-[42%] relative p-5 flex flex-col justify-between" style={{ background: p.theme.accent }}>
-        <BrandHeader p={{ ...p, theme: { ...p.theme, heading: "#fff" } }} />
-        <h3 className="font-bold leading-tight text-white" style={{ fontSize: p.titleSize }}>{p.slideTitle}</h3>
-      </div>
-      <div className="flex-1 p-5 flex flex-col bg-white/95 backdrop-blur">
-        <p className="leading-relaxed text-gray-700" style={{ fontSize: p.bodySize }}>{p.slideBody}</p>
-        <CtaPill p={p} />
-        <div className="mt-auto">
-          <BrandFooter p={{ ...p, theme: { ...p.theme, heading: "#222", text: "#555" } }} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ModernCardLayout(p: LayoutProps) {
-  return (
-    <div className="absolute inset-0 z-10 p-5 flex flex-col">
-      <BrandHeader p={p} />
-      <div className="flex-1 grid place-items-center">
-        <div className="w-full rounded-xl p-5 backdrop-blur shadow-lg border" style={{ background: "rgba(255,255,255,0.92)", borderColor: `${p.theme.accent}55` }}>
-          <div className="h-9 w-9 rounded-lg grid place-items-center mb-3" style={{ background: `${p.theme.accent}22`, color: p.theme.accent }}>
-            <p.PrimaryIcon className="h-5 w-5" />
-          </div>
-          <h3 className="font-bold leading-tight text-gray-900" style={{ fontSize: p.titleSize * 0.9 }}>{p.slideTitle}</h3>
-          <p className="mt-2 leading-relaxed text-gray-600" style={{ fontSize: p.bodySize * 0.95 }}>{p.slideBody}</p>
-          <CtaPill p={p} />
-        </div>
-      </div>
-      <BrandFooter p={p} />
-    </div>
-  );
-}
-
-function FullImageOverlayLayout(p: LayoutProps) {
-  return (
-    <div className="absolute inset-0 z-10 p-6 flex flex-col text-white">
-      <BrandHeader p={{ ...p, theme: { ...p.theme, heading: "#ffffff", text: "#ffffff" } }} />
-      <div className="flex-1" />
-      <div className="relative">
-        <h3 className="font-bold leading-tight drop-shadow" style={{ fontSize: p.titleSize }}>{p.slideTitle}</h3>
-        <p className="mt-2 opacity-95" style={{ fontSize: p.bodySize }}>{p.slideBody}</p>
-        <CtaPill p={p} />
-      </div>
-      <div className="mt-4">
-        <BrandFooter p={{ ...p, theme: { ...p.theme, heading: "#ffffff", text: "#ffffff" } }} />
-      </div>
-    </div>
-  );
-}
-
-function ImagePlaceholder({ p, full }: { p: LayoutProps; full?: boolean }) {
-  const photo = p.brand.clinicPhoto || p.brand.doctorPhoto || p.brand.coverPhoto;
-  if (photo) return <img src={photo} alt="" className={`${full ? "absolute inset-0 w-full h-full" : "w-full h-full"} object-cover rounded-lg`} />;
-  return (
-    <div className={`${full ? "absolute inset-0" : "h-full w-full"} rounded-lg grid place-items-center text-center`}
-      style={{ background: `repeating-linear-gradient(45deg, ${p.theme.accent}11 0 10px, ${p.theme.accent}22 10px 20px)`, color: p.theme.heading }}>
-      <div className="flex flex-col items-center gap-1 opacity-80">
-        <ImagePlus className="h-6 w-6" />
-        <span className="text-[9px] font-medium tracking-wide uppercase">AI image area</span>
-      </div>
-    </div>
-  );
-}
-
-function ContextualBackground({ specialty, opacity, color }: { specialty: string; opacity: number; color: string }) {
-  const Icons = iconsFor(specialty);
-  const positions = [
-    { top: "8%", left: "10%", size: 56, rot: -10 }, { top: "20%", left: "78%", size: 38, rot: 18 },
-    { top: "45%", left: "5%", size: 30, rot: 6 }, { top: "60%", left: "85%", size: 64, rot: -22 },
-    { top: "78%", left: "20%", size: 42, rot: 12 }, { top: "30%", left: "45%", size: 90, rot: -6 },
-    { top: "85%", left: "60%", size: 34, rot: 24 },
-  ];
-  return (
-    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden" aria-hidden>
-      {positions.map((pos, i) => {
-        const Icon = Icons[i % Icons.length];
-        return <Icon key={i} style={{ position: "absolute", top: pos.top, left: pos.left, width: pos.size, height: pos.size, transform: `rotate(${pos.rot}deg)`, color, opacity }} />;
-      })}
-    </div>
-  );
-}
 
 function StudioControls(props: {
   themeId: string; setThemeId: (v: string) => void; layout: SlideLayout; setLayout: (v: SlideLayout) => void;
+  autoLayout: boolean; setAutoLayout: (v: boolean) => void; recommendedLayout: SlideLayout;
   fontFamily: string; setFontFamily: (v: string) => void; fontScale: number; setFontScale: (v: number) => void;
   headingColor: string; setHeadingColor: (v: string | null) => void; textColor: string; setTextColor: (v: string | null) => void;
   accentColor: string; setAccentColor: (v: string | null) => void; useBrandColors: boolean; setUseBrandColors: (v: boolean) => void;
@@ -1027,11 +954,24 @@ function StudioControls(props: {
         </div>
       </div>
       <div>
-        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Layout</Label>
+        <div className="flex items-center justify-between">
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Layout</Label>
+          {props.autoLayout && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[color:var(--teal)]/15 text-[color:var(--teal)]">
+              Recommended
+            </span>
+          )}
+        </div>
         <Select value={props.layout} onValueChange={(v) => props.setLayout(v as SlideLayout)}>
           <SelectTrigger className="mt-1.5 h-9"><SelectValue /></SelectTrigger>
           <SelectContent>{slideLayouts.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}</SelectContent>
         </Select>
+        {!props.autoLayout && (
+          <button type="button" onClick={() => props.setAutoLayout(true)}
+            className="mt-1.5 text-[11px] text-[color:var(--teal)] hover:underline">
+            Reset to recommended ({slideLayouts.find((l) => l.id === props.recommendedLayout)?.name})
+          </button>
+        )}
       </div>
       <div>
         <Label className="text-xs uppercase tracking-wide text-muted-foreground">Font</Label>
@@ -1076,26 +1016,55 @@ function MiniColor({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-/* ---- Story ---- */
+/* ---- Story ----
+   Renders the story CREATIVE only, at 9:16 — no phone frame, no fake story
+   progress bars, no account row. What you see is exactly what downloads. */
 function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string }) {
   const [brand] = useBrandKit();
   const ai = useAiImage();
+  const storyRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
   const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
   const c2 = brand.secondaryColor || post.visual.colors[1] || "#1f4e79";
   const c3 = post.visual.colors[2] || "#0a3d62";
   const aiOrPhoto = ai.url || brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
-  const handle = (brand.clinicName || `${specialty.toLowerCase()}.clinic`).slice(0, 28);
   const fullText = `${post.headline}\n\n${post.message}\n\n${post.cta}`;
+
+  async function downloadStory() {
+    if (!storyRef.current) return;
+    setDownloading(true);
+    try {
+      const { toPng } = await import("html-to-image");
+      const png = await toPng(storyRef.current, { canvasWidth: 1080, canvasHeight: 1920, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+      const link = document.createElement("a");
+      link.download = `medipost-story-${Date.now()}.png`;
+      link.href = png;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Story downloaded (1080×1920)");
+    } catch (e) {
+      console.error("[StoryPreview] download failed:", e);
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
         <PreviewToolbar title="Story (9:16) Preview" onCopy={() => copyText(fullText, "Story copied")} />
-        <div className="flex justify-end -mt-1">
+        <div className="flex flex-wrap justify-end gap-2 -mt-1">
           <AiImageButton loading={ai.loading} hasImage={!!ai.url}
             onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
+          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" disabled={downloading || ai.loading} onClick={downloadStory}>
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+            Download story
+          </Button>
         </div>
-        <div className="mx-auto rounded-3xl overflow-hidden shadow-lg border-[6px] border-foreground/80" style={{ width: 270, height: 480 }}>
-          <div className="relative w-full h-full flex flex-col p-5 text-white" style={{ background: `linear-gradient(160deg, ${c1}, ${c2} 60%, ${c3})` }}>
+        <div className="mx-auto rounded-xl overflow-hidden shadow-lg border border-border" style={{ width: 270 }}>
+          <div ref={storyRef} className="relative w-full flex flex-col p-5 text-white" style={{ aspectRatio: "9 / 16", background: `linear-gradient(160deg, ${c1}, ${c2} 60%, ${c3})` }}>
             {ai.loading && <ImageLoadingOverlay />}
             {aiOrPhoto && (
               <>
@@ -1105,23 +1074,17 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
             )}
             <ContextualBackground specialty={specialty} opacity={0.08} color="#ffffff" />
             <div className="relative z-10 flex flex-col h-full">
-              <div className="flex gap-1">
-                <span className="h-0.5 flex-1 bg-white rounded" />
-                <span className="h-0.5 flex-1 bg-white/40 rounded" />
-                <span className="h-0.5 flex-1 bg-white/40 rounded" />
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                {brand.logo
-                  ? <img src={brand.logo} alt="" className="h-7 w-7 rounded-full object-cover bg-white" />
-                  : <div className="h-7 w-7 rounded-full bg-white/30 grid place-items-center text-[10px] font-bold">{(brand.clinicName || specialty).slice(0, 2).toUpperCase()}</div>}
-                <p className="text-xs font-medium truncate">{handle}</p>
-              </div>
               <div className="flex-1 grid place-items-center text-center">
                 <div>
                   <p className="text-2xl font-bold leading-tight">{post.headline}</p>
                   <p className="text-sm mt-3 opacity-95">{post.message}</p>
                 </div>
               </div>
+              {(brand.clinicName || brand.phone) && (
+                <p className="text-center text-[10px] tracking-wide opacity-85 mb-2">
+                  {[brand.clinicName, brand.phone].filter(Boolean).join(" • ")}
+                </p>
+              )}
               <div className="rounded-full bg-white text-sm font-semibold py-2.5 text-center shadow" style={{ color: c1 }}>{post.cta}</div>
             </div>
           </div>
@@ -1185,7 +1148,7 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
   const fullText = `Theme: ${plan.theme}\nObjective: ${plan.objective}\n\nPost ideas:\n` +
     plan.postIdeas.map((p, i) => `${i + 1}. ${p}`).join("\n") + `\n\nWeekly schedule:\n` +
     plan.weeklySchedule.map((d) => `${d.day} · ${d.format} — ${d.idea}`).join("\n") + `\n\nCTAs:\n` +
-    plan.ctaSuggestions.map((c) => `• ${c}`).join("\n");
+    plan.ctaSuggestions.map((c) => `⬢ ${c}`).join("\n");
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-6">
@@ -1231,7 +1194,7 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
   );
 }
 
-/* ---- Festive ── PostCard + Download ---- */
+/* ---- Festive — PostCard + Download ---- */
 function FestivePreview({ post, specialty, rowId }: { post: FestivePost; specialty: string; rowId?: string | null }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
