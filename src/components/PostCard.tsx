@@ -9,20 +9,11 @@ export interface PostCardProps {
   imageUrl?: string;
   title: string;
   bodyText: string;
+  /** deprecated: hashtags are no longer rendered on the creative (they belong in the caption, not the image) */
   hashtags?: string;
   isTrial?: boolean;
   /** Max characters before body text is truncated. Default 130. Pass Infinity to show all. */
   maxBodyLength?: number;
-}
-
-function getInitials(name: string): string {
-  return name
-    .replace(/^Dr\.?\s*/i, "")
-    .split(" ")
-    .filter((w) => !["MDS", "MBBS", "MD", "BDS", "MS", "DDS"].includes(w.toUpperCase()))
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "")
-    .join("");
 }
 
 // Pool of diverse, high-quality healthcare Unsplash images (free, no API key).
@@ -60,13 +51,11 @@ const PostCard = forwardRef<HTMLDivElement, PostCardProps>(
       imageUrl,
       title,
       bodyText,
-      hashtags,
       isTrial = true,
       maxBodyLength = 130,
     },
     ref
   ) => {
-    const initials = getInitials(doctorName);
     // Stable fallback per post (hashed from title), so different posts look different
     const fallbackImage = pickFallback(title + clinicName);
 
@@ -83,61 +72,6 @@ const PostCard = forwardRef<HTMLDivElement, PostCardProps>(
           flexShrink: 0,
         }}
       >
-        {/* ── Header ── */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            padding: "12px 16px",
-            background: "#ffffff",
-            gap: 12,
-            borderBottom: "1px solid #F3F4F6",
-          }}
-        >
-          {/* Avatar */}
-          <div
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: "50%",
-              background: "#2563EB",
-              color: "#ffffff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 17,
-              fontWeight: 700,
-              flexShrink: 0,
-              letterSpacing: 0.5,
-            }}
-          >
-            {initials}
-          </div>
-
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 15,
-                color: "#111827",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {doctorName}
-            </div>
-            <div style={{ fontSize: 12, color: "#028090", marginTop: 1 }}>
-              {specialty || clinicName}
-            </div>
-          </div>
-
-          {/* Three dots */}
-          <div style={{ color: "#9CA3AF", fontSize: 22, lineHeight: 1, letterSpacing: 2 }}>
-            ···
-          </div>
-        </div>
-
         {/* ── Image area ── */}
         <div style={{ position: "relative", width: "100%", height: 320 }}>
           {/* Background image */}
@@ -276,6 +210,7 @@ const PostCard = forwardRef<HTMLDivElement, PostCardProps>(
         >
           <div style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>
             {doctorName}
+            {specialty ? <span style={{ fontWeight: 400, color: "#6B7280" }}> · {specialty}</span> : null}
           </div>
           {(phone || address) && (
             <div style={{ fontSize: 12, color: "#028090", marginTop: 2 }}>
@@ -303,19 +238,6 @@ const PostCard = forwardRef<HTMLDivElement, PostCardProps>(
           </div>
         )}
 
-        {/* Hashtags (below card, optional) */}
-        {hashtags && (
-          <div
-            style={{
-              padding: "10px 16px 14px",
-              fontSize: 12,
-              color: "#028090",
-              lineHeight: 1.6,
-            }}
-          >
-            {hashtags}
-          </div>
-        )}
       </div>
     );
   }

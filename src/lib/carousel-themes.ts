@@ -102,7 +102,17 @@ export type SlideLayout =
   | "image-left"
   | "full-image"
   | "split"
-  | "modern-card";
+  | "modern-card"
+  | "hero-card"
+  | "icon-grid"
+  | "statistic-hero"
+  | "comparison-split"
+  | "process-flow"
+  | "callout-diagram"
+  | "timeline"
+  | "faq-card"
+  | "checklist"
+  | "radial-diagram";
 
 export const slideLayouts: { id: SlideLayout; name: string; description: string }[] = [
   { id: "centered", name: "Centered Content", description: "Headline + body, centered" },
@@ -110,6 +120,16 @@ export const slideLayouts: { id: SlideLayout; name: string; description: string 
   { id: "full-image", name: "Full Background Image", description: "Photo backdrop, text overlay" },
   { id: "split", name: "Split Layout", description: "Color band + content panel" },
   { id: "modern-card", name: "Modern Card", description: "Floating glass card on bg" },
+  { id: "hero-card", name: "Hero Card", description: "One dominant illustration + message" },
+  { id: "icon-grid", name: "Icon Grid", description: "3-6 items with icons, grid layout" },
+  { id: "statistic-hero", name: "Statistic Hero", description: "One large stat, minimal text" },
+  { id: "comparison-split", name: "Comparison Split", description: "Two-column myth vs fact" },
+  { id: "process-flow", name: "Process Flow", description: "Numbered sequential steps" },
+  { id: "callout-diagram", name: "Callout Diagram", description: "Anatomical / warning callouts" },
+  { id: "timeline", name: "Timeline", description: "Staged progression markers" },
+  { id: "faq-card", name: "FAQ Card", description: "Question then answer" },
+  { id: "checklist", name: "Checklist", description: "Vertical list with check markers" },
+  { id: "radial-diagram", name: "Radial Diagram", description: "Central illustration with radiating labels" },
 ];
 
 export const fontFamilies = [

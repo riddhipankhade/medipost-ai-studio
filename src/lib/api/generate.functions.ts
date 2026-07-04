@@ -215,7 +215,7 @@ const InputSchema = z.object({
       "Community-Focused",
     ])
     .optional(),
-  slideCount: z.number().int().min(5).max(10).optional(),
+  slideCount: z.number().int().min(2).max(10).optional(),
   brand:      BrandSchema,
 });
 
@@ -244,7 +244,10 @@ export type SinglePost = {
 export type CarouselPost = {
   kind:     "carousel";
   title:    string;
-  slides:   { title: string; content: string; imagePrompt?: string }[];
+  // `relationship` is an optional model-provided hint (e.g. "statistic", "comparison").
+  // It is never required — src/lib/visual-strategy.ts classifies layout deterministically
+  // from title/content and only falls back to this hint as a last resort.
+  slides:   { title: string; content: string; imagePrompt?: string; relationship?: string }[];
   cta:      string;
   hashtags: string[];
   visual:   Visual;
@@ -454,12 +457,13 @@ ${structure}
 
 - Each slide title 3-7 words, body 20-40 words.
 - For each slide write an "imagePrompt": 40-80 word AI image prompt (real healthcare scene, no solid colors, no text-on-background). End each with "no text, no watermark, Instagram-ready, premium healthcare brand aesthetic".
+- For each slide also set "relationship" to whichever best describes that slide's content structure: single | list | checklist | sequence | timeline | cause-effect | comparison | hierarchy | statistic | faq. This is a hint only — best effort.
 
 Return STRICT JSON:
 {
   "title": "short carousel title",
   "slides": [
-    { "title": "Slide 1 title", "content": "Slide 1 body", "imagePrompt": "..." },
+    { "title": "Slide 1 title", "content": "Slide 1 body", "imagePrompt": "...", "relationship": "..." },
     ... exactly ${n} slides
   ],
   "cta": "final CTA line",
@@ -606,9 +610,10 @@ function normalize(kind: GenerateInput["kind"], raw: any): GenerateOutput {
         title: String(raw?.title ?? ""),
         slides: Array.isArray(raw?.slides)
           ? raw.slides.map((s: any) => ({
-              title:       String(s?.title ?? ""),
-              content:     String(s?.content ?? ""),
-              imagePrompt: s?.imagePrompt ? String(s.imagePrompt) : undefined,
+              title:        String(s?.title ?? ""),
+              content:      String(s?.content ?? ""),
+              imagePrompt:  s?.imagePrompt ? String(s.imagePrompt) : undefined,
+              relationship: s?.relationship ? String(s.relationship) : undefined,
             }))
           : [],
         cta:      String(raw?.cta ?? ""),
