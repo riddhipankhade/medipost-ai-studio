@@ -33,10 +33,13 @@ export function PhotoPattern({ icon: Icon = Stethoscope, className }: PhotoPatte
 
 interface GeneratedPostPreviewProps {
   clinic?: string;
-  heading: string;
-  body: string;
+  heading?: string;
+  body?: string;
   hashtags?: string;
   icon?: LucideIcon;
+  /** Real generated creative — replaces the mocked photo + caption card entirely (the creative carries its own text). */
+  image?: string;
+  imageAlt?: string;
   className?: string;
 }
 
@@ -47,6 +50,8 @@ export function GeneratedPostPreview({
   body,
   hashtags,
   icon,
+  image,
+  imageAlt,
   className,
 }: GeneratedPostPreviewProps) {
   return (
@@ -57,18 +62,24 @@ export function GeneratedPostPreview({
           <Copy className="h-3 w-3" /> Copy
         </span>
       </div>
-      <div className="relative aspect-[4/5] rounded-xl overflow-hidden">
-        <PhotoPattern icon={icon} />
-        <div className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-background/90 backdrop-blur px-2.5 py-1 text-[11px] font-medium shadow-sm">
-          <span className="h-4 w-4 rounded-full bg-primary shrink-0" />
-          {clinic}
+      {image ? (
+        <div className="rounded-xl overflow-hidden border border-border/60 shadow-sm">
+          <img src={image} alt={imageAlt ?? "Generated creative"} loading="lazy" decoding="async" className="block w-full h-auto" />
         </div>
-        <div className="absolute inset-x-3 bottom-3 rounded-lg bg-background/95 backdrop-blur p-3.5 shadow-md">
-          <p className="font-semibold text-sm leading-snug text-foreground">{heading}</p>
-          <div className="h-px bg-border my-2" />
-          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{body}</p>
+      ) : (
+        <div className="relative aspect-[4/5] rounded-xl overflow-hidden">
+          <PhotoPattern icon={icon} />
+          <div className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-background/90 backdrop-blur px-2.5 py-1 text-[11px] font-medium shadow-sm">
+            <span className="h-4 w-4 rounded-full bg-primary shrink-0" />
+            {clinic}
+          </div>
+          <div className="absolute inset-x-3 bottom-3 rounded-lg bg-background/95 backdrop-blur p-3.5 shadow-md">
+            <p className="font-semibold text-sm leading-snug text-foreground">{heading}</p>
+            <div className="h-px bg-border my-2" />
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{body}</p>
+          </div>
         </div>
-      </div>
+      )}
       {hashtags && <p className="text-xs text-primary/80 mt-3 leading-relaxed">{hashtags}</p>}
     </div>
   );

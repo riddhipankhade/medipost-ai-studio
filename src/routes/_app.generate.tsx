@@ -120,6 +120,24 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   sparkles: Heart,
 };
 
+const BRIEF_STORAGE_KEY = "medipost.studio-brief.v1";
+
+type PersistedBrief = {
+  kind: WorkflowKind;
+  category: ContentCategory;
+  form: Omit<GenerateInput, "kind">;
+};
+
+function readPersistedBrief(): PersistedBrief | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(BRIEF_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as PersistedBrief) : null;
+  } catch {
+    return null;
+  }
+}
+
 function GeneratePage() {
   const callGenerate = useServerFn(generateContent);
   const [brand, setBrand] = useBrandKit();
@@ -137,6 +155,35 @@ function GeneratePage() {
     hasClinicPhoto: false,
   });
 
+  // Whether a brief was already saved locally when the Studio first mounted — if so,
+  // the signed-up specialty must never override what the user already chose/typed.
+  const [hadPersistedBrief] = useState(() => readPersistedBrief() !== null);
+  const specialtyAppliedRef = useRef(false);
+
+  const [kind, setKind] = useState<WorkflowKind>(() => readPersistedBrief()?.kind ?? "single");
+  const [category, setCategory] = useState<ContentCategory>(() => {
+    const persisted = readPersistedBrief();
+    return persisted?.category ?? defaultCategoryFor(persisted?.kind ?? "single");
+  });
+  const [form, setForm] = useState<Omit<GenerateInput, "kind">>(() => readPersistedBrief()?.form ?? {
+    category: "educational",
+    specialty: "Dentist",
+    topic: "Daily oral hygiene habits",
+    tone: "Friendly",
+    audience: "Patients",
+    festival: "Diwali",
+    customInstructions: "",
+    festiveStyle: "Warm & Friendly",
+    slideCount: 7,
+  });
+
+  // Re-opening Content Studio from anywhere else in the app should show whatever
+  // brief the user last entered or picked, instead of resetting to the defaults.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(BRIEF_STORAGE_KEY, JSON.stringify({ kind, category, form }));
+  }, [kind, category, form]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -147,13 +194,26 @@ function GeneratePage() {
       const { data } = await supabase
         .from("brand_kits")
         .select(
-          "clinic_name, doctor_name, logo_url, doctor_photo_url, " +
+          "clinic_name, doctor_name, specialty, logo_url, doctor_photo_url, " +
           "clinic_photo_url, brand_colors, phone, website"
         )
         .eq("user_id", user.id)
         .single();
 
-      if (!data || cancelled) return;
+      if (cancelled) return;
+
+      // Default the specialty to whatever the brand kit has saved, falling back to
+      // what was picked at signup — only the first time, and never over a brief
+      // the user already saved locally.
+      const signupSpecialty = (user.user_metadata?.specialty as string) ?? "";
+      const kitSpecialty = data ? ((data as unknown as Record<string, unknown>).specialty as string) ?? "" : "";
+      const specialty = kitSpecialty || signupSpecialty;
+      if (specialty && !hadPersistedBrief && !specialtyAppliedRef.current) {
+        specialtyAppliedRef.current = true;
+        setForm((f) => ({ ...f, specialty }));
+      }
+
+      if (!data) return;
       const d = data as unknown as Record<string, unknown>;
       const colors = ((d.brand_colors ?? {}) as Record<string, string>);
 
@@ -202,20 +262,6 @@ function GeneratePage() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const [kind, setKind] = useState<WorkflowKind>("single");
-  const [category, setCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
-  const [form, setForm] = useState<Omit<GenerateInput, "kind">>({
-    category: "educational",
-    specialty: "Dentist",
-    topic: "Daily oral hygiene habits",
-    tone: "Friendly",
-    audience: "Patients",
-    festival: "Diwali",
-    customInstructions: "",
-    festiveStyle: "Warm & Friendly",
-    slideCount: 7,
-  });
 
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState(0);
