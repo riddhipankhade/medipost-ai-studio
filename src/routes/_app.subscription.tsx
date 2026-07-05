@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import type { ComponentType } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Loader2, Zap } from "lucide-react";
+import { Check, Loader2, Zap, Crown, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/subscription")({
   head: () => ({ meta: [{ title: "Subscription — Medipost AI" }] }),
@@ -40,6 +42,7 @@ const UPGRADE_PLANS = [
   {
     key:       "starter",
     name:      "Starter",
+    icon:      Zap,
     price:     "₹499",
     gens:      "50 generations / month",
     highlight: false,
@@ -48,6 +51,7 @@ const UPGRADE_PLANS = [
   {
     key:       "pro",
     name:      "Pro",
+    icon:      Crown,
     price:     "₹1,999",
     gens:      "300 generations / month",
     highlight: true,
@@ -61,6 +65,7 @@ const UPGRADE_PLANS = [
   {
     key:       "clinic",
     name:      "Clinic",
+    icon:      Building2,
     price:     "₹6,999",
     gens:      "Unlimited generations",
     highlight: false,
@@ -71,7 +76,15 @@ const UPGRADE_PLANS = [
       "Dedicated success manager",
     ],
   },
-];
+] satisfies {
+  key: string;
+  name: string;
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+  price: string;
+  gens: string;
+  highlight: boolean;
+  features: string[];
+}[];
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -230,47 +243,68 @@ function Subscription() {
         <div className="grid gap-5 md:grid-cols-3">
           {UPGRADE_PLANS.map((p) => {
             const isCurrent = currentPlanKey === p.key;
+            const Icon = p.icon;
             return (
-              <Card
-                key={p.key}
-                className={`relative border-border/60 ${
-                  p.highlight ? "ring-2 ring-[color:var(--teal)]" : ""
-                }`}
-              >
+              <div key={p.key} className="relative">
                 {p.highlight && (
-                  <Badge className="absolute -top-3 left-5 bg-[color:var(--teal)] text-white hover:bg-[color:var(--teal)]">
+                  <div className="absolute -inset-1.5 rounded-[1.5rem] bg-gradient-to-r from-[color:var(--teal)]/50 via-[color:var(--teal)]/20 to-[color:var(--teal)]/50 blur-xl opacity-60 animate-card-glow -z-10" />
+                )}
+                {p.highlight && (
+                  <Badge className="absolute -top-3 left-5 z-10 overflow-hidden bg-[color:var(--teal)] text-white hover:bg-[color:var(--teal)]">
                     Most popular
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer-sweep bg-gradient-to-r from-transparent via-white/60 to-transparent"
+                    />
                   </Badge>
                 )}
-                <CardContent className="p-6 space-y-5">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">{p.name}</p>
-                    <div className="flex items-baseline gap-1 mt-2">
-                      <span className="text-3xl font-semibold">{p.price}</span>
-                      <span className="text-sm text-muted-foreground">/month</span>
+                <Card
+                  className={cn(
+                    "relative border-border/60 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-lg",
+                    p.highlight && "ring-2 ring-[color:var(--teal)] shadow-lg",
+                  )}
+                >
+                  <CardContent className="p-6 space-y-5">
+                    <div
+                      className={cn(
+                        "h-10 w-10 rounded-xl grid place-items-center",
+                        p.highlight ? "bg-[color:var(--teal)] text-white" : "bg-[color:var(--teal)]/10 text-[color:var(--teal)]",
+                      )}
+                    >
+                      <Icon className="h-5 w-5" strokeWidth={1.9} />
                     </div>
-                    <p className="text-sm text-[color:var(--teal)] mt-1">{p.gens}</p>
-                  </div>
-                  <ul className="space-y-2 text-sm">
-                    {p.features.map((f) => (
-                      <li key={f} className="flex gap-2">
-                        <Check className="h-4 w-4 text-[color:var(--teal)] mt-0.5 flex-shrink-0" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    className="w-full"
-                    variant={isCurrent ? "outline" : "default"}
-                    disabled={isCurrent}
-                    onClick={() =>
-                      toast.info(`Payment coming soon — contact us to upgrade to ${p.name}`)
-                    }
-                  >
-                    {isCurrent ? "Current plan" : `Upgrade to ${p.name}`}
-                  </Button>
-                </CardContent>
-              </Card>
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">{p.name}</p>
+                      <div className="flex items-baseline gap-1 mt-2">
+                        <span className="text-3xl font-semibold">{p.price}</span>
+                        <span className="text-sm text-muted-foreground">/month</span>
+                      </div>
+                      <p className="text-sm text-[color:var(--teal)] mt-1">{p.gens}</p>
+                    </div>
+                    <ul className="space-y-2 text-sm">
+                      {p.features.map((f) => (
+                        <li key={f} className="flex gap-2">
+                          <Check className="h-4 w-4 text-[color:var(--teal)] mt-0.5 flex-shrink-0" />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      className={cn(
+                        "w-full transition-transform duration-200",
+                        p.highlight && !isCurrent && "shadow-[0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.6)] hover:shadow-[0_14px_36px_-8px_oklch(0.58_0.1_199_/_0.7)]",
+                      )}
+                      variant={isCurrent ? "outline" : "default"}
+                      disabled={isCurrent}
+                      onClick={() =>
+                        toast.info(`Payment coming soon — contact us to upgrade to ${p.name}`)
+                      }
+                    >
+                      {isCurrent ? "Current plan" : `Upgrade to ${p.name}`}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
             );
           })}
         </div>
