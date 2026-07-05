@@ -11,7 +11,9 @@ import { ContentStudioShowcase } from "@/components/landing/content-studio-showc
 import { GeneratedPostPreview } from "@/components/landing/generated-post-preview";
 import { AnimatedNumber } from "@/components/landing/animated-number";
 import { LandingNav } from "@/components/landing/landing-nav";
-import { Sparkles, Check, Palette, History } from "lucide-react";
+import { Sparkles, Check, Palette, History, Zap, Crown, Building2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { SpotlightCard } from "@/components/landing/spotlight-card";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -183,12 +185,29 @@ function Landing() {
         <div className="max-w-6xl mx-auto px-6">
           <Reveal className="text-center max-w-2xl mx-auto mb-14">
             <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Simple, doctor-friendly pricing</h2>
-            <p className="text-muted-foreground mt-3 leading-relaxed">Start small. Upgrade when your practice grows.</p>
+            <p className="text-muted-foreground mt-3 leading-relaxed">Every new account starts free. Upgrade when your practice grows.</p>
           </Reveal>
-          <RevealGroup className="grid md:grid-cols-3 gap-5 items-start">
-            <RevealItem direction="scale"><Plan name="Starter" price={499} gens="50 generations / month" features={["All content types", "Copy & save", "Email support"]} /></RevealItem>
-            <RevealItem direction="scale"><Plan name="Pro" price={1999} gens="300 generations / month" highlight features={["Everything in Starter", "Priority generation", "Content history & search", "Brand tone presets"]} /></RevealItem>
-            <RevealItem direction="scale"><Plan name="Clinic" price={6999} gens="Unlimited generations" features={["Everything in Pro", "Up to 10 doctor seats", "Team library", "Dedicated success manager"]} /></RevealItem>
+          <RevealGroup className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 items-start">
+            <RevealItem direction="scale">
+              <Plan
+                name="Free Trial"
+                icon={Sparkles}
+                price={0}
+                gens="10 generations / month"
+                badge="Included free"
+                cta="Get started free"
+                features={["Auto-applied on signup", "No card required", "All content types"]}
+              />
+            </RevealItem>
+            <RevealItem direction="scale">
+              <Plan name="Starter" icon={Zap} price={499} gens="50 generations / month" features={["All content types", "Copy & save", "Email support"]} />
+            </RevealItem>
+            <RevealItem direction="scale">
+              <Plan name="Pro" icon={Crown} price={1999} gens="300 generations / month" badge="Most popular" highlight features={["Everything in Starter", "Priority generation", "Content history & search", "Brand tone presets"]} />
+            </RevealItem>
+            <RevealItem direction="scale">
+              <Plan name="Clinic" icon={Building2} price={6999} gens="Unlimited generations" features={["Everything in Pro", "Up to 10 doctor seats", "Team library", "Dedicated success manager"]} />
+            </RevealItem>
           </RevealGroup>
         </div>
       </section>
@@ -280,43 +299,80 @@ function cnOrder(textFirst: boolean) {
 
 function Plan({
   name,
+  icon: Icon,
   price,
   gens,
   features,
   highlight,
+  badge,
+  cta,
 }: {
   name: string;
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   price: number;
   gens: string;
   features: string[];
   highlight?: boolean;
+  badge?: string;
+  cta?: string;
 }) {
   return (
-    <div
-      className={`relative rounded-2xl border bg-card p-7 transition-shadow duration-200 ${
-        highlight ? "border-primary/30 shadow-lg ring-1 ring-primary/15" : "border-border/70 shadow-sm hover:shadow-md"
-      }`}
-    >
-      {highlight && <Badge className="absolute -top-3 left-6 bg-primary text-primary-foreground border-transparent">Most popular</Badge>}
-      <p className="text-sm font-medium text-muted-foreground">{name}</p>
-      <div className="flex items-baseline gap-1 mt-2">
-        <span className="text-3xl font-semibold tracking-tight">
-          <AnimatedNumber value={price} prefix="₹" />
-        </span>
-        <span className="text-sm text-muted-foreground">/month</span>
-      </div>
-      <p className="text-sm text-primary mt-1.5 font-medium">{gens}</p>
-      <ul className="space-y-2.5 text-sm mt-6">
-        {features.map((f) => (
-          <li key={f} className="flex gap-2.5">
-            <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-            <span className="text-foreground/90">{f}</span>
-          </li>
-        ))}
-      </ul>
-      <Button asChild className="w-full mt-7" variant={highlight ? "default" : "outline"}>
-        <Link to="/register">Choose {name}</Link>
-      </Button>
+    <div className="relative">
+      {highlight && (
+        <div className="absolute -inset-1.5 rounded-[1.5rem] bg-gradient-to-r from-primary/50 via-primary/20 to-primary/50 blur-xl opacity-60 animate-card-glow -z-10" />
+      )}
+      {badge && (
+        <Badge
+          className={cn(
+            "absolute -top-3 left-6 z-10 overflow-hidden border-transparent",
+            highlight ? "bg-primary text-primary-foreground shadow-[0_2px_12px_-2px_oklch(0.58_0.1_199_/_0.6)]" : "bg-success/10 text-success border-success/20",
+          )}
+        >
+          {badge}
+          {highlight && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer-sweep bg-gradient-to-r from-transparent via-white/60 to-transparent"
+            />
+          )}
+        </Badge>
+      )}
+      <SpotlightCard active={highlight} className="p-7 hover:-translate-y-1.5">
+        <div
+          className={cn(
+            "h-10 w-10 rounded-xl grid place-items-center mb-4",
+            highlight ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary",
+          )}
+        >
+          <Icon className="h-5 w-5" strokeWidth={1.9} />
+        </div>
+        <p className="text-sm font-medium text-muted-foreground">{name}</p>
+        <div className="flex items-baseline gap-1 mt-2">
+          <span className="text-3xl font-semibold tracking-tight">
+            {price === 0 ? "Free" : <AnimatedNumber value={price} prefix="₹" />}
+          </span>
+          {price > 0 && <span className="text-sm text-muted-foreground">/month</span>}
+        </div>
+        <p className="text-sm text-primary mt-1.5 font-medium">{gens}</p>
+        <ul className="space-y-2.5 text-sm mt-6">
+          {features.map((f) => (
+            <li key={f} className="flex gap-2.5">
+              <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+              <span className="text-foreground/90">{f}</span>
+            </li>
+          ))}
+        </ul>
+        <Button
+          asChild
+          className={cn(
+            "w-full mt-7 transition-transform duration-200",
+            highlight && "shadow-[0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.6)] hover:shadow-[0_14px_36px_-8px_oklch(0.58_0.1_199_/_0.7)]",
+          )}
+          variant={highlight ? "default" : "outline"}
+        >
+          <Link to="/register">{cta ?? `Choose ${name}`}</Link>
+        </Button>
+      </SpotlightCard>
     </div>
   );
 }

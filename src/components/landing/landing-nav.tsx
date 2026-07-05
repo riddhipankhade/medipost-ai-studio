@@ -1,7 +1,9 @@
 import * as React from "react";
 import { Link } from "@tanstack/react-router";
 import { motion, useMotionValueEvent, useScroll } from "framer-motion";
+import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Brand } from "@/components/brand";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +16,7 @@ const links = [
 export function LandingNav() {
   const [scrolled, setScrolled] = React.useState(false);
   const [hovered, setHovered] = React.useState<number | null>(null);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
   const { scrollY } = useScroll();
 
   useMotionValueEvent(scrollY, "change", (latest) => {
@@ -55,10 +58,44 @@ export function LandingNav() {
             </a>
           ))}
         </nav>
-        <div className="flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-2">
           <Button variant="ghost" size="sm" asChild><Link to="/login">Sign in</Link></Button>
           <Button size="sm" asChild><Link to="/register">Get started</Link></Button>
         </div>
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="flex flex-col">
+            <SheetHeader className="sr-only">
+              <SheetTitle>Navigation menu</SheetTitle>
+              <SheetDescription>Site navigation and account links</SheetDescription>
+            </SheetHeader>
+            <Brand />
+            <nav className="flex flex-col gap-1 mt-4 text-base">
+              {links.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileOpen(false)}
+                  className="rounded-lg px-3 py-2.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </nav>
+            <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-border/70">
+              <Button variant="ghost" asChild onClick={() => setMobileOpen(false)}>
+                <Link to="/login">Sign in</Link>
+              </Button>
+              <Button asChild onClick={() => setMobileOpen(false)}>
+                <Link to="/register">Get started</Link>
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
       </motion.div>
     </header>
   );

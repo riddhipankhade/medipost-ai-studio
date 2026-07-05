@@ -228,6 +228,17 @@
   100% { transform: translate(0, 0) scale(1); }
 }
 
+@keyframes card-glow {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50% { opacity: 0.75; transform: scale(1.015); }
+}
+
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-150%); }
+  60% { transform: translateX(150%); }
+  100% { transform: translateX(150%); }
+}
+
 .animate-float-slow {
   animation: float-slow 6s ease-in-out infinite;
 }
@@ -236,9 +247,19 @@
   animation: mesh-drift 18s ease-in-out infinite;
 }
 
+.animate-card-glow {
+  animation: card-glow 3.5s ease-in-out infinite;
+}
+
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 3.5s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-float-slow,
-  .animate-mesh-drift {
+  .animate-mesh-drift,
+  .animate-card-glow,
+  .animate-shimmer-sweep {
     animation: none;
   }
 }
