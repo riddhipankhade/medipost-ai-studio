@@ -37,7 +37,9 @@ function getSupabase() {
 
 // Server-side plan price table — client cannot override these
 const PLAN_CATALOG: Record<string, { amount: string; productinfo: string }> = {
-  payu_pro: { amount: "499.00", productinfo: "Medipost Pro Monthly" },
+  starter: { amount: "499.00",  productinfo: "Medipost Starter Plan" },
+  pro:     { amount: "1999.00", productinfo: "Medipost Pro Plan" },
+  clinic:  { amount: "6999.00", productinfo: "Medipost Clinic Plan" },
 };
 
 export const createPayUHash = createServerFn({ method: "POST" })
