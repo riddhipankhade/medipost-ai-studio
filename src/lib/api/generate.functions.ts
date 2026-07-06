@@ -793,13 +793,19 @@ export const generateImage = createServerFn({ method: "POST" })
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized. Please sign in to generate images.");
 
-    const { error: creditError } = await supabase.rpc("deduct_credit", { p_user_id: user.id });
-    if (creditError) {
-      if (creditError.message.includes("INSUFFICIENT_CREDITS"))
-        throw new Error("Credits exhausted. Please upgrade your plan to generate images.");
-      if (creditError.message.includes("SUBSCRIPTION_NOT_FOUND"))
-        throw new Error("No active subscription found. Please contact support.");
-      throw new Error(`Credit processing failed: ${creditError.message}`);
+    // AI image generation is a Pro-only feature — check subscription directly
+    const { data: subRow } = await supabase
+      .from("subscriptions")
+      .select("plan, plan_expires_at")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const isPro = subRow?.plan === "pro"
+      && !!subRow?.plan_expires_at
+      && new Date(subRow.plan_expires_at) > new Date();
+
+    if (!isPro) {
+      throw new Error("PRO_REQUIRED: AI image generation is available on the Pro plan. Upgrade to unlock it.");
     }
 
     const directive = data.visualStyle ? (STYLE_DIRECTIVES[data.visualStyle] ?? "") : "";
@@ -817,7 +823,6 @@ export const generateImage = createServerFn({ method: "POST" })
     try {
       ({ dataUrl, imageUrl } = await callPollinationsImage(fullPrompt));
     } catch (imgErr: any) {
-      try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
       throw imgErr;
     }
 
