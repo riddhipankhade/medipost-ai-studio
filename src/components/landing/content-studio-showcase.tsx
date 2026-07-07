@@ -2,9 +2,10 @@ import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Instagram, Layers, Camera, Clapperboard, Megaphone, PartyPopper, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { SpotlightCard } from "@/components/landing/spotlight-card";
 import { BrowserFrame } from "@/components/landing/browser-frame";
-import { GeneratedPostPreview, PhotoPattern } from "@/components/landing/generated-post-preview";
+import { GeneratedPostPreview } from "@/components/landing/generated-post-preview";
 
 interface ContentType {
   id: string;
@@ -93,13 +94,41 @@ const contentTypes: ContentType[] = [
     icon: Clapperboard,
     blurb: "Scene-by-scene reel scripts with hooks, timing and on-screen text cues.",
     preview: (
-      <div className="p-6 space-y-3">
-        {["0:00 — Hook", "0:03 — Problem", "0:09 — Solution", "0:15 — CTA"].map((s) => (
-          <div key={s} className="flex items-center gap-3 rounded-lg border border-border/70 bg-background px-3 py-2.5">
-            <span className="text-xs font-medium text-primary whitespace-nowrap">{s}</span>
-            <div className="h-2 flex-1 rounded-full bg-foreground/10" />
+      <div className="p-6">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="bg-gradient-to-r from-[color:var(--teal)]/10 to-primary/10 px-4 py-2.5 flex items-center gap-2 border-b border-border">
+            <Clapperboard className="h-4 w-4 text-[color:var(--teal)]" />
+            <p className="text-xs font-semibold">30–45 second reel · Dentist</p>
           </div>
-        ))}
+          <div className="p-4 space-y-3.5">
+            <div className="rounded-lg border border-[color:var(--teal)]/40 bg-[color:var(--teal)]/5 p-3">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-semibold tracking-wide text-muted-foreground">HOOK</p>
+                <Badge variant="secondary" className="text-[10px] py-0 px-1.5">0–3s</Badge>
+              </div>
+              <p className="text-xs leading-relaxed">Most patients make *this* mistake when brushing their teeth.</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold tracking-wide text-muted-foreground">MAIN TALKING POINTS</p>
+              {[
+                "It feels thorough, but brushing too hard actually wears down enamel over time.",
+                "Focus on gentle, circular motions for two full minutes, twice a day.",
+              ].map((p, i) => (
+                <div key={i} className="flex gap-2.5 text-xs">
+                  <span className="h-4 w-4 shrink-0 grid place-items-center rounded-full bg-[color:var(--teal)]/15 text-[color:var(--teal)] text-[10px] font-semibold">{i + 1}</span>
+                  <span className="leading-relaxed">{p}</span>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-semibold tracking-wide text-muted-foreground">CTA</p>
+                <Badge variant="secondary" className="text-[10px] py-0 px-1.5">End</Badge>
+              </div>
+              <p className="text-xs leading-relaxed">Book your cleaning with us — link in bio.</p>
+            </div>
+          </div>
+        </div>
       </div>
     ),
   },
@@ -109,13 +138,32 @@ const contentTypes: ContentType[] = [
     icon: Megaphone,
     blurb: "A themed, multi-day post series built around a health-awareness observance.",
     preview: (
-      <div className="p-6 grid grid-cols-2 gap-3">
-        {["Day 1", "Day 2", "Day 3", "Day 4"].map((d) => (
-          <div key={d} className="relative rounded-xl overflow-hidden aspect-square">
-            <PhotoPattern icon={Megaphone} />
-            <span className="absolute bottom-2 left-2.5 text-[11px] font-medium text-white bg-black/30 rounded-full px-2 py-0.5">{d}</span>
-          </div>
-        ))}
+      <div className="p-6 space-y-4">
+        <div className="rounded-xl border border-border bg-gradient-to-br from-[color:var(--teal)]/10 to-primary/5 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--teal)]">Campaign theme</p>
+          <p className="text-base font-bold mt-1">Oral Health Awareness Week</p>
+          <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+            Help patients build daily habits that prevent cavities and gum disease — one post at a time.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Suggested weekly schedule</p>
+          {[
+            { day: "Mon", format: "Carousel", idea: "5 brushing mistakes patients don't know they're making" },
+            { day: "Wed", format: "Reel", idea: "60-second flossing technique, done right" },
+            { day: "Fri", format: "Single Post", idea: "Myth vs. fact: does sugar really cause cavities?" },
+          ].map((d) => (
+            <div key={d.day} className="flex items-center gap-3 rounded-lg border border-border/70 bg-card px-3 py-2.5">
+              <div className="h-8 w-8 shrink-0 rounded-lg bg-[color:var(--teal)]/10 text-[color:var(--teal)] grid place-items-center font-semibold text-[11px]">
+                {d.day}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{d.format}</p>
+                <p className="text-xs mt-0.5 truncate">{d.idea}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     ),
   },
