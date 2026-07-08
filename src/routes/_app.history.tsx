@@ -21,6 +21,7 @@ import { Search, Copy, Loader2, Star, ImageDown, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import PostCard from "@/components/PostCard";
+import FestiveCard from "@/components/FestiveCard";
 
 export const Route = createFileRoute("/_app/history")({
   head: () => ({ meta: [{ title: "Content History — Medipost AI" }] }),
@@ -45,9 +46,13 @@ type ContentRow = {
 };
 
 type BrandSnap = {
-  doctorName: string;
-  clinicName: string;
-  phone:      string;
+  doctorName:     string;
+  clinicName:     string;
+  phone:          string;
+  primaryColor?:  string;
+  secondaryColor?: string;
+  logo?:          string;
+  doctorPhoto?:   string;
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -182,7 +187,6 @@ function PostDetailDialog({
     if (!p) return { title: row.topic, bodyText: "" };
     switch (kind) {
       case "single":  return { title: p.headline ?? row.topic, bodyText: p.content ?? "" };
-      case "festive": return { title: p.festival ? `Happy ${p.festival}!` : row.topic, bodyText: p.greeting ?? "" };
       case "story":   return { title: p.headline ?? row.topic, bodyText: p.message ?? "" };
       default:        return { title: row.topic, bodyText: "" };
     }
@@ -197,8 +201,10 @@ function PostDetailDialog({
   const slides: { title: string; content: string }[] = kind === "carousel" ? (p?.slides ?? []) : [];
   const [slideIdx, setSlideIdx] = useState(0);
 
-  // Reel / Campaign don't use PostCard — they have dedicated viewers
-  const isPostCard = kind === "single" || kind === "festive" || kind === "story";
+  // Reel / Campaign don't use PostCard — they have dedicated viewers.
+  // Festive gets its own greeting-card creative (FestiveCard), matching the studio.
+  const isPostCard = kind === "single" || kind === "story";
+  const isFestive  = kind === "festive";
   const isCarousel = kind === "carousel";
   const isReel     = kind === "reel";
   const isCampaign = kind === "campaign";
@@ -304,7 +310,7 @@ function PostDetailDialog({
           </div>
         )}
 
-        {/* ── POSTCARD viewer (single / story / festive) ── */}
+        {/* ── POSTCARD viewer (single / story) ── */}
         {isPostCard && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
             <PostCard
@@ -323,6 +329,28 @@ function PostDetailDialog({
           </div>
         )}
 
+        {/* ── FESTIVE viewer — real greeting card, same as the studio ── */}
+        {isFestive && (
+          <div className="flex justify-center overflow-auto max-h-[70vh]">
+            <FestiveCard
+              ref={cardRef}
+              festival={p?.festival ?? row.topic}
+              greeting={p?.greeting ?? ""}
+              colors={p?.visual?.colors ?? []}
+              brand={{
+                doctorName:    brand.doctorName,
+                clinicName:    brand.clinicName,
+                primaryColor:  brand.primaryColor,
+                secondaryColor: brand.secondaryColor,
+                logo:          brand.logo,
+                doctorPhoto:   brand.doctorPhoto,
+              }}
+              specialty={row.specialty}
+              imageUrl={directImageUrl}
+            />
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex gap-2 pt-2">
           <Button
@@ -331,7 +359,7 @@ function PostDetailDialog({
           >
             <Copy className="h-3.5 w-3.5" /> Copy Text
           </Button>
-          {isPostCard && (
+          {(isPostCard || isFestive) && (
             <Button size="sm" className="flex-1 gap-1.5" onClick={download} disabled={downloading}>
               {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
               Download Post
@@ -369,14 +397,19 @@ function History() {
       // Fetch brand kit
       const { data: bk } = await supabase
         .from("brand_kits")
-        .select("doctor_name, clinic_name, phone")
+        .select("doctor_name, clinic_name, phone, logo_url, doctor_photo_url, brand_colors")
         .eq("user_id", user.id)
         .maybeSingle();
       if (!cancelled && bk) {
+        const colors = (bk.brand_colors ?? {}) as Record<string, string>;
         setBrand({
-          doctorName: bk.doctor_name ?? "",
-          clinicName: bk.clinic_name ?? "",
-          phone:      bk.phone ?? "",
+          doctorName:     bk.doctor_name ?? "",
+          clinicName:     bk.clinic_name ?? "",
+          phone:          bk.phone ?? "",
+          logo:           bk.logo_url ?? undefined,
+          doctorPhoto:    bk.doctor_photo_url ?? undefined,
+          primaryColor:   colors.primary ?? undefined,
+          secondaryColor: colors.secondary ?? undefined,
         });
       }
 
