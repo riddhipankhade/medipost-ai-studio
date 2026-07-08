@@ -7,10 +7,6 @@ import { z } from "zod";
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
 import { getRequestHeader } from "@tanstack/react-start/server";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ENV VALIDATION
-// ─────────────────────────────────────────────────────────────────────────────
-
 function validateEnv(): { supabaseUrl: string; supabaseAnonKey: string; geminiApiKey: string } {
   const supabaseUrl     = process.env.SUPABASE_URL;
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
@@ -22,10 +18,6 @@ function validateEnv(): { supabaseUrl: string; supabaseAnonKey: string; geminiAp
 
   return { supabaseUrl, supabaseAnonKey, geminiApiKey };
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SUPABASE SERVER CLIENT
-// ─────────────────────────────────────────────────────────────────────────────
 
 function getSupabaseClient(supabaseUrl: string, supabaseAnonKey: string) {
   const cookieHeader = getRequestHeader("cookie") ?? "";
@@ -41,10 +33,6 @@ function getSupabaseClient(supabaseUrl: string, supabaseAnonKey: string) {
     },
   });
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// GEMINI — text generation
-// ─────────────────────────────────────────────────────────────────────────────
 
 async function callGeminiText(
   system:     string,
@@ -71,7 +59,7 @@ async function callGeminiText(
     ],
   };
 
-  const MAX_ATTEMPTS = 5; // extra retries for 503 high-demand spikes
+  const MAX_ATTEMPTS = 5;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const res = await fetch(endpoint, {
       method:  "POST",
@@ -89,7 +77,6 @@ async function callGeminiText(
 
     const isRetryable = res.status === 429 || res.status === 503;
     if (attempt < MAX_ATTEMPTS && isRetryable) {
-      // Exponential backoff: 1s, 2s, 4s, 8s
       const delay = 1000 * Math.pow(2, attempt - 1);
       console.warn(`[Gemini] Attempt ${attempt} failed (${res.status}). Retrying in ${delay}ms…`);
       await new Promise((r) => setTimeout(r, delay));
@@ -105,18 +92,11 @@ async function callGeminiText(
   throw new Error("AI service is overloaded right now. Please try again in a moment.");
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POLLINATIONS.AI — image generation
-// FIX: now returns BOTH the dataUrl (for immediate display) AND the
-//      imageUrl (the public Pollinations URL stored in the DB).
-// ─────────────────────────────────────────────────────────────────────────────
-
 async function callPollinationsImage(
   prompt: string,
 ): Promise<{ dataUrl: string; imageUrl: string }> {
   const encoded  = encodeURIComponent(prompt);
   const seed     = Date.now();
-  // Store this URL — it's publicly accessible and doesn't expire
   const imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1080&height=1080&model=flux&nologo=true&seed=${seed}`;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -124,7 +104,6 @@ async function callPollinationsImage(
     try {
       res = await fetch(imageUrl, { signal: AbortSignal.timeout(30_000) });
     } catch (networkErr: any) {
-      // fetch() itself threw — network down, DNS failure, or timeout
       console.warn(`[Pollinations] Network error on attempt ${attempt}:`, networkErr?.message);
       if (attempt < 3) {
         await new Promise((r) => setTimeout(r, 2000 * attempt));
@@ -142,7 +121,7 @@ async function callPollinationsImage(
       const mimeType = res.headers.get("content-type") ?? "image/jpeg";
       return {
         dataUrl:  `data:${mimeType};base64,${b64}`,
-        imageUrl, // ← the public URL we'll persist to the DB
+        imageUrl,
       };
     }
 
@@ -161,10 +140,6 @@ async function callPollinationsImage(
 
   throw new Error("Image generation failed after 3 attempts. Please try again in a moment.");
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// INPUT / OUTPUT SCHEMAS
-// ─────────────────────────────────────────────────────────────────────────────
 
 const BrandSchema = z
   .object({
@@ -244,9 +219,6 @@ export type SinglePost = {
 export type CarouselPost = {
   kind:     "carousel";
   title:    string;
-  // `relationship` is an optional model-provided hint (e.g. "statistic", "comparison").
-  // It is never required — src/lib/visual-strategy.ts classifies layout deterministically
-  // from title/content and only falls back to this hint as a last resort.
   slides:   { title: string; content: string; imagePrompt?: string; relationship?: string }[];
   cta:      string;
   hashtags: string[];
@@ -295,10 +267,6 @@ export type GenerateOutput =
   | ReelScript
   | Campaign
   | FestivePost;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PROMPT BUILDER
-// ─────────────────────────────────────────────────────────────────────────────
 
 const SHARED_RULES = `CONTENT SAFETY RULES (strict)
 - Be accurate, evidence-aligned, marketing-friendly, and culturally respectful.
@@ -563,10 +531,6 @@ Return STRICT JSON:
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NORMALIZERS
-// ─────────────────────────────────────────────────────────────────────────────
-
 function extractJson(text: string): unknown {
   const trimmed = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   try {
@@ -664,105 +628,92 @@ function normalize(kind: GenerateInput["kind"], raw: any): GenerateOutput {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SERVER FUNCTION: generateContent
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const generateContent = createServerFn({ method: "POST" })
   .validator((data: unknown) => InputSchema.parse(data))
   .handler(async ({ data }): Promise<GenerateOutput> => {
     try {
-    const { supabaseUrl, supabaseAnonKey, geminiApiKey } = validateEnv();
+      const { supabaseUrl, supabaseAnonKey, geminiApiKey } = validateEnv();
 
-    const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) throw new Error("Unauthorized. Please sign in to generate content.");
+      const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error("Unauthorized. Please sign in to generate content.");
 
-    const { error: creditError } = await supabase.rpc("deduct_credit", { p_user_id: user.id });
-    if (creditError) {
-      if (creditError.message.includes("INSUFFICIENT_CREDITS"))
-        throw new Error("Credits exhausted. Please upgrade your plan to continue.");
-      if (creditError.message.includes("SUBSCRIPTION_NOT_FOUND"))
-        throw new Error("No active subscription found. Please contact support.");
-      throw new Error(`Credit processing failed: ${creditError.message}`);
-    }
+      const { error: creditError } = await supabase.rpc("deduct_credit", { p_user_id: user.id });
+      if (creditError) {
+        if (creditError.message.includes("INSUFFICIENT_CREDITS"))
+          throw new Error("Credits exhausted. Please upgrade your plan to continue.");
+        if (creditError.message.includes("SUBSCRIPTION_NOT_FOUND"))
+          throw new Error("No active subscription found. Please contact support.");
+        throw new Error(`Credit processing failed: ${creditError.message}`);
+      }
 
-    const { data: brandKit } = await supabase
-      .from("brand_kits")
-      .select("clinic_name, doctor_name, brand_colors, website, phone")
-      .eq("user_id", user.id)
-      .maybeSingle();
+      const { data: brandKit } = await supabase
+        .from("brand_kits")
+        .select("clinic_name, doctor_name, brand_colors, website, phone")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-    const brandColors = brandKit?.brand_colors as
-      | { primary?: string; secondary?: string; accent?: string }
-      | null;
+      const brandColors = brandKit?.brand_colors as
+        | { primary?: string; secondary?: string; accent?: string }
+        | null;
 
-    const mergedBrand = {
-      clinicName:     data.brand?.clinicName     ?? brandKit?.clinic_name   ?? undefined,
-      doctorName:     data.brand?.doctorName     ?? brandKit?.doctor_name   ?? undefined,
-      primaryColor:   data.brand?.primaryColor   ?? brandColors?.primary    ?? undefined,
-      secondaryColor: data.brand?.secondaryColor ?? brandColors?.secondary  ?? undefined,
-      website:        data.brand?.website        ?? brandKit?.website       ?? undefined,
-      phone:          data.brand?.phone          ?? brandKit?.phone         ?? undefined,
-      hasLogo:        data.brand?.hasLogo,
-      hasDoctorPhoto: data.brand?.hasDoctorPhoto,
-      hasClinicPhoto: data.brand?.hasClinicPhoto,
-    };
+      const mergedBrand = {
+        clinicName:     data.brand?.clinicName     ?? brandKit?.clinic_name   ?? undefined,
+        doctorName:     data.brand?.doctorName     ?? brandKit?.doctor_name   ?? undefined,
+        primaryColor:   data.brand?.primaryColor   ?? brandColors?.primary    ?? undefined,
+        secondaryColor: data.brand?.secondaryColor ?? brandColors?.secondary  ?? undefined,
+        website:        data.brand?.website        ?? brandKit?.website       ?? undefined,
+        phone:          data.brand?.phone          ?? brandKit?.phone         ?? undefined,
+        hasLogo:        data.brand?.hasLogo,
+        hasDoctorPhoto: data.brand?.hasDoctorPhoto,
+        hasClinicPhoto: data.brand?.hasClinicPhoto,
+      };
 
-    const { system, user: userPrompt } = buildPrompt({ ...data, brand: mergedBrand });
+      const { system, user: userPrompt } = buildPrompt({ ...data, brand: mergedBrand });
 
-    let rawText: string;
-    try {
-      rawText = await callGeminiText(system, userPrompt, geminiApiKey);
-    } catch (geminiErr: any) {
-      try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
-      throw geminiErr;
-    }
+      let rawText: string;
+      try {
+        rawText = await callGeminiText(system, userPrompt, geminiApiKey);
+      } catch (geminiErr: any) {
+        try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
+        throw geminiErr;
+      }
 
-    const parsed = extractJson(rawText);
-    const result = normalize(data.kind, parsed);
+      const parsed = extractJson(rawText);
+      const result = normalize(data.kind, parsed);
 
-    const hashtags =
-      "hashtags" in result && Array.isArray(result.hashtags) ? result.hashtags : [];
+      const hashtags =
+        "hashtags" in result && Array.isArray(result.hashtags) ? result.hashtags : [];
 
-    // Select back the id so the client can link the image to this row
-    const { data: inserted, error: saveError } = await supabase
-      .from("content_generations")
-      .insert({
-        user_id:          user.id,
-        workflow_kind:    data.kind,
-        content_category: data.category,
-        specialty:        data.specialty,
-        tone:             data.tone,
-        topic:            data.topic.trim(),
-        generated_text:   JSON.stringify(result),
-        hashtags,
-        status:           "completed",
-        ai_model:         "gemini-2.5-flash",
-      })
-      .select("id")
-      .single();
+      const { data: inserted, error: saveError } = await supabase
+        .from("content_generations")
+        .insert({
+          user_id:          user.id,
+          workflow_kind:    data.kind,
+          content_category: data.category,
+          specialty:        data.specialty,
+          tone:             data.tone,
+          topic:            data.topic.trim(),
+          generated_text:   JSON.stringify(result),
+          hashtags,
+          status:           "completed",
+          ai_model:         "gemini-2.5-flash",
+        })
+        .select("id")
+        .single();
 
-    if (saveError) console.error("[generateContent] DB save failed:", saveError.message);
+      if (saveError) console.error("[generateContent] DB save failed:", saveError.message);
 
-    // Attach _rowId so the client can pass it to generateImage
-    return { ...result, _rowId: inserted?.id ?? undefined } as typeof result & { _rowId?: string };
+      return { ...result, _rowId: inserted?.id ?? undefined } as typeof result & { _rowId?: string };
     } catch (error: any) {
       console.error("FULL SERVER ERROR:", error);
       throw error;
     }
   });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SERVER FUNCTION: generateImage
-// FIX: now stores the public Pollinations URL in generated_image_url
-//      instead of the "[base64 image — stored client-side]" placeholder.
-// ─────────────────────────────────────────────────────────────────────────────
-
 const ImageInputSchema = z.object({
   prompt:      z.string().min(3).max(2000),
   visualStyle: z.string().optional(),
-  // If provided, UPDATE this existing row instead of inserting a new one
   contentId:   z.string().uuid().optional(),
 });
 
@@ -787,74 +738,56 @@ export const generateImage = createServerFn({ method: "POST" })
   .validator((data: unknown) => ImageInputSchema.parse(data))
   .handler(async ({ data }): Promise<GenerateImageOutput> => {
     try {
-    const { supabaseUrl, supabaseAnonKey } = validateEnv();
+      const { supabaseUrl, supabaseAnonKey } = validateEnv();
 
-    const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) throw new Error("Unauthorized. Please sign in to generate images.");
+      const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error("Unauthorized. Please sign in to generate images.");
 
-    // AI image generation is a Pro-only feature — check subscription directly
-    const { data: subRow } = await supabase
-      .from("subscriptions")
-      .select("plan, plan_expires_at")
-      .eq("user_id", user.id)
-      .maybeSingle();
+      const directive = data.visualStyle ? (STYLE_DIRECTIVES[data.visualStyle] ?? "") : "";
+      const fullPrompt = [
+        data.prompt,
+        directive,
+        "Square 1:1 composition, Instagram-ready, premium healthcare marketing creative, no text, no watermark, no logos, photorealistic where appropriate.",
+      ]
+        .filter(Boolean)
+        .join(" ");
 
-    const isPro = subRow?.plan === "pro"
-      && !!subRow?.plan_expires_at
-      && new Date(subRow.plan_expires_at) > new Date();
+      let dataUrl: string;
+      let imageUrl: string;
+      try {
+        ({ dataUrl, imageUrl } = await callPollinationsImage(fullPrompt));
+      } catch (imgErr: any) {
+        throw imgErr;
+      }
 
-    if (!isPro) {
-      throw new Error("PRO_REQUIRED: AI image generation is available on the Pro plan. Upgrade to unlock it.");
-    }
+      if (data.contentId) {
+        const { error: updateError } = await supabase
+          .from("content_generations")
+          .update({ generated_image_url: imageUrl })
+          .eq("id", data.contentId)
+          .eq("user_id", user.id);
+        if (updateError) console.error("[generateImage] DB update failed:", updateError.message);
+      } else {
+        const { error: saveError } = await supabase
+          .from("content_generations")
+          .insert({
+            user_id:             user.id,
+            workflow_kind:       "single",
+            content_category:    "educational",
+            specialty:           "",
+            tone:                "Professional",
+            topic:               data.prompt.slice(0, 200),
+            generated_text:      "",
+            generated_image_url: imageUrl,
+            hashtags:            [],
+            status:              "completed",
+            ai_model:            "pollinations-flux",
+          });
+        if (saveError) console.error("[generateImage] DB save failed:", saveError.message);
+      }
 
-    const directive = data.visualStyle ? (STYLE_DIRECTIVES[data.visualStyle] ?? "") : "";
-    const fullPrompt = [
-      data.prompt,
-      directive,
-      "Square 1:1 composition, Instagram-ready, premium healthcare marketing creative, no text, no watermark, no logos, photorealistic where appropriate.",
-    ]
-      .filter(Boolean)
-      .join(" ");
-
-    // FIX: destructure both dataUrl (returned to client) and imageUrl (stored in DB)
-    let dataUrl: string;
-    let imageUrl: string;
-    try {
-      ({ dataUrl, imageUrl } = await callPollinationsImage(fullPrompt));
-    } catch (imgErr: any) {
-      throw imgErr;
-    }
-
-    // If a contentId was passed, UPDATE that row's image URL (links image to text).
-    // Otherwise INSERT a standalone image row (backward compatible).
-    if (data.contentId) {
-      const { error: updateError } = await supabase
-        .from("content_generations")
-        .update({ generated_image_url: imageUrl })
-        .eq("id", data.contentId)
-        .eq("user_id", user.id);   // security: only update own rows
-      if (updateError) console.error("[generateImage] DB update failed:", updateError.message);
-    } else {
-      const { error: saveError } = await supabase
-        .from("content_generations")
-        .insert({
-          user_id:             user.id,
-          workflow_kind:       "single",
-          content_category:    "educational",
-          specialty:           "",
-          tone:                "Professional",
-          topic:               data.prompt.slice(0, 200),
-          generated_text:      "",
-          generated_image_url: imageUrl,
-          hashtags:            [],
-          status:              "completed",
-          ai_model:            "pollinations-flux",
-        });
-      if (saveError) console.error("[generateImage] DB save failed:", saveError.message);
-    }
-
-    return { dataUrl };
+      return { dataUrl };
     } catch (error: any) {
       console.error("FULL SERVER ERROR:", error);
       throw error;
