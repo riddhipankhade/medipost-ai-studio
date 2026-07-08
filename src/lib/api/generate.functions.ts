@@ -378,6 +378,18 @@ const VISUAL_BLOCK = `"visual": {
     "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words). Real photorealistic or editorial healthcare scene. No text, no watermark, Instagram-ready, premium healthcare marketing."
   }`;
 
+// Festive posts need festival decor/mood, not a generic clinic scene — the model
+// otherwise defaults to "doctor in white coat" imagery for every occasion.
+const FESTIVE_VISUAL_BLOCK = `"visual": {
+    "concept": "one-sentence scene description of the FESTIVE decor/mood (not a clinic scene)",
+    "colors": ["#RRGGBB","#RRGGBB","#RRGGBB","#RRGGBB", "colors drawn from how this specific festival is traditionally decorated/celebrated"],
+    "style": "short visual style note",
+    "layout": "layout recommendation (e.g. Instagram Square Post, 9:16 Vertical)",
+    "visualStyle": "pick ONE: 'Festive Traditional' | 'Festive Modern' | 'Festive Premium' | 'Festive Minimal'",
+    "composition": "1-line composition instructions — leave the lower third visually calm/uncluttered so a greeting and doctor photo can sit on top",
+    "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words) for a warm, premium FESTIVE creative tied to the specific festival named above — real decor/symbols/colors people actually associate with it (e.g. diyas and marigolds for Diwali, lanterns and red-gold for Lunar New Year, string lights and pine for Christmas, crescent and lanterns for Eid) rendered as elegant photorealistic or soft-bokeh photography. Do NOT depict a clinic, doctor, stethoscope, or hospital — this is a greeting-card background, not a medical scene. No text, no watermark, no people's faces, Instagram-ready, premium aesthetic."
+  }`;
+
 function buildPrompt(d: GenerateInput): { system: string; user: string } {
   const base = `BRIEF
 - Specialty: ${d.specialty}
@@ -500,31 +512,37 @@ Return STRICT JSON:
       };
 
     case "festive": {
-      const fest      = d.festival || "the upcoming festival";
+      const fest       = d.festival || "the upcoming festival";
+      const doctorName = d.brand?.doctorName;
+      const clinicName = d.brand?.clinicName;
       const styleNote = d.festiveStyle
         ? `CREATIVE STYLE: ${d.festiveStyle}. Greeting, caption AND visual must reflect this style.`
         : "";
       const extra = d.customInstructions?.trim()
         ? `ADDITIONAL INSTRUCTIONS:\n"""\n${d.customInstructions!.trim()}\n"""`
         : "";
+      const signOff = doctorName
+        ? `Write it as a PERSONAL greeting FROM ${doctorName}${clinicName ? ` and the ${clinicName} team` : ""} — first-person warmth ("I wish you...", "we at ..."), like a doctor signing a card for their patients, not a corporate announcement.`
+        : `Write it as a warm personal greeting from the clinic's doctor to their patients, not a corporate announcement.`;
       return {
         system:
           "You are Medipost AI, a culturally-aware festive greeting writer for healthcare brands. You write greetings for ANY occasion. Respond ONLY with strict JSON.",
         user: `${base}
 
-TASK: Write a greeting post for "${fest}" from a ${d.specialty}'s clinic.
-- Must feel specific to "${fest}" — not generic.
-- Tie the wish gracefully to health/wellness without being preachy.
+TASK: Write a greeting card post for "${fest}" from a ${d.specialty}'s clinic.
+- Must feel specific to "${fest}" — reference its real traditions/symbols, not generic "season's greetings" filler.
+- ${signOff}
+- Tie the wish gracefully to health/wellness in ONE short line at most — the greeting itself, not a health lecture.
 ${styleNote}
 ${extra}
 
 Return STRICT JSON:
 {
   "festival": "${fest}",
-  "greeting": "main greeting, 2-3 sentences, ready to render on a card",
+  "greeting": "main greeting, 2-3 warm sentences, ready to render on a card, signed in spirit from the doctor",
   "caption": "matching social caption, 1-2 sentences",
   "hashtags": ["#tag1","... 6-10 festive + healthcare hashtags"],
-  ${VISUAL_BLOCK}
+  ${FESTIVE_VISUAL_BLOCK}
 }`,
       };
     }
@@ -732,6 +750,14 @@ const STYLE_DIRECTIVES: Record<string, string> = {
     "bold awareness campaign visual, high contrast, emotive subject, public health poster energy",
   "Luxury Aesthetic":
     "luxury aesthetic clinic visual, marble and gold accents, soft beige and ivory tones, fashion-editorial composition",
+  "Festive Traditional":
+    "traditional festival decor photography, rich cultural colors and textures, warm ambient/golden-hour lighting, authentic and celebratory mood",
+  "Festive Modern":
+    "modern minimal festive styling, clean bokeh string lights, contemporary color palette, editorial greeting-card aesthetic",
+  "Festive Premium":
+    "premium festive editorial photography, elegant gold and jewel tones, soft cinematic lighting, luxury greeting-card aesthetic",
+  "Festive Minimal":
+    "minimal festive flat-lay styling, soft pastel palette, generous negative space, clean and elegant",
 };
 
 export const generateImage = createServerFn({ method: "POST" })
@@ -745,10 +771,13 @@ export const generateImage = createServerFn({ method: "POST" })
       if (authError || !user) throw new Error("Unauthorized. Please sign in to generate images.");
 
       const directive = data.visualStyle ? (STYLE_DIRECTIVES[data.visualStyle] ?? "") : "";
+      const isFestive = data.visualStyle?.startsWith("Festive") ?? false;
       const fullPrompt = [
         data.prompt,
         directive,
-        "Square 1:1 composition, Instagram-ready, premium healthcare marketing creative, no text, no watermark, no logos, photorealistic where appropriate.",
+        isFestive
+          ? "Square 1:1 composition, Instagram-ready, warm premium festive greeting-card creative, no clinic/hospital imagery, no text, no watermark, no logos."
+          : "Square 1:1 composition, Instagram-ready, premium healthcare marketing creative, no text, no watermark, no logos, photorealistic where appropriate.",
       ]
         .filter(Boolean)
         .join(" ");
