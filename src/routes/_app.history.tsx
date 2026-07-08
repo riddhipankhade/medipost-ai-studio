@@ -22,6 +22,11 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import PostCard from "@/components/PostCard";
 import FestiveCard from "@/components/FestiveCard";
+import { SlideCanvas } from "@/routes/_app.generate";
+import { useBrandKit } from "@/lib/brand-kit";
+import { getTheme, suggestThemeId, carouselThemes } from "@/lib/carousel-themes";
+import { resolveSinglePostStrategy } from "@/lib/visual-strategy";
+import type { ContentCategory } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/_app/history")({
   head: () => ({ meta: [{ title: "Content History — Medipost AI" }] }),
@@ -178,6 +183,7 @@ function PostDetailDialog({
   const { cardRef, download, downloading } = useCardDownload(
     brand.doctorName || brand.clinicName || "medipost"
   );
+  const [slideBrand] = useBrandKit();
 
   const kind = row.workflow_kind;
   const hashtags = row.hashtags?.join(" ") ?? "";
@@ -186,7 +192,6 @@ function PostDetailDialog({
   const { title, bodyText } = (() => {
     if (!p) return { title: row.topic, bodyText: "" };
     switch (kind) {
-      case "single":  return { title: p.headline ?? row.topic, bodyText: p.content ?? "" };
       case "story":   return { title: p.headline ?? row.topic, bodyText: p.message ?? "" };
       default:        return { title: row.topic, bodyText: "" };
     }
@@ -201,10 +206,28 @@ function PostDetailDialog({
   const slides: { title: string; content: string }[] = kind === "carousel" ? (p?.slides ?? []) : [];
   const [slideIdx, setSlideIdx] = useState(0);
 
+  // Single post — same content-aware archetype the studio picks, rebuilt from
+  // the saved headline/content/category (the studio's theme/layout customizations
+  // aren't persisted, so this reconstructs the studio's *default* look).
+  const singleStrategy = kind === "single"
+    ? resolveSinglePostStrategy(
+        { headline: p?.headline ?? row.topic, content: p?.content ?? "" },
+        row.content_category as ContentCategory,
+      )
+    : null;
+  const singleBaseTheme = getTheme(suggestThemeId(row.specialty));
+  const singleTheme = {
+    ...singleBaseTheme,
+    bg: `linear-gradient(135deg, ${slideBrand.primaryColor} 0%, ${slideBrand.secondaryColor} 100%)`,
+    accent: slideBrand.primaryColor,
+    fontFamily: carouselThemes[0].fontFamily,
+  };
+
   // Reel / Campaign don't use PostCard — they have dedicated viewers.
-  // Festive gets its own greeting-card creative (FestiveCard), matching the studio.
-  const isPostCard = kind === "single" || kind === "story";
+  // Festive and Single get their own real creatives (FestiveCard / SlideCanvas), matching the studio.
+  const isPostCard = kind === "story";
   const isFestive  = kind === "festive";
+  const isSingle   = kind === "single";
   const isCarousel = kind === "carousel";
   const isReel     = kind === "reel";
   const isCampaign = kind === "campaign";
@@ -310,7 +333,33 @@ function PostDetailDialog({
           </div>
         )}
 
-        {/* ── POSTCARD viewer (single / story) ── */}
+        {/* ── SINGLE POST viewer — same content-aware archetype as the studio ── */}
+        {isSingle && singleStrategy && (
+          <div className="flex justify-center overflow-auto max-h-[70vh]">
+            <div className="w-full max-w-md" ref={cardRef}>
+              <SlideCanvas
+                slideTitle={p?.headline ?? row.topic}
+                slideBody={p?.content ?? ""}
+                slideIndex={0}
+                totalSlides={1}
+                isCta={true}
+                cta={p?.cta ?? ""}
+                specialty={row.specialty}
+                theme={singleTheme}
+                layout={singleStrategy.archetype}
+                fontScale={1}
+                showIcons={true}
+                brand={slideBrand}
+                imageUrl={directImageUrl}
+                topic={row.topic}
+                category={row.content_category as ContentCategory}
+                composition={singleStrategy.composition}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── POSTCARD viewer (story) ── */}
         {isPostCard && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
             <PostCard
@@ -324,7 +373,7 @@ function PostDetailDialog({
               bodyText={bodyText}
               hashtags={hashtags}
               isTrial={true}
-              maxBodyLength={kind === "story" ? Infinity : 130}
+              maxBodyLength={Infinity}
             />
           </div>
         )}
@@ -359,7 +408,7 @@ function PostDetailDialog({
           >
             <Copy className="h-3.5 w-3.5" /> Copy Text
           </Button>
-          {(isPostCard || isFestive) && (
+          {(isPostCard || isFestive || isSingle) && (
             <Button size="sm" className="flex-1 gap-1.5" onClick={download} disabled={downloading}>
               {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
               Download Post
