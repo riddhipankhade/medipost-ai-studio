@@ -155,7 +155,7 @@ const DEFAULT_BRIEF_FORM: Omit<GenerateInput, "kind"> = {
 
 function GeneratePage() {
   const callGenerate = useServerFn(generateContent);
-  const [brand, setBrand] = useBrandKit();
+  const [brand] = useBrandKit();
 
   const [outOfCredits, setOutOfCredits] = useState(false);
   const [supabaseBrand, setSupabaseBrand] = useState({
@@ -238,19 +238,9 @@ function GeneratePage() {
       const website        = (d.website             as string) ?? "";
       const phone          = (d.phone               as string) ?? "";
 
-      setBrand({
-        ...brand,
-        clinicName,
-        doctorName,
-        primaryColor,
-        secondaryColor,
-        website,
-        phone,
-        logo:        logoUrl,
-        doctorPhoto: doctorUrl,
-        clinicPhoto: clinicUrl,
-      });
-
+      // The visual previews get this same row via useBrandKit's own DB
+      // hydration (brand-kit.ts) — pushing it into setBrand here raced the
+      // hook's async userId resolution and silently dropped the write.
       setSupabaseBrand({
         clinicName,
         doctorName,

@@ -193,6 +193,36 @@ export function resolveComposition(archetype: LayoutArchetype, category: Content
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SINGLE POST — category-first template selection
+// A single post has no slide sequence to infer structure from, so the category
+// the user picked in the brief IS the template promise: Myth vs Fact must look
+// like a myth/fact split, Health Tips like a checklist, FAQ like a Q&A, etc.
+// Content-based inference is only the fallback for narrative categories.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SINGLE_POST_ARCHETYPE_BY_CATEGORY: Partial<Record<ContentCategory, LayoutArchetype>> = {
+  "myth-fact":     "comparison-split",
+  "did-you-know":  "statistic-hero",
+  "patient-faq":   "faq-card",
+  "health-tips":   "checklist",
+  "prevention":    "checklist",
+  "warning-signs": "callout-diagram",
+};
+
+/** Full pipeline for a SINGLE post: category prior first, content inference as fallback. */
+export function resolveSinglePostStrategy(
+  post: { headline: string; content: string },
+  category: ContentCategory,
+) {
+  const slide: SlideLike = { title: post.headline, content: post.content };
+  const relationship = inferRelationship(slide, category, { slideIndex: 0, totalSlides: 1, isCta: false });
+  const archetype = SINGLE_POST_ARCHETYPE_BY_CATEGORY[category] ?? resolveArchetype(relationship);
+  const composition = resolveComposition(archetype, category);
+  const emphasis = resolveEmphasis(category);
+  return { relationship, archetype, composition, emphasis };
+}
+
 /** Convenience: full pipeline from raw slide -> archetype + composition + emphasis. */
 export function resolveVisualStrategy(
   slide: SlideLike,

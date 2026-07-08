@@ -353,6 +353,40 @@ Slide ${n}: CTA`;
   }
 }
 
+/**
+ * Single posts render through category-specific visual templates on the client
+ * (myth/fact split panels, checklist card, big-stat poster, Q&A bubbles, …).
+ * The "content" field must be SHAPED for that template, not free prose.
+ */
+function singleStructureFor(category: z.infer<typeof CategoryEnum>): string {
+  switch (category) {
+    case "myth-fact":
+      return `CONTENT STRUCTURE (strict — rendered as two opposing Myth/Fact panels):
+"content" MUST be exactly two paragraphs separated by \\n\\n:
+Paragraph 1 starts with "Myth: " — the common belief in 1-2 short sentences.
+Paragraph 2 starts with "Fact: " — the evidence-based truth + 1-line why, 2-3 short sentences.`;
+    case "did-you-know":
+      return `CONTENT STRUCTURE (strict — rendered as a big-number poster):
+"content" MUST open with the single most surprising concrete statistic (e.g. "70%…", "1 in 4…", "3x…"),
+followed by ONE supporting line. 25-45 words total. "headline" is the curiosity hook.`;
+    case "patient-faq":
+      return `CONTENT STRUCTURE (strict — rendered as a question/answer chat exchange):
+"headline" MUST be the patient's question, ending with "?".
+"content" is the clinician's direct answer: answer first, then the 1-line why. 40-70 words.`;
+    case "health-tips":
+    case "prevention":
+      return `CONTENT STRUCTURE (strict — rendered as a checklist card):
+"content" MUST be 4-5 tips, ONE per line separated by \\n. Each tip imperative and ≤ 12 words. No numbering, no bullets.`;
+    case "warning-signs":
+      return `CONTENT STRUCTURE (strict — rendered as an alert poster):
+"content" MUST be 3-4 red-flag signs, ONE per line separated by \\n, each ≤ 10 words,
+then a final line stating when to seek care immediately.`;
+    default:
+      return `CONTENT STRUCTURE:
+"content" is 60-100 words, 2-3 short paragraphs separated by \\n\\n.`;
+  }
+}
+
 function brandBlock(b: GenerateInput["brand"]): string {
   if (!b) return "BRAND: not provided. Keep content brand-neutral.";
   const lines: string[] = ["BRAND CONTEXT (subtly weave in, do not stuff):"];
@@ -413,10 +447,12 @@ ${SHARED_RULES}`;
 
 TASK: Generate ONE scroll-stopping single social media post about "${d.topic}".
 
+${singleStructureFor(d.category)}
+
 Return STRICT JSON, no markdown:
 {
   "headline": "punchy 4-8 word headline",
-  "content": "main body 60-100 words, 2-3 short paragraphs separated by \\n\\n",
+  "content": "main body following the CONTENT STRUCTURE above",
   "caption": "1-2 sentence Instagram caption",
   "cta": "short call to action",
   "hashtags": ["#tag1","#tag2","... 8-12 hashtags total"],
