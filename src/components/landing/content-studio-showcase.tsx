@@ -174,10 +174,8 @@ const contentTypes: ContentType[] = [
     blurb: "Warm, on-brand greetings for festivals and holidays your patients celebrate.",
     preview: (
       <GeneratedPostPreview
-        icon={PartyPopper}
-        clinic="Sunrise Dental Clinic"
-        heading="Wishing you a bright, healthy Diwali! ✨"
-        body="From our clinic family to yours — may this festival bring joy, warmth and radiant smiles."
+        image="/showcase/medipost-riddhi-pankhade-1783481372872.png"
+        imageAlt="Generated festive greeting card — Happy Christmas wishes over a decorated tree, signed by the clinic"
         hashtags="#Diwali #FestiveWishes #FromOurClinic"
       />
     ),
