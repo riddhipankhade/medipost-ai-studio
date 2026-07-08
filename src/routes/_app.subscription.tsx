@@ -33,7 +33,7 @@ function loadBoltScript(): Promise<void> {
     const existing = document.querySelector('script[src*="bolt.min.js"]');
     if (existing) { resolve(); return; }
     const script = document.createElement("script");
-    script.src = "https://jssdk.payu.in/bolt/bolt.min.js";
+    script.src = "https://sandboxsecure.payu.in/bolt/bolt.min.js";
     script.onload = () => resolve();
     script.onerror = () => reject(new Error("Failed to load PayU Bolt SDK"));
     document.body.appendChild(script);
