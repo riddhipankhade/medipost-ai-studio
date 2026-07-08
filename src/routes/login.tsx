@@ -24,7 +24,6 @@ function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Redirect already-authenticated users away from the login page
   useEffect(() => {
     if (!loading && session) {
       navigate({ to: "/dashboard", replace: true });
@@ -45,8 +44,6 @@ function Login() {
       return;
     }
 
-    // onAuthStateChange in AuthProvider will update session;
-    // the effect above will redirect once session is set.
     navigate({ to: "/dashboard", replace: true });
   }
 
@@ -88,7 +85,15 @@ function Login() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <Link
+                      to="/forgot-password"
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
                   <PasswordInput
                     id="password"
                     value={password}
