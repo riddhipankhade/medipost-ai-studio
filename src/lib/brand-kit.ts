@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { supabase } from "./supabase";
 
 export type BrandKit = {
   clinicName: string;
@@ -28,12 +29,18 @@ export const defaultBrandKit: BrandKit = {
   secondaryColor: "#1f4e79",
 };
 
-const KEY = "medipost.brandkit.v1";
+const KEY_PREFIX = "medipost.brandkit.v1";
 
-export function readBrandKit(): BrandKit {
+// Brand kits are namespaced per signed-in account so switching accounts in the
+// same browser never shows one account's logo/colors/photos to another.
+function brandKitKey(userId: string) {
+  return `${KEY_PREFIX}:${userId}`;
+}
+
+export function readBrandKit(userId: string): BrandKit {
   if (typeof window === "undefined") return defaultBrandKit;
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = window.localStorage.getItem(brandKitKey(userId));
     if (!raw) return defaultBrandKit;
     return { ...defaultBrandKit, ...(JSON.parse(raw) as Partial<BrandKit>) };
   } catch {
@@ -41,27 +48,51 @@ export function readBrandKit(): BrandKit {
   }
 }
 
-export function writeBrandKit(kit: BrandKit) {
+export function writeBrandKit(userId: string, kit: BrandKit) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(KEY, JSON.stringify(kit));
+  window.localStorage.setItem(brandKitKey(userId), JSON.stringify(kit));
   window.dispatchEvent(new CustomEvent("brandkit:change"));
 }
 
 export function useBrandKit(): [BrandKit, (next: BrandKit) => void] {
+  const [userId, setUserId] = useState<string | null>(null);
   const [kit, setKit] = useState<BrandKit>(defaultBrandKit);
+
+  // Track which account is signed in so reads/writes always land in that
+  // account's own bucket — resolved async, so state starts at defaults.
   useEffect(() => {
-    setKit(readBrandKit());
-    const sync = () => setKit(readBrandKit());
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return;
+      const id = session?.user?.id ?? null;
+      setUserId(id);
+      setKit(id ? readBrandKit(id) : defaultBrandKit);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const id = session?.user?.id ?? null;
+      setUserId(id);
+      setKit(id ? readBrandKit(id) : defaultBrandKit);
+    });
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    const sync = () => setKit(readBrandKit(userId));
     window.addEventListener("brandkit:change", sync);
     window.addEventListener("storage", sync);
     return () => {
       window.removeEventListener("brandkit:change", sync);
       window.removeEventListener("storage", sync);
     };
-  }, []);
+  }, [userId]);
+
   const save = (next: BrandKit) => {
     setKit(next);
-    writeBrandKit(next);
+    if (userId) writeBrandKit(userId, next);
   };
   return [kit, save];
 }
