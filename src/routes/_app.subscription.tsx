@@ -130,8 +130,8 @@ function SubscriptionPage() {
           email:       params.email,
           phone:       params.phone,
           hash:        params.hash,
-          surl:        `${window.location.origin}/payment/success`,
-          furl:        `${window.location.origin}/payment/failure`,
+          surl:        `${window.location.origin}/subscription`,
+          furl:        `${window.location.origin}/subscription`,
           udf1: "", udf2: "", udf3: "", udf4: "", udf5: "",
         },
         {
