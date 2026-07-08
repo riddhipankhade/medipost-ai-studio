@@ -1240,7 +1240,7 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
   );
 }
 
-/* ---- Festive — PostCard + Download ---- */
+/* ---- Festive — greeting card + Download ---- */
 function FestivePreview({ post, specialty, rowId }: { post: FestivePost; specialty: string; rowId?: string | null }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
@@ -1254,7 +1254,7 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
       <CardContent className="pt-6 space-y-5">
         <PreviewToolbar title={`${post.festival} Greeting`} onCopy={() => copyText(fullText, "Greeting copied")} />
         <div className="flex flex-wrap items-center justify-end gap-2 -mt-1">
-          <AiImageButton loading={ai.loading} hasImage={!!ai.url}
+          <AiImageButton loading={ai.loading} hasImage={!!ai.url} label={ai.url ? "Regenerate visual" : "Generate festive visual"}
             onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
           <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" onClick={download} disabled={ai.loading}>
             <ImageDown className="h-3.5 w-3.5" /> Download Post
@@ -1262,54 +1262,37 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
         </div>
 
         <div className="flex justify-center">
-          <PostCard
+          <div
             ref={cardRef}
-            doctorName={brand.doctorName || "Dr. Your Name"}
-            specialty={specialty}
-            clinicName={brand.clinicName || "Your Clinic"}
-            phone={brand.phone}
-            imageUrl={ai.url ?? undefined}
-            title={`Happy ${post.festival}!`}
-            bodyText={post.greeting}
-            hashtags={post.hashtags.join(" ")}
-            isTrial={true}
-          />
-        </div>
-
-        <details className="rounded-xl border border-border overflow-hidden">
-          <summary className="px-4 py-3 text-sm font-medium cursor-pointer bg-muted/50 hover:bg-muted transition-colors">
-            Also view festive card style ▾
-          </summary>
-          <div className="p-4">
-            <div className="mx-auto w-full max-w-md">
-              <div className="aspect-[4/5] rounded-2xl overflow-hidden shadow-lg border border-border p-8 flex flex-col text-white relative"
-                style={{ background: `radial-gradient(circle at top right, ${c2} 0%, ${c1} 60%, ${c3})` }}>
-                {ai.loading && <ImageLoadingOverlay />}
-                {ai.url && (
-                  <>
-                    <img src={ai.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/10" />
-                  </>
-                )}
-                <div className="absolute top-4 right-4 opacity-30"><Heart className="h-16 w-16" /></div>
-                <ContextualBackground specialty={specialty} opacity={0.07} color="#ffffff" />
-                <div className="relative z-10 flex flex-col h-full">
-                  <p className="text-xs uppercase tracking-[0.3em] opacity-80">Happy</p>
-                  <p className="text-4xl font-bold mt-1 mb-6">{post.festival}</p>
-                  <p className="text-base leading-relaxed flex-1">{post.greeting}</p>
-                  <div className="mt-6 pt-4 border-t border-white/30 flex items-center gap-3">
-                    {brand.logo && <img src={brand.logo} alt="" className="h-9 w-9 rounded-lg object-cover bg-white" />}
-                    <div className="min-w-0">
-                      <p className="text-xs uppercase tracking-wide opacity-80">With warm wishes from</p>
-                      <p className="text-sm font-semibold truncate">{brand.clinicName || `${specialty.toLowerCase()}.clinic`}</p>
-                      {brand.doctorName && <p className="text-[11px] opacity-80 truncate">{brand.doctorName}</p>}
-                    </div>
-                  </div>
+            className="relative w-full max-w-md aspect-square overflow-hidden rounded-2xl shadow-lg border border-border/60 flex flex-col text-white"
+            style={{ background: `radial-gradient(circle at top right, ${c2} 0%, ${c1} 60%, ${c3})` }}
+          >
+            {ai.loading && <ImageLoadingOverlay />}
+            {ai.url && (
+              <>
+                <img src={ai.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
+              </>
+            )}
+            <div className="relative z-10 flex flex-col h-full p-8">
+              <p className="text-xs uppercase tracking-[0.3em] opacity-80">Happy</p>
+              <p className="text-4xl font-bold mt-1 mb-6 leading-tight">{post.festival}</p>
+              <p className="text-base leading-relaxed flex-1">{post.greeting}</p>
+              <div className="mt-6 pt-4 border-t border-white/30 flex items-center gap-3">
+                {brand.doctorPhoto ? (
+                  <img src={brand.doctorPhoto} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white/70 shrink-0" />
+                ) : brand.logo ? (
+                  <img src={brand.logo} alt="" className="h-9 w-9 rounded-lg object-cover bg-white shrink-0" />
+                ) : null}
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wide opacity-80">With warm wishes from</p>
+                  <p className="text-sm font-semibold truncate">{brand.doctorName || "Dr. Your Name"}</p>
+                  <p className="text-[11px] opacity-80 truncate">{brand.clinicName || `${specialty} Clinic`}</p>
                 </div>
               </div>
             </div>
           </div>
-        </details>
+        </div>
 
         <SectionBlock title="Greeting Message" body={post.greeting} />
         <SectionBlock title="Social Caption" body={post.caption} />
