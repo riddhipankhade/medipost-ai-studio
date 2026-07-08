@@ -92,12 +92,9 @@ import {
   Checklist,
   RadialDiagram,
 } from "@/components/carousel-layouts";
-import { resolveVisualStrategy } from "@/lib/visual-strategy";
-
-// ---- NEW: PostCard + download ----
-import PostCard from "@/components/PostCard";
+import { resolveVisualStrategy, resolveSinglePostStrategy } from "@/lib/visual-strategy";
 import { useDownloadPost } from "@/hooks/useDownloadPost";
-// ------------------------------------------------------------------
+import FestiveCard from "@/components/FestiveCard";
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
@@ -120,7 +117,13 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   sparkles: Heart,
 };
 
-const BRIEF_STORAGE_KEY = "medipost.studio-brief.v1";
+const BRIEF_STORAGE_PREFIX = "medipost.studio-brief.v1";
+
+// Briefs are namespaced per signed-in account so switching accounts in the same
+// browser never shows one account's in-progress brief to another.
+function briefStorageKey(userId: string) {
+  return `${BRIEF_STORAGE_PREFIX}:${userId}`;
+}
 
 type PersistedBrief = {
   kind: WorkflowKind;
@@ -128,19 +131,31 @@ type PersistedBrief = {
   form: Omit<GenerateInput, "kind">;
 };
 
-function readPersistedBrief(): PersistedBrief | null {
+function readPersistedBrief(userId: string): PersistedBrief | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(BRIEF_STORAGE_KEY);
+    const raw = window.localStorage.getItem(briefStorageKey(userId));
     return raw ? (JSON.parse(raw) as PersistedBrief) : null;
   } catch {
     return null;
   }
 }
 
+const DEFAULT_BRIEF_FORM: Omit<GenerateInput, "kind"> = {
+  category: "educational",
+  specialty: "Dentist",
+  topic: "Daily oral hygiene habits",
+  tone: "Friendly",
+  audience: "Patients",
+  festival: "Diwali",
+  customInstructions: "",
+  festiveStyle: "Warm & Friendly",
+  slideCount: 7,
+};
+
 function GeneratePage() {
   const callGenerate = useServerFn(generateContent);
-  const [brand, setBrand] = useBrandKit();
+  const [brand] = useBrandKit();
 
   const [outOfCredits, setOutOfCredits] = useState(false);
   const [supabaseBrand, setSupabaseBrand] = useState({
@@ -155,34 +170,22 @@ function GeneratePage() {
     hasClinicPhoto: false,
   });
 
-  // Whether a brief was already saved locally when the Studio first mounted — if so,
-  // the signed-up specialty must never override what the user already chose/typed.
-  const [hadPersistedBrief] = useState(() => readPersistedBrief() !== null);
   const specialtyAppliedRef = useRef(false);
 
-  const [kind, setKind] = useState<WorkflowKind>(() => readPersistedBrief()?.kind ?? "single");
-  const [category, setCategory] = useState<ContentCategory>(() => {
-    const persisted = readPersistedBrief();
-    return persisted?.category ?? defaultCategoryFor(persisted?.kind ?? "single");
-  });
-  const [form, setForm] = useState<Omit<GenerateInput, "kind">>(() => readPersistedBrief()?.form ?? {
-    category: "educational",
-    specialty: "Dentist",
-    topic: "Daily oral hygiene habits",
-    tone: "Friendly",
-    audience: "Patients",
-    festival: "Diwali",
-    customInstructions: "",
-    festiveStyle: "Warm & Friendly",
-    slideCount: 7,
-  });
+  // The account's own brief is only known once loadBrand() below resolves who's
+  // signed in, so state starts at hard defaults and is hydrated per-account then.
+  const [userId, setUserId] = useState<string | null>(null);
+  const [kind, setKind] = useState<WorkflowKind>("single");
+  const [category, setCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
+  const [form, setForm] = useState<Omit<GenerateInput, "kind">>(DEFAULT_BRIEF_FORM);
 
   // Re-opening Content Studio from anywhere else in the app should show whatever
-  // brief the user last entered or picked, instead of resetting to the defaults.
+  // brief this account last entered or picked, instead of resetting to the defaults.
+  // Namespaced per-account, and never written until we know which account this is.
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(BRIEF_STORAGE_KEY, JSON.stringify({ kind, category, form }));
-  }, [kind, category, form]);
+    if (typeof window === "undefined" || !userId) return;
+    window.localStorage.setItem(briefStorageKey(userId), JSON.stringify({ kind, category, form }));
+  }, [userId, kind, category, form]);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,6 +193,14 @@ function GeneratePage() {
     async function loadBrand() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || cancelled) return;
+
+      setUserId(user.id);
+      const persistedBrief = readPersistedBrief(user.id);
+      if (persistedBrief) {
+        setKind(persistedBrief.kind);
+        setCategory(persistedBrief.category);
+        setForm(persistedBrief.form);
+      }
 
       const { data } = await supabase
         .from("brand_kits")
@@ -204,11 +215,11 @@ function GeneratePage() {
 
       // Default the specialty to whatever the brand kit has saved, falling back to
       // what was picked at signup — only the first time, and never over a brief
-      // the user already saved locally.
+      // this account already saved locally.
       const signupSpecialty = (user.user_metadata?.specialty as string) ?? "";
       const kitSpecialty = data ? ((data as unknown as Record<string, unknown>).specialty as string) ?? "" : "";
       const specialty = kitSpecialty || signupSpecialty;
-      if (specialty && !hadPersistedBrief && !specialtyAppliedRef.current) {
+      if (specialty && !persistedBrief && !specialtyAppliedRef.current) {
         specialtyAppliedRef.current = true;
         setForm((f) => ({ ...f, specialty }));
       }
@@ -227,19 +238,9 @@ function GeneratePage() {
       const website        = (d.website             as string) ?? "";
       const phone          = (d.phone               as string) ?? "";
 
-      setBrand({
-        ...brand,
-        clinicName,
-        doctorName,
-        primaryColor,
-        secondaryColor,
-        website,
-        phone,
-        logo:        logoUrl,
-        doctorPhoto: doctorUrl,
-        clinicPhoto: clinicUrl,
-      });
-
+      // The visual previews get this same row via useBrandKit's own DB
+      // hydration (brand-kit.ts) — pushing it into setBrand here raced the
+      // hook's async userId resolution and silently dropped the write.
       setSupabaseBrand({
         clinicName,
         doctorName,
@@ -601,7 +602,7 @@ function LoadingPanel({ stage }: { stage: number }) {
 
 function ResultPreview({ result, specialty, rowId, category, topic }: { result: GenerateOutput; specialty: string; rowId: string | null; category: ContentCategory; topic: string }) {
   switch (result.kind) {
-    case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} />;
+    case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic} />;
     case "carousel": return <CarouselPreview post={result} specialty={specialty} category={category} topic={topic} />;
     case "story":    return <StoryPreview post={result} specialty={specialty} />;
     case "reel":     return <ReelPreview post={result} specialty={specialty} />;
@@ -613,6 +614,15 @@ function ResultPreview({ result, specialty, rowId, category, topic }: { result: 
 function copyText(text: string, label = "Copied") {
   navigator.clipboard.writeText(text);
   toast.success(label);
+}
+
+function savePng(dataUrl: string, name: string) {
+  const link = document.createElement("a");
+  link.download = name;
+  link.href = dataUrl;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 function PreviewToolbar({ onCopy, title }: { onCopy: () => void; title: string }) {
@@ -659,13 +669,65 @@ function AiImageButton({ loading, hasImage, onClick, size = "sm", label }: { loa
   );
 }
 
-/* ---- Single Post — PostCard + Download ---- */
-function SinglePostPreview({ post, specialty, rowId }: { post: SinglePost; specialty: string; rowId?: string | null }) {
+/* ---- Single Post — category-driven creative on the SlideCanvas system ----
+   The same content-aware archetypes the carousel uses render the single post:
+   the category picked in the brief selects the template (Myth vs Fact → split
+   panels, Health Tips / Prevention → checklist, Did You Know → big-stat poster,
+   Patient FAQ → Q&A bubbles, Warning Signs → alert poster), and the full
+   studio controls (theme, layout, font, colors, brand toggle) apply. */
+function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: SinglePost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
-  const { cardRef, download } = useDownloadPost(brand.doctorName || brand.clinicName || "medipost");
+  const [themeId, setThemeId] = useState<string>(() => suggestThemeId(specialty));
+  const [layout, setLayout] = useState<SlideLayout>("hero-card");
+  const [autoLayout, setAutoLayout] = useState(true);
+  const [fontFamily, setFontFamily] = useState<string>(carouselThemes[0].fontFamily);
+  const [fontScale, setFontScale] = useState<number>(1);
+  const [headingColor, setHeadingColor] = useState<string | null>(null);
+  const [textColor, setTextColor] = useState<string | null>(null);
+  const [accentColor, setAccentColor] = useState<string | null>(null);
+  const [useBrandColors, setUseBrandColors] = useState<boolean>(true);
+  const [showIcons, setShowIcons] = useState<boolean>(true);
+  const [downloading, setDownloading] = useState(false);
+  const captureRef = useRef<HTMLDivElement>(null);
+
+  const baseTheme = getTheme(themeId);
+  const theme = {
+    ...baseTheme,
+    bg: useBrandColors ? `linear-gradient(135deg, ${brand.primaryColor} 0%, ${brand.secondaryColor} 100%)` : baseTheme.bg,
+    heading: headingColor || baseTheme.heading,
+    text: textColor || baseTheme.text,
+    accent: accentColor || (useBrandColors ? brand.primaryColor : baseTheme.accent),
+    fontFamily,
+  };
+
+  const strategy = resolveSinglePostStrategy({ headline: post.headline, content: post.content }, category);
+  const effectiveLayout: SlideLayout = autoLayout ? strategy.archetype : layout;
 
   const fullText = [post.headline, "", post.content, "", post.caption, "", post.cta, "", post.hashtags.join(" ")].join("\n");
+
+  const canvasProps: Omit<SlideCanvasProps, "imageUrl" | "imageLoading"> = {
+    slideTitle: post.headline, slideBody: post.content, slideIndex: 0, totalSlides: 1,
+    isCta: true, cta: post.cta, specialty, theme, layout: effectiveLayout,
+    fontScale, showIcons, brand,
+    topic, category, composition: strategy.composition,
+  };
+
+  async function downloadPost() {
+    if (!captureRef.current) return;
+    setDownloading(true);
+    try {
+      const { toPng } = await import("html-to-image");
+      const png = await toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+      savePng(png, "medipost-post.png");
+      toast.success("Post downloaded");
+    } catch (e) {
+      console.error("[SinglePostPreview] download failed:", e);
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <Card className="border-border/60">
@@ -680,25 +742,45 @@ function SinglePostPreview({ post, specialty, rowId }: { post: SinglePost; speci
           />
           <Button
             type="button" size="sm" variant="outline" className="gap-1.5 h-8"
-            onClick={download} disabled={ai.loading}
+            onClick={downloadPost} disabled={downloading || ai.loading}
           >
-            <ImageDown className="h-3.5 w-3.5" />
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
             Download Post
           </Button>
         </div>
 
-        <div className="flex justify-center">
-          <PostCard
-            ref={cardRef}
-            doctorName={brand.doctorName || "Dr. Your Name"}
-            specialty={specialty}
-            clinicName={brand.clinicName || "Your Clinic"}
-            phone={brand.phone}
-            imageUrl={ai.url ?? undefined}
-            title={post.headline}
-            bodyText={post.content}
-            hashtags={post.hashtags.join(" ")}
-            isTrial={true}
+        <div className="grid gap-5 md:grid-cols-[1fr_280px]">
+          <div>
+            <div className="mx-auto w-full max-w-md">
+              <SlideCanvas {...canvasProps} imageUrl={ai.url} imageLoading={ai.loading} />
+            </div>
+            {/* offscreen full-size render — capture source for the 1080×1080 PNG download */}
+            <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
+              <div ref={captureRef}>
+                <SlideCanvas {...canvasProps} imageUrl={ai.url} />
+              </div>
+            </div>
+          </div>
+
+          <StudioControls
+            themeId={themeId}
+            setThemeId={(id) => {
+              // same contract as the carousel: picking a theme applies ALL of it
+              setThemeId(id); setFontFamily(getTheme(id).fontFamily);
+              setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
+            }}
+            layout={effectiveLayout}
+            setLayout={(v) => { setAutoLayout(false); setLayout(v); }}
+            autoLayout={autoLayout}
+            setAutoLayout={setAutoLayout}
+            recommendedLayout={strategy.archetype}
+            fontFamily={fontFamily} setFontFamily={setFontFamily}
+            fontScale={fontScale} setFontScale={setFontScale}
+            headingColor={headingColor ?? theme.heading} setHeadingColor={setHeadingColor}
+            textColor={textColor ?? theme.text} setTextColor={setTextColor}
+            accentColor={accentColor ?? theme.accent} setAccentColor={setAccentColor}
+            useBrandColors={useBrandColors} setUseBrandColors={setUseBrandColors}
+            showIcons={showIcons} setShowIcons={setShowIcons}
           />
         </div>
 
@@ -741,15 +823,6 @@ function CarouselPreview({ post, specialty, category, topic }: { post: CarouselP
     if (!node) return null;
     const { toPng } = await import("html-to-image");
     return toPng(node, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
-  }
-
-  function savePng(dataUrl: string, name: string) {
-    const link = document.createElement("a");
-    link.download = name;
-    link.href = dataUrl;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   }
 
   async function downloadSlides(indices: number[]) {
@@ -959,15 +1032,20 @@ export function SlideCanvas(p: SlideCanvasProps) {
         : p.layout === "faq-card" ? <FaqCards {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
         : p.layout === "checklist" ? <Checklist {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
         : <RadialDiagram {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />}
-      <div className="absolute top-3 right-4 z-20 text-[10px] font-medium opacity-80" style={{ color: p.theme.heading }}>
-        {p.slideIndex + 1} / {p.totalSlides}
-      </div>
-      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex gap-1">
-        {Array.from({ length: p.totalSlides }).map((_, i) => (
-          <span key={i} className="h-1 rounded-full transition-all"
-            style={{ width: i === p.slideIndex ? 18 : 6, background: i === p.slideIndex ? p.theme.heading : `${p.theme.heading}55` }} />
-        ))}
-      </div>
+      {/* slide counter + dots are a carousel swipe cue — meaningless on a single post */}
+      {p.totalSlides > 1 && (
+        <>
+          <div className="absolute top-3 right-4 z-20 text-[10px] font-medium opacity-80" style={{ color: p.theme.heading }}>
+            {p.slideIndex + 1} / {p.totalSlides}
+          </div>
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex gap-1">
+            {Array.from({ length: p.totalSlides }).map((_, i) => (
+              <span key={i} className="h-1 rounded-full transition-all"
+                style={{ width: i === p.slideIndex ? 18 : 6, background: i === p.slideIndex ? p.theme.heading : `${p.theme.heading}55` }} />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1245,9 +1323,6 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
   const { cardRef, download } = useDownloadPost(brand.doctorName || brand.clinicName || "medipost");
-  const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
-  const c2 = post.visual.colors[1] || "#f4b400";
-  const c3 = brand.secondaryColor || post.visual.colors[2] || "#0a3d62";
   const fullText = `${post.greeting}\n\n${post.caption}\n\n${post.hashtags.join(" ")}`;
   return (
     <Card className="border-border/60">
@@ -1262,36 +1337,17 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
         </div>
 
         <div className="flex justify-center">
-          <div
+          <FestiveCard
             ref={cardRef}
-            className="relative w-full max-w-md aspect-square overflow-hidden rounded-2xl shadow-lg border border-border/60 flex flex-col text-white"
-            style={{ background: `radial-gradient(circle at top right, ${c2} 0%, ${c1} 60%, ${c3})` }}
-          >
-            {ai.loading && <ImageLoadingOverlay />}
-            {ai.url && (
-              <>
-                <img src={ai.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
-              </>
-            )}
-            <div className="relative z-10 flex flex-col h-full p-8">
-              <p className="text-xs uppercase tracking-[0.3em] opacity-80">Happy</p>
-              <p className="text-4xl font-bold mt-1 mb-6 leading-tight">{post.festival}</p>
-              <p className="text-base leading-relaxed flex-1">{post.greeting}</p>
-              <div className="mt-6 pt-4 border-t border-white/30 flex items-center gap-3">
-                {brand.doctorPhoto ? (
-                  <img src={brand.doctorPhoto} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white/70 shrink-0" />
-                ) : brand.logo ? (
-                  <img src={brand.logo} alt="" className="h-9 w-9 rounded-lg object-cover bg-white shrink-0" />
-                ) : null}
-                <div className="min-w-0">
-                  <p className="text-xs uppercase tracking-wide opacity-80">With warm wishes from</p>
-                  <p className="text-sm font-semibold truncate">{brand.doctorName || "Dr. Your Name"}</p>
-                  <p className="text-[11px] opacity-80 truncate">{brand.clinicName || `${specialty} Clinic`}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+            festival={post.festival}
+            greeting={post.greeting}
+            colors={post.visual.colors}
+            brand={brand}
+            specialty={specialty}
+            imageUrl={ai.url}
+            imageLoading={ai.loading}
+            loadingOverlay={<ImageLoadingOverlay />}
+          />
         </div>
 
         <SectionBlock title="Greeting Message" body={post.greeting} />

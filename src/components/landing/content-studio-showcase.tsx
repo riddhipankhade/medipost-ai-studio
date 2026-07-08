@@ -39,9 +39,9 @@ const contentTypes: ContentType[] = [
     blurb: "A polished, on-brand Instagram post with caption and hashtags — ready in one shot.",
     preview: (
       <GeneratedPostPreview
-        image="/showcase/serif-card.jpg"
-        imageAlt="Generated Instagram post — editorial headline card about brushing myths on a warm gradient"
-        hashtags="#DentalCare #BrushingMyths #OralHealth"
+        image="/showcase/medipost-post.png"
+        imageAlt="Generated Instagram post — 'Tiny Humans, More Bones?' newborn-bones fact over a baby photo, with clinic branding and a Connect with us button"
+        hashtags="#DidYouKnow #ChildHealth #Pediatrics"
       />
     ),
   },

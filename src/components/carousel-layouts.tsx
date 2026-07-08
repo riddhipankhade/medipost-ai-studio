@@ -51,6 +51,11 @@ export function BrandHeader({ p }: { p: LayoutProps }) {
 export function BrandFooter({ p }: { p: LayoutProps }) {
   return (
     <div className="flex items-center gap-3 text-[9px] relative z-10 pt-2 border-t" style={{ borderColor: `${p.theme.heading}33`, color: p.theme.text }}>
+      {p.brand.doctorName && (
+        <span className="font-semibold truncate" style={{ color: p.theme.heading }}>
+          {p.brand.doctorName}{p.specialty ? ` · ${p.specialty}` : ""}
+        </span>
+      )}
       <span className="inline-flex items-center gap-1 truncate"><Globe className="h-2.5 w-2.5" /> {p.brand.website}</span>
       <span className="inline-flex items-center gap-1 truncate"><Phone className="h-2.5 w-2.5" /> {p.brand.phone}</span>
     </div>
@@ -452,7 +457,7 @@ export function StatisticHero(p: LayoutProps) {
             {stat?.value ?? p.slideTitle}
           </div>
           <div className="mx-auto" style={{ width: 56, height: 3, background: p.theme.accent, borderRadius: radius.pill, marginTop: c.sectionGap * 0.8 }} />
-          <p className="mx-auto" style={{ ...typo("sectionHeading", p.fontScale), maxWidth: "88%", marginTop: c.gap, ...(onImage ? photoText("heading") : { color: p.theme.heading }) }}>
+          <p className="mx-auto line-clamp-5" style={{ ...typo("sectionHeading", p.fontScale), maxWidth: "88%", marginTop: c.gap, ...(onImage ? photoText("heading") : { color: p.theme.heading }) }}>
             {stat?.label ?? p.slideBody}
           </p>
           <CtaPill p={p} />
@@ -472,7 +477,13 @@ export function StatisticHero(p: LayoutProps) {
 export function ComparisonSplit(p: LayoutProps) {
   const onImage = !!p.imageUrl;
   const c = compMetrics(p, "split-focus");
-  const parts = p.slideBody.split(/\s+vs\.?\s+|\s+instead of\s+|\.\s+(?=[A-Z])/i).map((s) => s.trim()).filter(Boolean);
+  // Explicit "Myth: … Fact: …" markers win — split ONCE at the Fact marker so
+  // multi-sentence sides survive intact (the sentence-boundary fallback below
+  // would keep only the first sentence of each side).
+  const factIdx = p.slideBody.search(/\bfact\s*[:\-–—]/i);
+  const parts = factIdx > 0
+    ? [p.slideBody.slice(0, factIdx), p.slideBody.slice(factIdx)].map((s) => s.trim()).filter(Boolean)
+    : p.slideBody.split(/\s+vs\.?\s+|\s+instead of\s+|\.\s+(?=[A-Z])/i).map((s) => s.trim()).filter(Boolean);
   const stripLabel = (s: string) => s.replace(/^(myth|fact)\s*[:\-–—]\s*/i, "");
   const left = stripLabel(parts[0] ?? p.slideBody);
   const right = parts[1] ? stripLabel(parts[1]) : "";
@@ -712,7 +723,7 @@ export function CalloutDiagram(p: LayoutProps) {
             <Illustration className="mx-auto" style={{ height: Math.round(140 * c.illustrationEmphasis), width: Math.round(140 * c.illustrationEmphasis), marginBottom: c.gap }}
               accent="#dc2626" line={onImage ? "#ffffff" : p.theme.heading} />
             <h3 style={{ ...typo("heroTitle", p.fontScale), fontWeight: 800, ...(onImage ? photoText("heading") : { color: p.theme.heading }) }}>{p.slideTitle}</h3>
-            <p className="px-3" style={{ ...typo("body", p.fontScale), marginTop: c.gap, ...(onImage ? photoText("body") : { color: p.theme.text }) }}>{p.slideBody}</p>
+            <p className="px-3" style={{ ...typo("body", p.fontScale), marginTop: c.gap, whiteSpace: "pre-line", ...(onImage ? photoText("body") : { color: p.theme.text }) }}>{p.slideBody}</p>
             <CtaPill p={p} />
           </div>
         </div>
