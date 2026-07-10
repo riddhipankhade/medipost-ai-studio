@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Check, Zap, Crown, Building2, Loader2 } from "lucide-react";
+import { Check, Zap, Crown, Building2, Loader2, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { createPayUHash, verifyPayUPayment } from "@/lib/api/payment.functions";
+import { validateVoucher } from "@/lib/api/voucher.functions";
 import { useSubscription } from "@/lib/use-subscription";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -44,7 +46,7 @@ const PLANS = [
   {
     key:         "starter",
     name:        "Starter",
-    price:       "₹499",
+    price:       499,
     period:      "/month",
     description: "Perfect for solo practitioners getting started.",
     icon:        Zap,
@@ -60,7 +62,7 @@ const PLANS = [
   {
     key:         "pro",
     name:        "Pro",
-    price:       "₹1,999",
+    price:       1999,
     period:      "/month",
     description: "For busy clinics who post consistently.",
     icon:        Crown,
@@ -78,7 +80,7 @@ const PLANS = [
   {
     key:         "clinic",
     name:        "Clinic",
-    price:       "₹6,999",
+    price:       6999,
     period:      "/month",
     description: "For multi-doctor practices and hospitals.",
     icon:        Building2,
@@ -96,10 +98,25 @@ const PLANS = [
   },
 ];
 
+type AppliedVoucher = {
+  code: string;
+  discountPercentage: number;
+  applicablePlans: string[];
+};
+
+function formatPrice(amount: number) {
+  return `₹${amount.toLocaleString("en-IN")}`;
+}
+
 function SubscriptionPage() {
   const queryClient             = useQueryClient();
   const [payingPlan, setPaying] = useState<string | null>(null);
   const [userId, setUserId]     = useState<string | undefined>(undefined);
+
+  // Voucher state
+  const [voucherInput,    setVoucherInput]   = useState("");
+  const [applyingVoucher, setApplyingVoucher] = useState(false);
+  const [appliedVoucher,  setAppliedVoucher]  = useState<AppliedVoucher | null>(null);
 
   useState(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id));
@@ -113,10 +130,44 @@ function SubscriptionPage() {
 
   const currentPlanName = isPro ? (sub?.plans as any)?.name : "free";
 
+  // Apply voucher code
+  async function handleApplyVoucher() {
+    if (!voucherInput.trim()) return;
+    setApplyingVoucher(true);
+    try {
+      const result = await validateVoucher({ data: { code: voucherInput.trim() } });
+      setAppliedVoucher(result);
+      toast.success(`Voucher applied! ${result.discountPercentage}% off on ${result.applicablePlans.join(", ")} plan${result.applicablePlans.length > 1 ? "s" : ""}.`);
+      setVoucherInput("");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Invalid voucher code.");
+    } finally {
+      setApplyingVoucher(false);
+    }
+  }
+
+  function clearVoucher() {
+    setAppliedVoucher(null);
+    setVoucherInput("");
+  }
+
+  // Get discounted price for a plan
+  function getDiscountedPrice(plan: typeof PLANS[0]): { original: number; final: number; discounted: boolean } {
+    if (appliedVoucher && appliedVoucher.applicablePlans.includes(plan.key)) {
+      const discount = plan.price * (appliedVoucher.discountPercentage / 100);
+      return { original: plan.price, final: Math.max(1, plan.price - discount), discounted: true };
+    }
+    return { original: plan.price, final: plan.price, discounted: false };
+  }
+
   async function handleUpgrade(planKey: string) {
     setPaying(planKey);
     try {
-      const params = await createPayUHash({ data: { planKey } });
+      const voucherCode = appliedVoucher?.applicablePlans.includes(planKey)
+        ? appliedVoucher.code
+        : undefined;
+
+      const params = await createPayUHash({ data: { planKey, voucherCode } });
       await loadBoltScript();
       if (!window.bolt) throw new Error("PayU Bolt SDK not available. Please try again.");
 
@@ -142,6 +193,7 @@ function SubscriptionPage() {
                 await verifyPayUPayment({
                   data: {
                     planKey,
+                    voucherCode,
                     txnid:       r.txnid,
                     status:      r.status,
                     amount:      r.amount,
@@ -156,6 +208,7 @@ function SubscriptionPage() {
                   "Plan activated! Welcome to " +
                   planKey.charAt(0).toUpperCase() + planKey.slice(1) + "."
                 );
+                setAppliedVoucher(null);
                 queryClient.invalidateQueries({ queryKey: ["subscription", userId] });
               } catch (e: any) {
                 toast.error(e?.message ?? "Verification failed. Contact support.");
@@ -188,8 +241,9 @@ function SubscriptionPage() {
         </p>
       </div>
 
+      {/* Current plan banner */}
       {!isLoading && sub && (
-        <div className={`mb-8 rounded-xl border p-4 flex items-center justify-between ${
+        <div className={`mb-6 rounded-xl border p-4 flex items-center justify-between ${
           isPro ? "bg-primary/5 border-primary/30" : "bg-muted/40 border-border"
         }`}>
           <div>
@@ -215,11 +269,50 @@ function SubscriptionPage() {
         </div>
       )}
 
+      {/* Voucher input */}
+      <div className="mb-8 rounded-xl border bg-card p-4">
+        {appliedVoucher ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Tag className="h-4 w-4 text-green-600" />
+              <span className="text-sm font-medium text-green-700">
+                <span className="font-mono">{appliedVoucher.code}</span> applied —{" "}
+                {appliedVoucher.discountPercentage}% off on{" "}
+                {appliedVoucher.applicablePlans.join(", ")}
+              </span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={clearVoucher} className="h-7 w-7 p-0">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <Input
+              placeholder="Have a voucher code? Enter here"
+              value={voucherInput}
+              onChange={(e) => setVoucherInput(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === "Enter" && handleApplyVoucher()}
+              className="font-mono"
+            />
+            <Button
+              variant="outline"
+              onClick={handleApplyVoucher}
+              disabled={applyingVoucher || !voucherInput.trim()}
+              className="shrink-0"
+            >
+              {applyingVoucher ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Plan cards */}
       <div className="grid md:grid-cols-3 gap-6">
         {PLANS.map((plan) => {
           const Icon      = plan.icon;
           const isCurrent = currentPlanName === plan.key;
           const isPaying  = payingPlan === plan.key;
+          const pricing   = getDiscountedPrice(plan);
 
           return (
             <div
@@ -240,10 +333,31 @@ function SubscriptionPage() {
                   <h2 className="text-lg font-bold">{plan.name}</h2>
                   {isCurrent && <Badge variant="secondary">Current</Badge>}
                 </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold">{plan.price}</span>
-                  <span className="text-muted-foreground text-sm">{plan.period}</span>
+
+                {/* Price — show original + discounted if voucher applied */}
+                <div className="flex items-baseline gap-2">
+                  {pricing.discounted ? (
+                    <>
+                      <span className="text-3xl font-bold text-primary">
+                        {formatPrice(Math.round(pricing.final))}
+                      </span>
+                      <span className="text-sm text-muted-foreground line-through">
+                        {formatPrice(pricing.original)}
+                      </span>
+                      <Badge className="bg-green-100 text-green-700 text-xs">
+                        {appliedVoucher!.discountPercentage}% off
+                      </Badge>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-3xl font-bold">{formatPrice(plan.price)}</span>
+                      <span className="text-muted-foreground text-sm">{plan.period}</span>
+                    </>
+                  )}
                 </div>
+                {pricing.discounted && (
+                  <span className="text-xs text-muted-foreground">{plan.period}</span>
+                )}
                 <p className="text-sm text-muted-foreground mt-2">{plan.description}</p>
               </div>
 
@@ -271,9 +385,13 @@ function SubscriptionPage() {
                   onClick={() => handleUpgrade(plan.key)}
                   disabled={!!payingPlan || isLoading}
                 >
-                  {isPaying
-                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
-                    : `Upgrade to ${plan.name} — ${plan.price}`}
+                  {isPaying ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
+                  ) : pricing.discounted ? (
+                    `Upgrade to ${plan.name} — ${formatPrice(Math.round(pricing.final))}`
+                  ) : (
+                    `Upgrade to ${plan.name} — ${formatPrice(plan.price)}`
+                  )}
                 </Button>
               )}
             </div>
