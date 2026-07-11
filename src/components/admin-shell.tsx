@@ -1,16 +1,17 @@
 import { useEffect } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, Users, CreditCard, BarChart3, Settings, LogOut, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Users, CreditCard, BarChart3, Settings, LogOut, ShieldCheck, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/lib/auth-context";
 
 const nav = [
-  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true as boolean },
-  { to: "/admin/users", label: "Users", icon: Users, exact: false as boolean },
-  { to: "/admin/plans", label: "Subscription Plans", icon: CreditCard, exact: false as boolean },
-  { to: "/admin/analytics", label: "Content Analytics", icon: BarChart3, exact: false as boolean },
-  { to: "/admin/settings", label: "Platform Settings", icon: Settings, exact: false as boolean },
+  { to: "/admin",           label: "Dashboard",          icon: LayoutDashboard, exact: true  as boolean },
+  { to: "/admin/users",     label: "Users",              icon: Users,           exact: false as boolean },
+  { to: "/admin/plans",     label: "Subscription Plans", icon: CreditCard,      exact: false as boolean },
+  { to: "/admin/analytics", label: "Content Analytics",  icon: BarChart3,       exact: false as boolean },
+  { to: "/admin/vouchers",  label: "Vouchers",           icon: Tag,             exact: false as boolean },
+  { to: "/admin/settings",  label: "Platform Settings",  icon: Settings,        exact: false as boolean },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
@@ -27,8 +28,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   if (loading) return null;
 
-  // Signed in but not an admin — show a clear error rather than silently redirecting,
-  // since the user may have a regular account and navigated here by mistake.
   if (session && profile && profile.role !== "admin") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-foreground/2 p-6">
@@ -46,7 +45,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Still waiting for profile to load after session is established
   if (!profile) return null;
 
   async function handleSignOut() {

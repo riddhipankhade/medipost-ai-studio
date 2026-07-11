@@ -69,6 +69,16 @@ export const validateVoucher = createServerFn({ method: "POST" })
     };
   });
 
+// ── Helper: assert caller is admin via profiles table ─────────────────────────
+async function assertAdmin(supabase: ReturnType<typeof getSupabase>, userId: string) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+  if (profile?.role !== "admin") throw new Error("Admin access required.");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. listVouchers — admin: list all vouchers (active + inactive)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,7 +87,7 @@ export const listVouchers = createServerFn({ method: "GET" })
     const supabase = getSupabase();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
-    if (!user.user_metadata?.is_admin) throw new Error("Admin access required.");
+    await assertAdmin(supabase, user.id);
 
     const admin = getSupabaseAdmin();
     const { data, error } = await admin
@@ -104,7 +114,7 @@ export const createVoucher = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
-    if (!user.user_metadata?.is_admin) throw new Error("Admin access required.");
+    await assertAdmin(supabase, user.id);
 
     const admin = getSupabaseAdmin();
     const { error } = await admin.from("vouchers").insert({
@@ -129,7 +139,7 @@ export const toggleVoucher = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
-    if (!user.user_metadata?.is_admin) throw new Error("Admin access required.");
+    await assertAdmin(supabase, user.id);
 
     const admin = getSupabaseAdmin();
     const { error } = await admin
@@ -150,7 +160,7 @@ export const deleteVoucher = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
-    if (!user.user_metadata?.is_admin) throw new Error("Admin access required.");
+    await assertAdmin(supabase, user.id);
 
     const admin = getSupabaseAdmin();
     const { error } = await admin.from("vouchers").delete().eq("id", data.id);

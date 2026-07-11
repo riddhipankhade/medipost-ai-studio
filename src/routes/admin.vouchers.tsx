@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { AdminShell } from "@/components/admin-shell";
 import { supabase } from "@/lib/supabase";
 import {
   listVouchers,
@@ -47,13 +48,16 @@ function AdminVouchersPage() {
   const [expiresAt,  setExpiresAt] = useState("");
   const [creating,   setCreating]  = useState(false);
 
-  // Gate: redirect if not admin
+  // Gate: redirect if not admin (matches profiles.role check in admin.login.tsx)
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user?.user_metadata?.is_admin) {
-        navigate({ to: "/" });
-        return;
-      }
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) { navigate({ to: "/admin/login" }); return; }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.user.id)
+        .single();
+      if (profile?.role !== "admin") { navigate({ to: "/admin/login" }); return; }
       setIsAdmin(true);
       loadVouchers();
     });
@@ -120,7 +124,8 @@ function AdminVouchersPage() {
   if (!isAdmin) return null;
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4">
+    <AdminShell>
+    <div className="max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
         <Tag className="h-6 w-6 text-primary" />
@@ -290,5 +295,6 @@ function AdminVouchersPage() {
         )}
       </div>
     </div>
+    </AdminShell>
   );
 }
