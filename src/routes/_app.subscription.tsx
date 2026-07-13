@@ -5,6 +5,8 @@ import { Check, Zap, Crown, Building2, Loader2, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { SpotlightCard } from "@/components/landing/spotlight-card";
+import { cn } from "@/lib/utils";
 import { createPayUHash, verifyPayUPayment } from "@/lib/api/payment.functions";
 import { validateVoucher } from "@/lib/api/voucher.functions";
 import { useSubscription } from "@/lib/use-subscription";
@@ -22,6 +24,8 @@ declare global {
         params: Record<string, string>,
         handlers: {
           responseHandler: (bolt: { response: Record<string, string> }) => void;
+          // PayU docs name this `catchException`; some builds call `catchExceptionHandler`.
+          catchException: (bolt: { message: string }) => void;
           catchExceptionHandler: (bolt: { message: string }) => void;
         }
       ) => void;
@@ -51,8 +55,8 @@ const PLANS = [
     description: "Perfect for solo practitioners getting started.",
     icon:        Zap,
     popular:     false,
+    gens:        "50 posts / month",
     features: [
-      "50 posts per month",
       "All post types (Single, Carousel, Story, Reel, Campaign)",
       "Hashtag generation",
       "Brand kit",
@@ -67,8 +71,8 @@ const PLANS = [
     description: "For busy clinics who post consistently.",
     icon:        Crown,
     popular:     true,
+    gens:        "300 posts / month",
     features: [
-      "300 posts per month",
       "All post types",
       "AI Visual generation (Flux)",
       "Hashtag generation",
@@ -85,8 +89,8 @@ const PLANS = [
     description: "For multi-doctor practices and hospitals.",
     icon:        Building2,
     popular:     false,
+    gens:        "Unlimited posts",
     features: [
-      "Unlimited posts per month",
       "All post types",
       "AI Visual generation (Flux)",
       "Hashtag generation",
@@ -171,6 +175,11 @@ function SubscriptionPage() {
       await loadBoltScript();
       if (!window.bolt) throw new Error("PayU Bolt SDK not available. Please try again.");
 
+      const onBoltException = (bolt: { message: string }) => {
+        toast.error(bolt.message ?? "Payment error. Please try again.");
+        setPaying(null);
+      };
+
       window.bolt.launch(
         {
           key:         params.key,
@@ -187,43 +196,48 @@ function SubscriptionPage() {
         },
         {
           responseHandler: async (bolt) => {
-            const r = bolt.response;
-            if (r.status === "success") {
-              try {
-                await verifyPayUPayment({
-                  data: {
-                    planKey,
-                    voucherCode,
-                    txnid:       r.txnid,
-                    status:      r.status,
-                    amount:      r.amount,
-                    productinfo: r.productinfo,
-                    firstname:   r.firstname,
-                    email:       r.email,
-                    mihpayid:    r.mihpayid ?? "",
-                    hash:        r.hash,
-                  },
-                });
-                toast.success(
-                  "Plan activated! Welcome to " +
-                  planKey.charAt(0).toUpperCase() + planKey.slice(1) + "."
-                );
-                setAppliedVoucher(null);
-                queryClient.invalidateQueries({ queryKey: ["subscription", userId] });
-              } catch (e: any) {
-                toast.error(e?.message ?? "Verification failed. Contact support.");
+            try {
+              const r = bolt.response ?? {};
+              // PayU reports cancellation via txnStatus ("CANCEL"), not status.
+              const txnStatus = (r.txnStatus ?? "").toUpperCase();
+              if (r.status === "success" && txnStatus !== "CANCEL") {
+                try {
+                  await verifyPayUPayment({
+                    data: {
+                      planKey,
+                      voucherCode,
+                      txnid:       r.txnid,
+                      status:      r.status,
+                      amount:      r.amount,
+                      productinfo: r.productinfo,
+                      firstname:   r.firstname,
+                      email:       r.email,
+                      mihpayid:    r.mihpayid ?? "",
+                      hash:        r.hash,
+                    },
+                  });
+                  toast.success(
+                    "Plan activated! Welcome to " +
+                    planKey.charAt(0).toUpperCase() + planKey.slice(1) + "."
+                  );
+                  setAppliedVoucher(null);
+                  queryClient.invalidateQueries({ queryKey: ["subscription", userId] });
+                } catch (e: any) {
+                  toast.error(e?.message ?? "Verification failed. Contact support.");
+                }
+              } else if (txnStatus === "CANCEL") {
+                toast.info("Payment cancelled.");
+              } else if (r.status === "failure" || txnStatus === "FAILED") {
+                toast.error("Payment failed. Please try again.");
+              } else {
+                toast.info("Payment was not completed.");
               }
-            } else if (r.status === "failure") {
-              toast.error("Payment failed. Please try again.");
-            } else {
-              toast.info("Payment cancelled.");
+            } finally {
+              setPaying(null);
             }
-            setPaying(null);
           },
-          catchExceptionHandler: (bolt) => {
-            toast.error(bolt.message ?? "Payment error. Please try again.");
-            setPaying(null);
-          },
+          catchException: onBoltException,
+          catchExceptionHandler: onBoltException,
         }
       );
     } catch (err: any) {
@@ -235,9 +249,9 @@ function SubscriptionPage() {
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Subscription Plans</h1>
-        <p className="text-muted-foreground mt-1">
-          Choose the plan that works for your practice.
+        <h1 className="text-3xl font-semibold tracking-tight">Simple, doctor-friendly pricing</h1>
+        <p className="text-muted-foreground mt-2 leading-relaxed">
+          Choose the plan that works for your practice. Upgrade when it grows.
         </p>
       </div>
 
@@ -306,8 +320,8 @@ function SubscriptionPage() {
         )}
       </div>
 
-      {/* Plan cards */}
-      <div className="grid md:grid-cols-3 gap-6">
+      {/* Plan cards — same visual language as the landing page pricing */}
+      <div className="grid md:grid-cols-3 gap-5 items-start">
         {PLANS.map((plan) => {
           const Icon      = plan.icon;
           const isCurrent = currentPlanName === plan.key;
@@ -315,85 +329,95 @@ function SubscriptionPage() {
           const pricing   = getDiscountedPrice(plan);
 
           return (
-            <div
-              key={plan.key}
-              className={`relative rounded-2xl border-2 bg-card p-6 flex flex-col ${
-                plan.popular ? "border-primary shadow-lg" : "border-border"
-              }`}
-            >
+            <div key={plan.key} className="relative">
               {plan.popular && (
-                <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl">
-                  MOST POPULAR
-                </div>
+                <div className="absolute -inset-1.5 rounded-[1.5rem] bg-gradient-to-r from-primary/50 via-primary/20 to-primary/50 blur-xl opacity-60 animate-card-glow -z-10" />
+              )}
+              {plan.popular && (
+                <Badge className="absolute -top-3 left-6 z-10 overflow-hidden border-transparent bg-primary text-primary-foreground shadow-[0_2px_12px_-2px_oklch(0.58_0.1_199_/_0.6)]">
+                  Most popular
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer-sweep bg-gradient-to-r from-transparent via-white/60 to-transparent"
+                  />
+                </Badge>
+              )}
+              {isCurrent && (
+                <Badge className="absolute -top-3 right-6 z-10 border-transparent bg-success/10 text-success">
+                  Current plan
+                </Badge>
               )}
 
-              <div className="mb-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Icon className={`h-5 w-5 ${plan.popular ? "text-primary" : "text-muted-foreground"}`} />
-                  <h2 className="text-lg font-bold">{plan.name}</h2>
-                  {isCurrent && <Badge variant="secondary">Current</Badge>}
+              <SpotlightCard active={plan.popular} className="p-7 transition-transform duration-200 hover:-translate-y-1.5">
+                <div
+                  className={cn(
+                    "h-10 w-10 rounded-xl grid place-items-center mb-4",
+                    plan.popular ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary",
+                  )}
+                >
+                  <Icon className="h-5 w-5" strokeWidth={1.9} />
                 </div>
+                <p className="text-sm font-medium text-muted-foreground">{plan.name}</p>
 
                 {/* Price — show original + discounted if voucher applied */}
-                <div className="flex items-baseline gap-2">
+                <div className="flex items-baseline gap-2 mt-2">
                   {pricing.discounted ? (
                     <>
-                      <span className="text-3xl font-bold text-primary">
+                      <span className="text-3xl font-semibold tracking-tight text-primary">
                         {formatPrice(Math.round(pricing.final))}
                       </span>
                       <span className="text-sm text-muted-foreground line-through">
                         {formatPrice(pricing.original)}
                       </span>
-                      <Badge className="bg-green-100 text-green-700 text-xs">
+                      <Badge className="border-transparent bg-success/10 text-success text-xs">
                         {appliedVoucher!.discountPercentage}% off
                       </Badge>
                     </>
                   ) : (
                     <>
-                      <span className="text-3xl font-bold">{formatPrice(plan.price)}</span>
-                      <span className="text-muted-foreground text-sm">{plan.period}</span>
+                      <span className="text-3xl font-semibold tracking-tight">{formatPrice(plan.price)}</span>
+                      <span className="text-sm text-muted-foreground">{plan.period}</span>
                     </>
                   )}
                 </div>
                 {pricing.discounted && (
                   <span className="text-xs text-muted-foreground">{plan.period}</span>
                 )}
-                <p className="text-sm text-muted-foreground mt-2">{plan.description}</p>
-              </div>
+                <p className="text-sm text-primary mt-1.5 font-medium">{plan.gens}</p>
+                <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{plan.description}</p>
 
-              <ul className="space-y-2.5 mb-6 flex-1">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm">
-                    <Check className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
-                      plan.popular ? "text-primary" : "text-muted-foreground"
-                    }`} />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
+                <ul className="space-y-2.5 text-sm mt-6">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex gap-2.5">
+                      <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                      <span className="text-foreground/90">{f}</span>
+                    </li>
+                  ))}
+                </ul>
 
-              {isCurrent ? (
-                <Button variant="outline" className="w-full" disabled>
-                  Current Plan
-                </Button>
-              ) : (
-                <Button
-                  className={`w-full gap-2 ${
-                    plan.popular ? "bg-primary hover:bg-primary/90 text-primary-foreground" : ""
-                  }`}
-                  variant={plan.popular ? "default" : "outline"}
-                  onClick={() => handleUpgrade(plan.key)}
-                  disabled={!!payingPlan || isLoading}
-                >
-                  {isPaying ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
-                  ) : pricing.discounted ? (
-                    `Upgrade to ${plan.name} — ${formatPrice(Math.round(pricing.final))}`
-                  ) : (
-                    `Upgrade to ${plan.name} — ${formatPrice(plan.price)}`
-                  )}
-                </Button>
-              )}
+                {isCurrent ? (
+                  <Button variant="outline" className="w-full mt-7" disabled>
+                    Current Plan
+                  </Button>
+                ) : (
+                  <Button
+                    className={cn(
+                      "w-full mt-7 gap-2 transition-transform duration-200",
+                      plan.popular &&
+                        "shadow-[0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.6)] hover:shadow-[0_14px_36px_-8px_oklch(0.58_0.1_199_/_0.7)]",
+                    )}
+                    variant={plan.popular ? "default" : "outline"}
+                    onClick={() => handleUpgrade(plan.key)}
+                    disabled={!!payingPlan || isLoading}
+                  >
+                    {isPaying ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
+                    ) : (
+                      `Upgrade to ${plan.name} — ${formatPrice(Math.round(pricing.final))}`
+                    )}
+                  </Button>
+                )}
+              </SpotlightCard>
             </div>
           );
         })}
