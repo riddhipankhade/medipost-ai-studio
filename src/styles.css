@@ -241,6 +241,11 @@
   100% { transform: translate(0, 0) scale(1); }
 }
 
+@keyframes card-sway {
+  0%, 100% { transform: rotate(var(--sway, 0deg)) translateY(0); }
+  50% { transform: rotate(calc(var(--sway, 0deg) + 2.5deg)) translateY(-10px); }
+}
+
 @keyframes card-glow {
   0%, 100% { opacity: 0.45; transform: scale(1); }
   50% { opacity: 0.75; transform: scale(1.015); }
@@ -260,6 +265,10 @@
   animation: mesh-drift 18s ease-in-out infinite;
 }
 
+.animate-card-sway {
+  animation: card-sway 8s ease-in-out infinite;
+}
+
 .animate-card-glow {
   animation: card-glow 3.5s ease-in-out infinite;
 }
@@ -270,6 +279,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-float-slow,
+  .animate-card-sway,
   .animate-mesh-drift,
   .animate-card-glow,
   .animate-shimmer-sweep {
