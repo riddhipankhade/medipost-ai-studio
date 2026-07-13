@@ -99,14 +99,17 @@ async function callPollinationsImage(
   const seed     = Date.now();
   const imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1080&height=1080&model=flux&nologo=true&seed=${seed}`;
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  // Budgeted to finish inside Vercel's 60s function limit even on the retry
+  // path: 2 attempts × 25s fetch + 2s backoff ≈ 52s worst case. (3×30s could
+  // run ~100s, which the platform kills mid-flight — the client just sees 500.)
+  for (let attempt = 1; attempt <= 2; attempt++) {
     let res: Response;
     try {
-      res = await fetch(imageUrl, { signal: AbortSignal.timeout(30_000) });
+      res = await fetch(imageUrl, { signal: AbortSignal.timeout(25_000) });
     } catch (networkErr: any) {
       console.warn(`[Pollinations] Network error on attempt ${attempt}:`, networkErr?.message);
-      if (attempt < 3) {
-        await new Promise((r) => setTimeout(r, 2000 * attempt));
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 2000));
         continue;
       }
       throw new Error(
@@ -125,11 +128,11 @@ async function callPollinationsImage(
       };
     }
 
-    const isRetryable = res.status === 429 || res.status === 503;
-    if (attempt < 3 && isRetryable) {
-      const delay = 1500 * Math.pow(2, attempt - 1);
-      console.warn(`[Pollinations] Attempt ${attempt} got ${res.status}. Retrying in ${delay}ms…`);
-      await new Promise((r) => setTimeout(r, delay));
+    // Pollinations throws transient 500/502/504s as well as 429/503 under load
+    const isRetryable = res.status === 429 || res.status >= 500;
+    if (attempt < 2 && isRetryable) {
+      console.warn(`[Pollinations] Attempt ${attempt} got ${res.status}. Retrying in 2000ms…`);
+      await new Promise((r) => setTimeout(r, 2000));
       continue;
     }
 
@@ -138,7 +141,7 @@ async function callPollinationsImage(
     throw new Error(`Image generation failed (${res.status}). Please try again.`);
   }
 
-  throw new Error("Image generation failed after 3 attempts. Please try again in a moment.");
+  throw new Error("Image generation failed after 2 attempts. Please try again in a moment.");
 }
 
 const BrandSchema = z

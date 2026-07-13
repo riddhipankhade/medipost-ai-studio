@@ -165,6 +165,32 @@ export function resolveArchetype(relationship: Relationship): LayoutArchetype {
   return ARCHETYPE_BY_RELATIONSHIP[relationship];
 }
 
+const ITEM_CHIP_ARCHETYPES: LayoutArchetype[] = [
+  "icon-grid", "checklist", "process-flow", "timeline", "callout-diagram", "radial-diagram",
+];
+
+/**
+ * Long flowing prose with no natural list separators can't be chipped into an
+ * item diagram without truncating mid-sentence — splitContentItemsForLayout's
+ * sentence fallback only suits short, punchy sentences. Such content renders
+ * as a hero paragraph instead. Real lists (newlines/semicolons) keep their
+ * diagram, and the emergency callout poster is exempt because it already
+ * renders the full prose.
+ */
+function guardProseFit(archetype: LayoutArchetype, content: string, emphasis: Emphasis): LayoutArchetype {
+  if (!ITEM_CHIP_ARCHETYPES.includes(archetype)) return archetype;
+  if (archetype === "callout-diagram" && emphasis === "emergency") return archetype;
+  const trimmed = content.trim();
+  if (trimmed.length <= 220) return archetype;
+  // A genuine list is several reasonably short entries. Long fragments mean the
+  // separators were sentence punctuation (splitContentItems also splits on
+  // ", Capital"), not list structure — chip layouts would truncate them.
+  const items = splitContentItems(trimmed);
+  const avg = items.length ? trimmed.length / items.length : trimmed.length;
+  if (items.length >= 3 && avg <= 110) return archetype;
+  return "hero-card";
+}
+
 const EMERGENCY_CATEGORIES: ContentCategory[] = ["warning-signs"];
 const PROMOTIONAL_CATEGORIES: ContentCategory[] = ["clinic-promo", "awareness"];
 
@@ -217,9 +243,13 @@ export function resolveSinglePostStrategy(
 ) {
   const slide: SlideLike = { title: post.headline, content: post.content };
   const relationship = inferRelationship(slide, category, { slideIndex: 0, totalSlides: 1, isCta: false });
-  const archetype = SINGLE_POST_ARCHETYPE_BY_CATEGORY[category] ?? resolveArchetype(relationship);
-  const composition = resolveComposition(archetype, category);
   const emphasis = resolveEmphasis(category);
+  const archetype = guardProseFit(
+    SINGLE_POST_ARCHETYPE_BY_CATEGORY[category] ?? resolveArchetype(relationship),
+    post.content,
+    emphasis,
+  );
+  const composition = resolveComposition(archetype, category);
   return { relationship, archetype, composition, emphasis };
 }
 
@@ -230,8 +260,8 @@ export function resolveVisualStrategy(
   ctx?: Partial<SlideContext>,
 ) {
   const relationship = inferRelationship(slide, category, ctx);
-  const archetype = resolveArchetype(relationship);
-  const composition = resolveComposition(archetype, category);
   const emphasis = resolveEmphasis(category);
+  const archetype = guardProseFit(resolveArchetype(relationship), slide.content ?? "", emphasis);
+  const composition = resolveComposition(archetype, category);
   return { relationship, archetype, composition, emphasis };
 }

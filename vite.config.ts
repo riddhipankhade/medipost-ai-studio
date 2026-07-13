@@ -15,7 +15,18 @@ export default defineConfig({
       disableCsrfMiddlewareWarning: true,
     },
   },
+  // The wrapper's `nitro` type only names preset/output/cloudflare, but it
+  // spreads the whole object into nitro's vite plugin, so vercel.* passes
+  // through — hence the cast.
   nitro: {
     preset: "vercel",
-  },
+    vercel: {
+      functions: {
+        // image generation waits on pollinations.ai (frequently 10-40s per
+        // image); Vercel's default 10s function limit kills those requests
+        // mid-flight and the client sees a bare 500
+        maxDuration: 60,
+      },
+    },
+  } as { preset: string },
 });

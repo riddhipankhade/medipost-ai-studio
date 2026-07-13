@@ -237,6 +237,16 @@ function typo(role: keyof typeof typeScale, fontScale: number): React.CSSPropert
   return { fontSize: t.size * fontScale, fontWeight: t.weight, lineHeight: t.lineHeight };
 }
 
+/** Chips can't grow the canvas, so when the AI writes long items the type
+ *  shrinks (down to 0.75×) instead of the text being cut off mid-sentence. */
+function itemFitScale(items: string[]): number {
+  const longest = items.reduce((n, s) => Math.max(n, s.length), 0);
+  if (longest <= 90) return 1;
+  if (longest <= 140) return 0.9;
+  if (longest <= 200) return 0.82;
+  return 0.75;
+}
+
 function illustrationComponentFor(p: LayoutProps) {
   const key = illustrationFor(p.specialty, p.topic ?? p.slideTitle, p.category);
   return illustrations[key];
@@ -289,6 +299,9 @@ export function HeroCard(p: LayoutProps) {
   const Illustration = illustrationComponentFor(p);
   const c = compMetrics(p, "hero-left");
   const headerTheme = onImage ? photoTheme(p) : p.theme;
+  // hero-card is the fallback for long prose the item diagrams can't chip, so
+  // its body shrinks for long paragraphs instead of overflowing the canvas
+  const bodyScale = p.fontScale * (p.slideBody.length > 420 ? 0.85 : p.slideBody.length > 300 ? 0.92 : 1);
 
   if (onImage) {
     return (
@@ -296,7 +309,7 @@ export function HeroCard(p: LayoutProps) {
         <BrandHeader p={{ ...p, theme: headerTheme }} />
         <div className="flex-1 flex flex-col justify-end">
           <h3 style={{ ...typo("heroTitle", p.fontScale), ...photoText("heading") }}>{p.slideTitle}</h3>
-          <p style={{ ...typo("body", p.fontScale), ...photoText("body"), marginTop: c.gap }}>{p.slideBody}</p>
+          <p style={{ ...typo("body", bodyScale), ...photoText("body"), marginTop: c.gap }}>{p.slideBody}</p>
           <div><CtaPill p={p} /></div>
         </div>
         <BrandFooter p={{ ...p, theme: headerTheme }} />
@@ -317,7 +330,7 @@ export function HeroCard(p: LayoutProps) {
           <div className="flex-1 min-w-0">
             <p className="uppercase" style={{ ...typo("caption", p.fontScale), letterSpacing: "0.14em", color: p.theme.accent }}>{p.specialty}</p>
             <h3 style={{ ...typo("heroTitle", p.fontScale), color: p.theme.heading, marginTop: c.gap * 0.5 }}>{p.slideTitle}</h3>
-            <p style={{ ...typo("body", p.fontScale), color: p.theme.text, marginTop: c.gap }}>{p.slideBody}</p>
+            <p style={{ ...typo("body", bodyScale), color: p.theme.text, marginTop: c.gap }}>{p.slideBody}</p>
             <CtaPill p={p} />
           </div>
         </div>
@@ -334,7 +347,7 @@ export function HeroCard(p: LayoutProps) {
           <Illustration className="w-full h-auto" accent={p.theme.accent} line={p.theme.heading} />
         </div>
         <h3 style={{ ...typo("heroTitle", p.fontScale), color: p.theme.heading, marginTop: c.sectionGap }}>{p.slideTitle}</h3>
-        <p style={{ ...typo("body", p.fontScale), color: p.theme.text, marginTop: c.gap, maxWidth: c.density === "low" ? "85%" : "100%" }}>{p.slideBody}</p>
+        <p style={{ ...typo("body", bodyScale), color: p.theme.text, marginTop: c.gap, maxWidth: c.density === "low" ? "85%" : "100%" }}>{p.slideBody}</p>
         <CtaPill p={p} />
       </div>
       <BrandFooter p={p} />
@@ -379,7 +392,8 @@ export function IconGrid(p: LayoutProps) {
               style={{ height: 22, width: 22, background: onImage ? p.theme.accent : `${p.theme.accent}33`, color: onImage ? "#fff" : p.theme.accent, ...typo("caption", p.fontScale) }}>
               {i + 1}
             </div>
-            <p className="line-clamp-4" style={{ ...typo("body", p.fontScale), color: onImage ? PHOTO_CHIP_TEXT : p.theme.text }}>{item}</p>
+            <p className={list.length <= 4 ? "line-clamp-6" : "line-clamp-4"}
+              style={{ ...typo("body", p.fontScale * itemFitScale(list)), color: onImage ? PHOTO_CHIP_TEXT : p.theme.text }}>{item}</p>
           </div>
         ))}
       </div>
@@ -417,7 +431,8 @@ export function Checklist(p: LayoutProps) {
               <div className="rounded-full grid place-items-center shrink-0" style={{ height: 22, width: 22, background: p.theme.accent, color: "#fff" }}>
                 <Check className="h-3 w-3" strokeWidth={3} />
               </div>
-              <p className="line-clamp-2" style={{ ...typo("body", p.fontScale), color: "#1f2937" }}>{item}</p>
+              <p className={list.length <= 4 ? "line-clamp-4" : "line-clamp-3"}
+                style={{ ...typo("body", p.fontScale * itemFitScale(list)), color: "#1f2937" }}>{item}</p>
             </div>
           ))}
         </div>
@@ -568,10 +583,14 @@ export function ProcessFlow(p: LayoutProps) {
                 style={{ height: 30, width: 30, background: p.theme.accent, color: "#fff", fontSize: 12 * p.fontScale, boxShadow: shadow.soft }}>
                 {i + 1}
               </div>
-              <p className={`line-clamp-3 ${rightSide ? "text-right" : ""}`}
-                style={{ ...typo("body", p.fontScale), color: onImage ? PHOTO_CHIP_TEXT : p.theme.text, background: onImage ? PHOTO_CHIP_BG : `${p.theme.heading}0d`, padding: `${c.gap * 0.6}px ${c.gap}px`, borderRadius: radius.sm }}>
-                {step}
-              </p>
+              {/* padding lives on the wrapper: line-clamp on a padded element clips at
+                  the padding edge, exposing a half-sliced next line in the padding area */}
+              <div style={{ background: onImage ? PHOTO_CHIP_BG : `${p.theme.heading}0d`, padding: `${c.gap * 0.6}px ${c.gap}px`, borderRadius: radius.sm }}>
+                <p className={`${steps.length <= 3 ? "line-clamp-5" : "line-clamp-4"} ${rightSide ? "text-right" : ""}`}
+                  style={{ ...typo("body", p.fontScale * itemFitScale(steps)), color: onImage ? PHOTO_CHIP_TEXT : p.theme.text }}>
+                  {step}
+                </p>
+              </div>
             </div>
           );
         })}
@@ -613,10 +632,16 @@ export function Timeline(p: LayoutProps) {
   }
 
   const cols: React.CSSProperties = { gridTemplateColumns: `repeat(${stops.length}, 1fr)`, columnGap: c.gap * 0.5 };
-  const labelStyle: React.CSSProperties = {
-    ...typo("caption", p.fontScale), fontWeight: 600,
-    ...(onImage ? { background: PHOTO_CHIP_BG, color: PHOTO_CHIP_TEXT, padding: "4px 6px", borderRadius: radius.sm } : { color: p.theme.text }),
+  const labelClamp = stops.length <= 3 ? "line-clamp-6" : "line-clamp-4";
+  const labelTextStyle: React.CSSProperties = {
+    ...typo("caption", p.fontScale * itemFitScale(stops)), fontWeight: 600,
+    color: onImage ? PHOTO_CHIP_TEXT : p.theme.text,
   };
+  // chip padding stays on the wrapper — clamping a padded element clips at the
+  // padding edge and shows a half-sliced extra line
+  const labelChipStyle: React.CSSProperties = onImage
+    ? { background: PHOTO_CHIP_BG, padding: "4px 6px", borderRadius: radius.sm }
+    : {};
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col" style={{ padding: c.pad }}>
@@ -632,7 +657,9 @@ export function Timeline(p: LayoutProps) {
       <div className="flex-1 flex flex-col justify-center" style={{ marginTop: c.gap }}>
         <div className="grid items-end" style={cols}>
           {stops.map((s, i) => (
-            <p key={i} className="text-center line-clamp-4" style={{ ...labelStyle, visibility: i % 2 === 0 ? "visible" : "hidden" }}>{s}</p>
+            <div key={i} style={{ ...labelChipStyle, visibility: i % 2 === 0 ? "visible" : "hidden" }}>
+              <p className={`text-center ${labelClamp}`} style={labelTextStyle}>{s}</p>
+            </div>
           ))}
         </div>
         <div className="relative my-2" style={{ height: 14 }}>
@@ -646,7 +673,9 @@ export function Timeline(p: LayoutProps) {
         </div>
         <div className="grid items-start" style={cols}>
           {stops.map((s, i) => (
-            <p key={i} className="text-center line-clamp-4" style={{ ...labelStyle, visibility: i % 2 === 1 ? "visible" : "hidden" }}>{s}</p>
+            <div key={i} style={{ ...labelChipStyle, visibility: i % 2 === 1 ? "visible" : "hidden" }}>
+              <p className={`text-center ${labelClamp}`} style={labelTextStyle}>{s}</p>
+            </div>
           ))}
         </div>
       </div>
@@ -777,7 +806,8 @@ export function CalloutDiagram(p: LayoutProps) {
         {items.map((item, i) => (
           <div key={i} className="absolute -translate-x-1/2 -translate-y-1/2 max-w-[38%] text-center"
             style={{ ...positions[i], background: "rgba(255,255,255,0.94)", boxShadow: shadow.card, borderRadius: radius.sm, padding: `${c.gap * 0.4}px ${c.gap * 0.7}px` }}>
-            <p className="line-clamp-3" style={{ ...typo("caption", p.fontScale), fontWeight: 500, color: "#1f2937" }}>{item}</p>
+            <p className={items.length <= 3 ? "line-clamp-5" : "line-clamp-4"}
+              style={{ ...typo("caption", p.fontScale * itemFitScale(items)), fontWeight: 500, color: "#1f2937" }}>{item}</p>
           </div>
         ))}
       </div>
@@ -844,7 +874,8 @@ export function RadialDiagram(p: LayoutProps) {
           <div key={i} className="absolute -translate-x-1/2 -translate-y-1/2 max-w-[34%] text-center"
             style={{ ...positions[i], ...(onImage ? { background: PHOTO_CHIP_BG, padding: "4px 6px", borderRadius: radius.sm } : undefined) }}>
             <div className="mx-auto rounded-full" style={{ height: 8, width: 8, background: p.theme.accent, marginBottom: 4, boxShadow: `0 0 0 3px ${p.theme.accent}33` }} />
-            <p className="line-clamp-3" style={{ ...typo("caption", p.fontScale), fontWeight: 600, color: onImage ? PHOTO_CHIP_TEXT : p.theme.text }}>{item}</p>
+            <p className={items.length <= 4 ? "line-clamp-5" : "line-clamp-4"}
+              style={{ ...typo("caption", p.fontScale * itemFitScale(items)), fontWeight: 600, color: onImage ? PHOTO_CHIP_TEXT : p.theme.text }}>{item}</p>
           </div>
         ))}
       </div>
