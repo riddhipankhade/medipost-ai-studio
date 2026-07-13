@@ -1,6 +1,6 @@
 ﻿import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -625,13 +625,71 @@ function savePng(dataUrl: string, name: string) {
   document.body.removeChild(link);
 }
 
-function PreviewToolbar({ onCopy, title }: { onCopy: () => void; title: string }) {
+/* Copy is only offered for text deliverables (reel script, campaign plan) —
+   visual posts are downloaded, and their caption/hashtag sections carry their
+   own per-section Copy buttons. */
+function PreviewToolbar({ onCopy, title }: { onCopy?: () => void; title: string }) {
   return (
-    <div className="flex items-center justify-between mb-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-      <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={onCopy}>
-        <Copy className="h-3.5 w-3.5" /> Copy
-      </Button>
+    <div className="flex items-center justify-between gap-3 mb-3">
+      <p className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      {onCopy && (
+        <Button variant="outline" size="sm" className="shrink-0 gap-1.5 h-8" onClick={onCopy}>
+          <Copy className="h-3.5 w-3.5" /> Copy
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/* Evenly-sized action buttons rendered directly under the creative they act on,
+   matching its width — replaces the old right-aligned wrap row above the preview
+   that broke onto ragged lines once it held more than two buttons. */
+function CreativeActions({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`mx-auto grid w-full max-w-md grid-cols-2 gap-2 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+/** WYSIWYG preview: renders the creative at the same fixed design width the PNG
+ *  download captures (540px), then scales it down with a CSS transform to fit
+ *  the preview column. The slide's type sizes are fixed px, so rendering the
+ *  preview at any other width changes how text wraps and fills the canvas —
+ *  this guarantees the preview is pixel-for-pixel the downloaded post. */
+const CREATIVE_DESIGN_WIDTH = 540;
+
+function ExactScalePreview({ children }: { children: React.ReactNode }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const update = () => setScale(el.clientWidth / CREATIVE_DESIGN_WIDTH);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // The child is absolutely positioned so its unscaled 540px layout size never
+  // reaches the layout: otherwise it sets the grid column's min-content width,
+  // which forces the whole studio wider than the viewport on smaller windows
+  // (transform: scale is visual only). The host supplies the real footprint —
+  // width from the column, height from the measured scale.
+  return (
+    <div
+      ref={hostRef}
+      className="relative w-full"
+      style={scale === null ? { aspectRatio: "1 / 1" } : { height: CREATIVE_DESIGN_WIDTH * scale }}
+    >
+      {scale !== null && (
+        <div
+          className="absolute left-0 top-0"
+          style={{ width: CREATIVE_DESIGN_WIDTH, transform: `scale(${scale})`, transformOrigin: "top left" }}
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -704,8 +762,6 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
   const strategy = resolveSinglePostStrategy({ headline: post.headline, content: post.content }, category);
   const effectiveLayout: SlideLayout = autoLayout ? strategy.archetype : layout;
 
-  const fullText = [post.headline, "", post.content, "", post.caption, "", post.cta, "", post.hashtags.join(" ")].join("\n");
-
   const canvasProps: Omit<SlideCanvasProps, "imageUrl" | "imageLoading"> = {
     slideTitle: post.headline, slideBody: post.content, slideIndex: 0, totalSlides: 1,
     isCta: true, cta: post.cta, specialty, theme, layout: effectiveLayout,
@@ -732,28 +788,29 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
-        <PreviewToolbar title="Post Preview" onCopy={() => copyText(fullText, "Post copied")} />
+        <PreviewToolbar title="Post Preview" />
 
-        <div className="flex flex-wrap items-center justify-end gap-2 -mt-1">
-          <AiImageButton
-            loading={ai.loading}
-            hasImage={!!ai.url}
-            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
-          />
-          <Button
-            type="button" size="sm" variant="outline" className="gap-1.5 h-8"
-            onClick={downloadPost} disabled={downloading || ai.loading}
-          >
-            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
-            Download Post
-          </Button>
-        </div>
-
-        <div className="grid gap-5 md:grid-cols-[1fr_280px]">
-          <div>
+        <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="min-w-0">
             <div className="mx-auto w-full max-w-md">
-              <SlideCanvas {...canvasProps} imageUrl={ai.url} imageLoading={ai.loading} />
+              <ExactScalePreview>
+                <SlideCanvas {...canvasProps} imageUrl={ai.url} imageLoading={ai.loading} />
+              </ExactScalePreview>
             </div>
+            <CreativeActions className="mt-3">
+              <AiImageButton
+                loading={ai.loading}
+                hasImage={!!ai.url}
+                onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+              />
+              <Button
+                type="button" size="sm" variant="outline" className="gap-1.5 h-8"
+                onClick={downloadPost} disabled={downloading || ai.loading}
+              >
+                {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+                Download post
+              </Button>
+            </CreativeActions>
             {/* offscreen full-size render — capture source for the 1080×1080 PNG download */}
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
               <div ref={captureRef}>
@@ -888,45 +945,23 @@ function CarouselPreview({ post, specialty, category, topic }: { post: CarouselP
   const strategy = resolveVisualStrategy(slide, category, { slideIndex: idx, totalSlides: total, isCta: idx === total - 1 });
   const effectiveLayout: SlideLayout = autoLayout ? strategy.archetype : layout;
 
-  const fullText = post.slides.map((s, i) => `Slide ${i + 1} — ${s.title}\n${s.content}`).join("\n\n") + `\n\nCTA: ${post.cta}\n${post.hashtags.join(" ")}`;
-
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
-        <PreviewToolbar title={post.title || "Carousel Preview"} onCopy={() => copyText(fullText, "Carousel copied")} />
+        <PreviewToolbar title={post.title || "Carousel Preview"} />
 
-        <div className="flex flex-wrap items-center justify-end gap-2 -mt-1">
-          <AiImageButton
-            loading={loadingSlide === idx} hasImage={!!slideImages[idx]} onClick={() => genSlideImage(idx)}
-            label={slideImages[idx] ? "Regenerate this slide" : "Generate AI visual for this slide"}
-          />
-          <Button type="button" size="sm" variant="secondary" className="gap-1.5 h-8"
-            disabled={bulkLoading || loadingSlide !== null} onClick={genAll}>
-            {bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
-            {bulkLoading ? "Generating all…" : "Generate all slide visuals"}
-          </Button>
-          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8"
-            disabled={downloading} onClick={() => downloadSlides([idx])}>
-            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
-            Download slide
-          </Button>
-          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8"
-            disabled={downloading} onClick={() => downloadSlides(post.slides.map((_, i) => i))}>
-            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
-            Download all
-          </Button>
-        </div>
-
-        <div className="grid gap-5 md:grid-cols-[1fr_280px]">
-          <div>
+        <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="min-w-0">
             <div className="relative mx-auto w-full max-w-md">
-              <SlideCanvas
-                slideTitle={slide.title} slideBody={slide.content} slideIndex={idx} totalSlides={total}
-                isCta={idx === total - 1} cta={post.cta} specialty={specialty} theme={theme} layout={effectiveLayout}
-                fontScale={fontScale} showIcons={showIcons} brand={brand}
-                imageUrl={slideImages[idx]} imageLoading={loadingSlide === idx}
-                topic={topic} category={category} composition={strategy.composition}
-              />
+              <ExactScalePreview>
+                <SlideCanvas
+                  slideTitle={slide.title} slideBody={slide.content} slideIndex={idx} totalSlides={total}
+                  isCta={idx === total - 1} cta={post.cta} specialty={specialty} theme={theme} layout={effectiveLayout}
+                  fontScale={fontScale} showIcons={showIcons} brand={brand}
+                  imageUrl={slideImages[idx]} imageLoading={loadingSlide === idx}
+                  topic={topic} category={category} composition={strategy.composition}
+                />
+              </ExactScalePreview>
               <button onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={idx === 0}
                 className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 h-10 w-10 grid place-items-center rounded-full bg-background border border-border shadow disabled:opacity-40">
                 <ChevronLeft className="h-5 w-5" />
@@ -936,6 +971,28 @@ function CarouselPreview({ post, specialty, category, topic }: { post: CarouselP
                 <ChevronRight className="h-5 w-5" />
               </button>
             </div>
+
+            <CreativeActions className="mt-3">
+              <AiImageButton
+                loading={loadingSlide === idx} hasImage={!!slideImages[idx]} onClick={() => genSlideImage(idx)}
+                label={slideImages[idx] ? "Regenerate slide visual" : "Generate slide visual"}
+              />
+              <Button type="button" size="sm" variant="secondary" className="gap-1.5 h-8"
+                disabled={bulkLoading || loadingSlide !== null} onClick={genAll}>
+                {bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand className="h-3.5 w-3.5" />}
+                {bulkLoading ? "Generating all…" : "Generate all visuals"}
+              </Button>
+              <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8"
+                disabled={downloading} onClick={() => downloadSlides([idx])}>
+                {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+                Download slide
+              </Button>
+              <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8"
+                disabled={downloading} onClick={() => downloadSlides(post.slides.map((_, i) => i))}>
+                {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+                Download all
+              </Button>
+            </CreativeActions>
 
             {/* offscreen full-size render of every slide — capture source for the PNG
                 downloads only, never visible (thumbnail strip removed intentionally:
@@ -1152,7 +1209,6 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
   const c2 = brand.secondaryColor || post.visual.colors[1] || "#1f4e79";
   const c3 = post.visual.colors[2] || "#0a3d62";
   const aiOrPhoto = ai.url || brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
-  const fullText = `${post.headline}\n\n${post.message}\n\n${post.cta}`;
 
   async function downloadStory() {
     if (!storyRef.current) return;
@@ -1178,15 +1234,7 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
-        <PreviewToolbar title="Story (9:16) Preview" onCopy={() => copyText(fullText, "Story copied")} />
-        <div className="flex flex-wrap justify-end gap-2 -mt-1">
-          <AiImageButton loading={ai.loading} hasImage={!!ai.url}
-            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
-          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" disabled={downloading || ai.loading} onClick={downloadStory}>
-            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
-            Download story
-          </Button>
-        </div>
+        <PreviewToolbar title="Story (9:16) Preview" />
         <div className="mx-auto rounded-xl overflow-hidden shadow-lg border border-border" style={{ width: 270 }}>
           <div ref={storyRef} className="relative w-full flex flex-col p-5 text-white" style={{ aspectRatio: "9 / 16", background: `linear-gradient(160deg, ${c1}, ${c2} 60%, ${c3})` }}>
             {ai.loading && <ImageLoadingOverlay />}
@@ -1212,6 +1260,14 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
               <div className="rounded-full bg-white text-sm font-semibold py-2.5 text-center shadow" style={{ color: c1 }}>{post.cta}</div>
             </div>
           </div>
+        </div>
+        <div className="flex flex-wrap justify-center gap-2">
+          <AiImageButton loading={ai.loading} hasImage={!!ai.url}
+            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
+          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" disabled={downloading || ai.loading} onClick={downloadStory}>
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+            Download story
+          </Button>
         </div>
         <SectionBlock title="Headline" body={post.headline} />
         <SectionBlock title="Short Message" body={post.message} />
@@ -1323,18 +1379,10 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
   const { cardRef, download } = useDownloadPost(brand.doctorName || brand.clinicName || "medipost");
-  const fullText = `${post.greeting}\n\n${post.caption}\n\n${post.hashtags.join(" ")}`;
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
-        <PreviewToolbar title={`${post.festival} Greeting`} onCopy={() => copyText(fullText, "Greeting copied")} />
-        <div className="flex flex-wrap items-center justify-end gap-2 -mt-1">
-          <AiImageButton loading={ai.loading} hasImage={!!ai.url} label={ai.url ? "Regenerate visual" : "Generate festive visual"}
-            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
-          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" onClick={download} disabled={ai.loading}>
-            <ImageDown className="h-3.5 w-3.5" /> Download Post
-          </Button>
-        </div>
+        <PreviewToolbar title={`${post.festival} Greeting`} />
 
         <div className="flex justify-center">
           <FestiveCard
@@ -1348,6 +1396,13 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
             imageLoading={ai.loading}
             loadingOverlay={<ImageLoadingOverlay />}
           />
+        </div>
+        <div className="flex flex-wrap justify-center gap-2">
+          <AiImageButton loading={ai.loading} hasImage={!!ai.url} label={ai.url ? "Regenerate visual" : "Generate festive visual"}
+            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
+          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" onClick={download} disabled={ai.loading}>
+            <ImageDown className="h-3.5 w-3.5" /> Download post
+          </Button>
         </div>
 
         <SectionBlock title="Greeting Message" body={post.greeting} />
