@@ -17,20 +17,6 @@ interface ContentType {
 
 const AUTOPLAY_MS = 4200;
 
-function Lines({ n, className }: { n: number; className?: string }) {
-  return (
-    <div className={cn("space-y-2", className)}>
-      {Array.from({ length: n }).map((_, i) => (
-        <div
-          key={i}
-          className="h-2.5 rounded-full bg-foreground/10"
-          style={{ width: `${i === n - 1 ? 55 : 92 - i * 6}%` }}
-        />
-      ))}
-    </div>
-  );
-}
-
 const contentTypes: ContentType[] = [
   {
     id: "single-post",
@@ -52,20 +38,26 @@ const contentTypes: ContentType[] = [
     blurb: "Multi-slide carousels that walk patients through a topic, slide by slide.",
     preview: (
       <div className="p-6">
-        <div className="relative max-w-xs mx-auto mb-4">
-          <div className="absolute inset-0 translate-x-3.5 translate-y-2 rounded-xl bg-primary/10 rotate-2" />
-          <div className="absolute inset-0 -translate-x-3.5 translate-y-1 rounded-xl bg-primary/15 -rotate-2" />
-          <div className="relative rounded-xl border border-border shadow-md overflow-hidden">
+        <div className="flex justify-center items-center max-w-md mx-auto">
+          <div className="relative z-10 w-[54%] -rotate-2 rounded-xl border border-border shadow-lg overflow-hidden">
             <img
-              src="/showcase/callout-diagram.jpg"
-              alt="Generated carousel slide — dental tips arranged around a tooth illustration"
+              src="/showcase/carousel-slide-1.png"
+              alt="Generated carousel slide 1 of 2 — 'Is Your Baby Sniffling Again?' infant respiratory health tips over a mother-and-baby photo, with clinic branding"
+              loading="lazy"
+              decoding="async"
+              className="block w-full h-auto"
+            />
+          </div>
+          <div className="relative w-[54%] ml-[-8%] rotate-2 rounded-xl border border-border shadow-md overflow-hidden">
+            <img
+              src="/showcase/carousel-slide-2.png"
+              alt="Generated carousel slide 2 of 2 — 'Handwashing: Your Baby's Shield' hygiene tips with a call-to-action banner and clinic contact details"
               loading="lazy"
               decoding="async"
               className="block w-full h-auto"
             />
           </div>
         </div>
-        <Lines n={2} className="max-w-xs mx-auto" />
       </div>
     ),
   },
