@@ -603,7 +603,7 @@ function LoadingPanel({ stage }: { stage: number }) {
 function ResultPreview({ result, specialty, rowId, category, topic }: { result: GenerateOutput; specialty: string; rowId: string | null; category: ContentCategory; topic: string }) {
   switch (result.kind) {
     case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic} />;
-    case "carousel": return <CarouselPreview post={result} specialty={specialty} category={category} topic={topic} />;
+    case "carousel": return <CarouselPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic} />;
     case "story":    return <StoryPreview post={result} specialty={specialty} />;
     case "reel":     return <ReelPreview post={result} specialty={specialty} />;
     case "campaign": return <CampaignPreview plan={result} />;
@@ -852,7 +852,7 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
 }
 
 /* ---- Carousel ---- */
-function CarouselPreview({ post, specialty, category, topic }: { post: CarouselPost; specialty: string; category: ContentCategory; topic: string }) {
+function CarouselPreview({ post, specialty, rowId, category, topic }: { post: CarouselPost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string }) {
   const [brand] = useBrandKit();
   const callImage = useServerFn(generateImage);
   const [idx, setIdx] = useState(0);
@@ -905,7 +905,10 @@ function CarouselPreview({ post, specialty, category, topic }: { post: CarouselP
     if (!prompt.trim()) { toast.error("No image prompt available for this slide"); return; }
     setLoadingSlide(i);
     try {
-      const r = await callImage({ data: { prompt, visualStyle: post.visual.visualStyle } });
+      const r = await callImage({ data: {
+        prompt, visualStyle: post.visual.visualStyle,
+        contentId: rowId ?? undefined, slideIndex: i, slideCount: post.slides.length,
+      } });
       setSlideImages((arr) => { const next = [...arr]; next[i] = r.dataUrl; return next; });
     } catch (e: any) {
       const msg = e?.message ?? e?.data?.message ?? (typeof e === "string" ? e : null) ?? "Image generation failed. Please try again.";

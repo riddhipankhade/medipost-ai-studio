@@ -300,15 +300,21 @@ export function HeroCard(p: LayoutProps) {
   const c = compMetrics(p, "hero-left");
   const headerTheme = onImage ? photoTheme(p) : p.theme;
   // hero-card is the fallback for long prose the item diagrams can't chip, so
-  // its body shrinks for long paragraphs instead of overflowing the canvas
+  // its type shrinks for long content instead of overflowing the canvas, and
+  // long bodies skip the side-by-side variant entirely — a half-width text
+  // column can't hold a full paragraph no matter the shrink
   const bodyScale = p.fontScale * (p.slideBody.length > 420 ? 0.85 : p.slideBody.length > 300 ? 0.92 : 1);
+  const titleScale = p.fontScale * (p.slideTitle.length > 26 ? 0.82 : 1);
+  // the side-by-side variant halves the text column, so even a medium
+  // paragraph (>200 chars) plus the CTA pill overflows it — stack instead
+  const longBody = p.slideBody.length > 200;
 
   if (onImage) {
     return (
       <div className="absolute inset-0 z-10 flex flex-col" style={{ padding: c.pad }}>
         <BrandHeader p={{ ...p, theme: headerTheme }} />
         <div className="flex-1 flex flex-col justify-end">
-          <h3 style={{ ...typo("heroTitle", p.fontScale), ...photoText("heading") }}>{p.slideTitle}</h3>
+          <h3 style={{ ...typo("heroTitle", titleScale), ...photoText("heading") }}>{p.slideTitle}</h3>
           <p style={{ ...typo("body", bodyScale), ...photoText("body"), marginTop: c.gap }}>{p.slideBody}</p>
           <div><CtaPill p={p} /></div>
         </div>
@@ -317,7 +323,7 @@ export function HeroCard(p: LayoutProps) {
     );
   }
 
-  if (c.readingDirection === "left-right") {
+  if (c.readingDirection === "left-right" && !longBody) {
     const placeRight = c.illustrationPlacement === "right";
     return (
       <div className="absolute inset-0 z-10 flex flex-col" style={{ padding: c.pad }}>
@@ -329,7 +335,7 @@ export function HeroCard(p: LayoutProps) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="uppercase" style={{ ...typo("caption", p.fontScale), letterSpacing: "0.14em", color: p.theme.accent }}>{p.specialty}</p>
-            <h3 style={{ ...typo("heroTitle", p.fontScale), color: p.theme.heading, marginTop: c.gap * 0.5 }}>{p.slideTitle}</h3>
+            <h3 style={{ ...typo("heroTitle", titleScale), color: p.theme.heading, marginTop: c.gap * 0.5 }}>{p.slideTitle}</h3>
             <p style={{ ...typo("body", bodyScale), color: p.theme.text, marginTop: c.gap }}>{p.slideBody}</p>
             <CtaPill p={p} />
           </div>
@@ -343,10 +349,11 @@ export function HeroCard(p: LayoutProps) {
     <div className="absolute inset-0 z-10 flex flex-col text-center" style={{ padding: c.pad }}>
       <BrandHeader p={p} />
       <div className="flex-1 flex flex-col items-center justify-center">
-        <div style={{ width: `${c.illustrationEmphasis * 100}%` }}>
+        {/* a long paragraph needs the vertical room more than the artwork does */}
+        <div style={{ width: `${c.illustrationEmphasis * (longBody ? 45 : 100)}%` }}>
           <Illustration className="w-full h-auto" accent={p.theme.accent} line={p.theme.heading} />
         </div>
-        <h3 style={{ ...typo("heroTitle", p.fontScale), color: p.theme.heading, marginTop: c.sectionGap }}>{p.slideTitle}</h3>
+        <h3 style={{ ...typo("heroTitle", titleScale), color: p.theme.heading, marginTop: longBody ? c.gap : c.sectionGap }}>{p.slideTitle}</h3>
         <p style={{ ...typo("body", bodyScale), color: p.theme.text, marginTop: c.gap, maxWidth: c.density === "low" ? "85%" : "100%" }}>{p.slideBody}</p>
         <CtaPill p={p} />
       </div>
