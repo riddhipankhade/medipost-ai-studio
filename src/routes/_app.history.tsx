@@ -25,7 +25,7 @@ import FestiveCard from "@/components/FestiveCard";
 import { SlideCanvas } from "@/routes/_app.generate";
 import { useBrandKit } from "@/lib/brand-kit";
 import { getTheme, suggestThemeId, carouselThemes } from "@/lib/carousel-themes";
-import { resolveSinglePostStrategy } from "@/lib/visual-strategy";
+import { resolveSinglePostStrategy, resolveVisualStrategy } from "@/lib/visual-strategy";
 import type { ContentCategory } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/_app/history")({
@@ -89,11 +89,29 @@ function bodyPreview(row: ContentRow): string {
   }
 }
 
+// Carousel rows store a JSON array of per-slide image URLs in
+// generated_image_url (nulls for slides whose visual was never generated).
+function parseSlideImages(row: ContentRow): (string | null)[] {
+  const u = row.generated_image_url;
+  if (!u?.startsWith("[")) return [];
+  try {
+    const arr = JSON.parse(u);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
+function rowHasImage(row: ContentRow): boolean {
+  const u = row.generated_image_url;
+  if (!u) return false;
+  return u.startsWith("[") ? parseSlideImages(row).some(Boolean) : true;
+}
+
 function fullCopyText(row: ContentRow): string {
   const p = parsePost(row.generated_text);
   if (!p) return row.topic;
   const parts: string[] = [];
   if (p?.headline)          parts.push(p.headline);
+  if (p?.slides?.length)    parts.push(p.slides.map((s: any) => `${s.title}\n${s.content}`).join("\n\n"));
   if (p?.content)           parts.push(p.content);
   if (p?.caption)           parts.push(p.caption);
   if (p?.cta)               parts.push(p.cta);
@@ -205,6 +223,7 @@ function PostDetailDialog({
   // Carousel state
   const slides: { title: string; content: string }[] = kind === "carousel" ? (p?.slides ?? []) : [];
   const [slideIdx, setSlideIdx] = useState(0);
+  const slideImages = kind === "carousel" ? parseSlideImages(row) : [];
 
   // Single post — same content-aware archetype the studio picks, rebuilt from
   // the saved headline/content/category (the studio's theme/layout customizations
@@ -215,13 +234,20 @@ function PostDetailDialog({
         row.content_category as ContentCategory,
       )
     : null;
-  const singleBaseTheme = getTheme(suggestThemeId(row.specialty));
-  const singleTheme = {
-    ...singleBaseTheme,
+  const baseTheme = getTheme(suggestThemeId(row.specialty));
+  const slideTheme = {
+    ...baseTheme,
     bg: `linear-gradient(135deg, ${slideBrand.primaryColor} 0%, ${slideBrand.secondaryColor} 100%)`,
     accent: slideBrand.primaryColor,
     fontFamily: carouselThemes[0].fontFamily,
   };
+
+  // Carousel — same content-aware archetype the studio picks per slide.
+  const carouselStrategy = kind === "carousel" && slides[slideIdx]
+    ? resolveVisualStrategy(slides[slideIdx], row.content_category as ContentCategory, {
+        slideIndex: slideIdx, totalSlides: slides.length, isCta: slideIdx === slides.length - 1,
+      })
+    : null;
 
   // Reel / Campaign don't use PostCard — they have dedicated viewers.
   // Festive and Single get their own real creatives (FestiveCard / SlideCanvas), matching the studio.
@@ -241,32 +267,37 @@ function PostDetailDialog({
           <DialogTitle className="text-base font-semibold truncate">{row.topic}</DialogTitle>
         </DialogHeader>
 
-        {/* ── CAROUSEL viewer ── */}
-        {isCarousel && (
+        {/* ── CAROUSEL viewer — same content-aware creative as the studio;
+               slides with a generated image show it, the rest render the
+               default archetype background ── */}
+        {isCarousel && carouselStrategy && slides[slideIdx] && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{p?.title ?? row.topic}</span>
-              <span>Slide {slideIdx + 1} / {slides.length}</span>
-            </div>
-            {slides[slideIdx] && (
-              <div className="rounded-xl border bg-muted/30 p-5 min-h-[140px]">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Slide {slideIdx + 1}</p>
-                <p className="font-semibold text-base leading-snug mb-2">{slides[slideIdx].title}</p>
-                <p className="text-sm text-muted-foreground leading-relaxed">{slides[slideIdx].content}</p>
+            <div className="flex justify-center overflow-auto max-h-[70vh]">
+              <div className="w-full max-w-md" ref={cardRef}>
+                <SlideCanvas
+                  slideTitle={slides[slideIdx].title}
+                  slideBody={slides[slideIdx].content}
+                  slideIndex={slideIdx}
+                  totalSlides={slides.length}
+                  isCta={slideIdx === slides.length - 1}
+                  cta={p?.cta ?? ""}
+                  specialty={row.specialty}
+                  theme={slideTheme}
+                  layout={carouselStrategy.archetype}
+                  fontScale={1}
+                  showIcons={true}
+                  brand={slideBrand}
+                  imageUrl={slideImages[slideIdx] ?? undefined}
+                  topic={row.topic}
+                  category={row.content_category as ContentCategory}
+                  composition={carouselStrategy.composition}
+                />
               </div>
-            )}
+            </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" className="flex-1" disabled={slideIdx === 0} onClick={() => setSlideIdx(i => i - 1)}>← Prev</Button>
               <Button variant="outline" size="sm" className="flex-1" disabled={slideIdx === slides.length - 1} onClick={() => setSlideIdx(i => i + 1)}>Next →</Button>
             </div>
-            <div className="flex justify-center gap-1.5">
-              {slides.map((_, i) => (
-                <button key={i} onClick={() => setSlideIdx(i)}
-                  className={`h-1.5 rounded-full transition-all ${i === slideIdx ? "w-4 bg-primary" : "w-1.5 bg-border"}`} />
-              ))}
-            </div>
-            {p?.cta && <p className="text-sm font-medium text-center text-primary">{p.cta}</p>}
-            {row.hashtags?.length > 0 && <p className="text-xs text-muted-foreground text-center line-clamp-2">{row.hashtags.join(" ")}</p>}
           </div>
         )}
 
@@ -345,7 +376,7 @@ function PostDetailDialog({
                 isCta={true}
                 cta={p?.cta ?? ""}
                 specialty={row.specialty}
-                theme={singleTheme}
+                theme={slideTheme}
                 layout={singleStrategy.archetype}
                 fontScale={1}
                 showIcons={true}
@@ -408,10 +439,10 @@ function PostDetailDialog({
           >
             <Copy className="h-3.5 w-3.5" /> Copy Text
           </Button>
-          {(isPostCard || isFestive || isSingle) && (
+          {(isPostCard || isFestive || isSingle || isCarousel) && (
             <Button size="sm" className="flex-1 gap-1.5" onClick={download} disabled={downloading}>
               {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
-              Download Post
+              {isCarousel ? `Download Slide ${slideIdx + 1}` : "Download Post"}
             </Button>
           )}
         </div>
@@ -578,7 +609,7 @@ function History() {
                         </Badge>
                       )}
                       {/* Show image indicator dot */}
-                      {c.generated_image_url && !c.generated_image_url.startsWith("[") && (
+                      {rowHasImage(c) && (
                         <Badge variant="outline" className="text-xs gap-1 text-emerald-600 border-emerald-200">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
                           Has Image

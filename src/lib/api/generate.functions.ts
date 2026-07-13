@@ -772,6 +772,10 @@ const ImageInputSchema = z.object({
   prompt:      z.string().min(3).max(2000),
   visualStyle: z.string().optional(),
   contentId:   z.string().uuid().optional(),
+  // Carousel slides: position this image in a JSON array stored in
+  // generated_image_url, so History can show each slide's own visual.
+  slideIndex:  z.number().int().min(0).max(19).optional(),
+  slideCount:  z.number().int().min(1).max(20).optional(),
 });
 
 export type GenerateImageOutput = { dataUrl: string };
@@ -830,9 +834,27 @@ export const generateImage = createServerFn({ method: "POST" })
       }
 
       if (data.contentId) {
+        let storedUrl = imageUrl;
+        if (data.slideIndex !== undefined) {
+          const { data: row } = await supabase
+            .from("content_generations")
+            .select("generated_image_url")
+            .eq("id", data.contentId)
+            .eq("user_id", user.id)
+            .maybeSingle();
+          let urls: (string | null)[] = [];
+          const existing = row?.generated_image_url;
+          if (existing?.startsWith("[")) {
+            try { urls = JSON.parse(existing); } catch { urls = []; }
+          }
+          const count = Math.max(data.slideCount ?? 0, data.slideIndex + 1, urls.length);
+          while (urls.length < count) urls.push(null);
+          urls[data.slideIndex] = imageUrl;
+          storedUrl = JSON.stringify(urls);
+        }
         const { error: updateError } = await supabase
           .from("content_generations")
-          .update({ generated_image_url: imageUrl })
+          .update({ generated_image_url: storedUrl })
           .eq("id", data.contentId)
           .eq("user_id", user.id);
         if (updateError) console.error("[generateImage] DB update failed:", updateError.message);
