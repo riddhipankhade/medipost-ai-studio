@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Brand } from "@/components/brand";
 import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
 import { MeshGlow } from "@/components/landing/mesh-glow";
+import { AmbientCursor } from "@/components/landing/ambient-cursor";
 import { BrowserFrame } from "@/components/landing/browser-frame";
 import { FloatingPill } from "@/components/landing/floating-pill";
 import { ContentStudioShowcase } from "@/components/landing/content-studio-showcase";
@@ -31,6 +32,7 @@ function Landing() {
   return (
     <div className="min-h-screen bg-background relative">
       <div aria-hidden className="fixed inset-0 z-40 bg-noise pointer-events-none" />
+      <AmbientCursor />
 
       <LandingNav />
 
