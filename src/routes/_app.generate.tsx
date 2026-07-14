@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { SpecialtySelect } from "@/components/specialty-select";
+import { BrandContactBar } from "@/components/brand-frame";
 import {
   tones,
   audiences,
@@ -652,9 +653,9 @@ function CreativeActions({ children, className = "" }: { children: React.ReactNo
  *  the preview column. The slide's type sizes are fixed px, so rendering the
  *  preview at any other width changes how text wraps and fills the canvas —
  *  this guarantees the preview is pixel-for-pixel the downloaded post. */
-const CREATIVE_DESIGN_WIDTH = 540;
+export const CREATIVE_DESIGN_WIDTH = 540;
 
-function ExactScalePreview({ children }: { children: React.ReactNode }) {
+export function ExactScalePreview({ children }: { children: React.ReactNode }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState<number | null>(null);
   useLayoutEffect(() => {
@@ -1250,11 +1251,21 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
                   <p className="text-sm mt-3 opacity-95">{post.message}</p>
                 </div>
               </div>
-              {(brand.clinicName || brand.phone) && (
-                <p className="text-center text-[10px] tracking-wide opacity-85 mb-2">
-                  {[brand.clinicName, brand.phone].filter(Boolean).join(" • ")}
+              {(brand.doctorName || brand.clinicName) && (
+                <p className="text-center text-[11px] font-semibold tracking-wide mb-1.5 truncate">
+                  {[brand.doctorName, brand.clinicName].filter(Boolean).join(" · ")}
                 </p>
               )}
+              <BrandContactBar
+                phone={brand.phone}
+                website={brand.website}
+                address={brand.address}
+                bg="rgba(255,255,255,0.18)"
+                fg="#ffffff"
+                badgeBg="#ffffff"
+                badgeFg={c1}
+                className="mb-2"
+              />
               <div className="rounded-full bg-white text-sm font-semibold py-2.5 text-center shadow" style={{ color: c1 }}>{post.cta}</div>
             </div>
           </div>
