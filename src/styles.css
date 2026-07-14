@@ -206,6 +206,19 @@
     opacity: 0.5;
   }
 
+  /* Faint tile of medical line icons (cross, ECG, tooth, pill, heart, DNA,
+     stethoscope, flask) in the brand teal/green. Revealed near the cursor by
+     AmbientCursor via a mask — invisible on its own. */
+  .bg-medical-pattern {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='360' height='360' fill='none' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><g stroke='%230d94a8' transform='translate(28,24) scale(1.15)'><path d='M9 3h6v6h6v6h-6v6H9v-6H3V9h6z'/></g><g stroke='%232fae7e' transform='translate(140,52) scale(1.2) rotate(-8 12 12)'><path d='M2 12h4l2-6 4 12 3-8 1.5 2H22'/></g><g stroke='%230d94a8' transform='translate(262,20) scale(1.1) rotate(10 12 12)'><path d='M12 3C9 3 7 5 7 8c0 2.5 1 3.5 1 6 0 2 .6 7 2 7 1.2 0 1-4 2-4s.8 4 2 4c1.4 0 2-5 2-7 0-2.5 1-3.5 1-6 0-3-2-5-5-5z'/></g><g stroke='%232fae7e' transform='translate(52,142) scale(1.15) rotate(40 12 12)'><rect x='3.5' y='8.5' width='17' height='7' rx='3.5'/><path d='M12 8.5v7'/></g><g stroke='%230d94a8' transform='translate(178,150) scale(1.1)'><path d='M5 3v5a5 5 0 0 0 10 0V3'/><path d='M10 13v3a4 4 0 0 0 8 0v-2'/><circle cx='18' cy='11' r='2'/></g><g stroke='%232fae7e' transform='translate(288,138) scale(1.15) rotate(-12 12 12)'><path d='M12 20.5S3.5 15 3.5 9.2C3.5 6.3 5.7 4.5 8 4.5c1.7 0 3.2 1 4 2.4.8-1.4 2.3-2.4 4-2.4 2.3 0 4.5 1.8 4.5 4.7 0 5.8-8.5 11.3-8.5 11.3z'/></g><g stroke='%232fae7e' transform='translate(30,268) scale(1.15) rotate(6 12 12)'><path d='M8 3c0 4 8 4 8 8s-8 4-8 8'/><path d='M16 3c0 4-8 4-8 8s8 4 8 8'/><path d='M9.5 7.5h5M9.5 16.5h5'/></g><g stroke='%230d94a8' transform='translate(152,262) scale(1.15) rotate(-6 12 12)'><path d='M10 3v6L5 18a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3'/><path d='M8.5 3h7M8 15h8'/></g><g stroke='%232fae7e' transform='translate(272,270) scale(1.1) rotate(14 12 12)'><path d='M9 3h6v6h6v6h-6v6H9v-6H3V9h6z'/></g></svg>");
+    background-size: 280px 280px;
+    opacity: 0.55;
+  }
+
+  .dark .bg-medical-pattern {
+    opacity: 0.4;
+  }
+
   .bg-noise {
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
     mix-blend-mode: overlay;
@@ -228,6 +241,11 @@
   100% { transform: translate(0, 0) scale(1); }
 }
 
+@keyframes card-sway {
+  0%, 100% { transform: rotate(var(--sway, 0deg)) translateY(0); }
+  50% { transform: rotate(calc(var(--sway, 0deg) + 2.5deg)) translateY(-10px); }
+}
+
 @keyframes card-glow {
   0%, 100% { opacity: 0.45; transform: scale(1); }
   50% { opacity: 0.75; transform: scale(1.015); }
@@ -247,6 +265,10 @@
   animation: mesh-drift 18s ease-in-out infinite;
 }
 
+.animate-card-sway {
+  animation: card-sway 8s ease-in-out infinite;
+}
+
 .animate-card-glow {
   animation: card-glow 3.5s ease-in-out infinite;
 }
@@ -257,6 +279,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-float-slow,
+  .animate-card-sway,
   .animate-mesh-drift,
   .animate-card-glow,
   .animate-shimmer-sweep {

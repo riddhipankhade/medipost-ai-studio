@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Brand } from "@/components/brand";
+import { AuthShowcasePanel, FanShowcase } from "@/components/auth-showcase-panel";
 import { FadeIn } from "@/components/motion";
 import { specialties } from "@/lib/mock-data";
 import { supabase } from "@/lib/supabase";
@@ -88,16 +89,13 @@ function Register() {
   }
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-background">
-      <div className="hidden lg:flex flex-col justify-between p-12 bg-primary text-primary-foreground">
-        <Brand to="/" />
-        <div>
-          <h2 className="text-3xl font-semibold leading-tight tracking-tight">Join 1,200+ doctors<br />creating with AI.</h2>
-          <p className="mt-3 text-primary-foreground/80 max-w-sm leading-relaxed">Start free. Generate your first 5 posts on us.</p>
-        </div>
-        <p className="text-sm text-primary-foreground/70">© 2026 Medipost AI</p>
-      </div>
-      <div className="flex items-center justify-center p-6">
+    <div className="min-h-screen grid lg:grid-cols-2 lg:h-screen lg:overflow-hidden bg-background">
+      <AuthShowcasePanel
+        headline={<>Every format your<br />clinic will ever need.</>}
+        subtext="Posts, carousels & festive greetings — on-brand in seconds. Generate your first 10 posts on us."
+        showcase={<FanShowcase />}
+      />
+      <div className="flex items-center justify-center p-6 lg:overflow-y-auto">
         <FadeIn className="w-full max-w-md space-y-7">
           <div className="lg:hidden"><Brand to="/" /></div>
           <div>
