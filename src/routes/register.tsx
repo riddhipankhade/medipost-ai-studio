@@ -5,11 +5,10 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SpecialtySelect } from "@/components/specialty-select";
 import { Brand } from "@/components/brand";
 import { AuthShowcasePanel, FanShowcase } from "@/components/auth-showcase-panel";
 import { FadeIn } from "@/components/motion";
-import { specialties } from "@/lib/mock-data";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 
@@ -137,12 +136,7 @@ function Register() {
                 </div>
                 <div className="space-y-2">
                   <Label>Specialty</Label>
-                  <Select value={specialty} onValueChange={setSpecialty} required>
-                    <SelectTrigger><SelectValue placeholder="Select your specialty" /></SelectTrigger>
-                    <SelectContent>
-                      {specialties.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <SpecialtySelect value={specialty} onChange={setSpecialty} required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>

@@ -35,8 +35,8 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
+import { SpecialtySelect } from "@/components/specialty-select";
 import {
-  specialties,
   tones,
   audiences,
   festivals,
@@ -401,12 +401,7 @@ function GeneratePage() {
             </Field>
 
             <Field label="Medical Specialty">
-              <Select value={form.specialty} onValueChange={(v) => update("specialty", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {specialties.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SpecialtySelect value={form.specialty} onChange={(v) => update("specialty", v)} />
             </Field>
 
             {kind === "festive" ? (

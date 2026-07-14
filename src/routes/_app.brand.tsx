@@ -5,20 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SpecialtySelect } from "@/components/specialty-select";
 import { toast } from "sonner";
 import {
   Upload, Trash2, Building2, User, Image as ImageIcon,
   Save, Palette, X, Loader2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { specialties } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/_app/brand")({
   head: () => ({ meta: [{ title: "Clinic Brand Kit — Medipost AI" }] }),
@@ -234,17 +227,11 @@ function BrandKitPage() {
                 />
               </Field>
               <Field label="Specialty">
-                <Select
+                <SpecialtySelect
                   value={draft.specialty}
-                  onValueChange={(v) => up("specialty", v)}
-                >
-                  <SelectTrigger><SelectValue placeholder="Select specialty" /></SelectTrigger>
-                  <SelectContent>
-                    {specialties.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(v) => up("specialty", v)}
+                  placeholder="Select specialty"
+                />
               </Field>
               <Field label="Contact Number">
                 <Input
