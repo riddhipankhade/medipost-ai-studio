@@ -96,30 +96,32 @@ const PostCard = forwardRef<HTMLDivElement, PostCardProps>(
             }}
           />
 
-          {/* Top-left clinic badge */}
-          <div
-            style={{
-              position: "absolute",
-              top: 12,
-              left: 12,
-              background: "rgba(255,255,255,0.92)",
-              borderRadius: 20,
-              padding: "5px 13px",
-              fontSize: 11,
-              fontWeight: 700,
-              color: "#1F2937",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              maxWidth: "72%",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              backdropFilter: "blur(4px)",
-            }}
-          >
-            🩺 {clinicName.toUpperCase()}
-          </div>
+          {/* Top-left clinic badge — only when the brand kit has a clinic name */}
+          {clinicName && (
+            <div
+              style={{
+                position: "absolute",
+                top: 12,
+                left: 12,
+                background: "rgba(255,255,255,0.92)",
+                borderRadius: 20,
+                padding: "5px 13px",
+                fontSize: 11,
+                fontWeight: 700,
+                color: "#1F2937",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                maxWidth: "72%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              🩺 {clinicName.toUpperCase()}
+            </div>
+          )}
 
           {/* Content overlay card */}
           <div
@@ -136,18 +138,20 @@ const PostCard = forwardRef<HTMLDivElement, PostCardProps>(
             }}
           >
             {/* Clinic name — small */}
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: "#028090",
-                letterSpacing: 1.2,
-                marginBottom: 8,
-                textTransform: "uppercase",
-              }}
-            >
-              🌿 {clinicName.toUpperCase()}
-            </div>
+            {clinicName && (
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: "#028090",
+                  letterSpacing: 1.2,
+                  marginBottom: 8,
+                  textTransform: "uppercase",
+                }}
+              >
+                🌿 {clinicName.toUpperCase()}
+              </div>
+            )}
 
             {/* Title */}
             <div
@@ -198,26 +202,30 @@ const PostCard = forwardRef<HTMLDivElement, PostCardProps>(
           </div>
         </div>
 
-        {/* ── Footer pill ── */}
-        <div
-          style={{
-            margin: "12px 12px 0",
-            border: "1px solid #E5E7EB",
-            borderRadius: 40,
-            padding: "10px 22px",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>
-            {doctorName}
-            {specialty ? <span style={{ fontWeight: 400, color: "#6B7280" }}> · {specialty}</span> : null}
+        {/* ── Footer pill — only when the brand kit has something to show ── */}
+        {(doctorName || phone || address) && (
+          <div
+            style={{
+              margin: "12px 12px 0",
+              border: "1px solid #E5E7EB",
+              borderRadius: 40,
+              padding: "10px 22px",
+              textAlign: "center",
+            }}
+          >
+            {doctorName && (
+              <div style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>
+                {doctorName}
+                {specialty ? <span style={{ fontWeight: 400, color: "#6B7280" }}> · {specialty}</span> : null}
+              </div>
+            )}
+            {(phone || address) && (
+              <div style={{ fontSize: 12, color: "#028090", marginTop: 2 }}>
+                {[phone, address].filter(Boolean).join(" • ")}
+              </div>
+            )}
           </div>
-          {(phone || address) && (
-            <div style={{ fontSize: 12, color: "#028090", marginTop: 2 }}>
-              {[phone, address].filter(Boolean).join(" • ")}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* ── Trial watermark ── */}
         {isTrial && (

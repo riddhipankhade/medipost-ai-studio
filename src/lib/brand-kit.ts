@@ -29,6 +29,32 @@ export const defaultBrandKit: BrandKit = {
   secondaryColor: "#1f4e79",
 };
 
+// What creatives actually start from: no identity data at all (a creative must
+// never show placeholder doctor/clinic details), only the design-color defaults
+// that themes and gradients rely on.
+export const emptyBrandKit: BrandKit = {
+  clinicName: "",
+  doctorName: "",
+  specialty: "",
+  phone: "",
+  website: "",
+  address: "",
+  primaryColor: defaultBrandKit.primaryColor,
+  secondaryColor: defaultBrandKit.secondaryColor,
+};
+
+// Earlier versions merged defaultBrandKit into every read and hydrateFromDb
+// persisted that merge, so existing per-account caches carry the dummy
+// identity values. Strip exact matches so they never resurface on creatives.
+const IDENTITY_KEYS = ["clinicName", "doctorName", "specialty", "phone", "website", "address"] as const;
+function stripLegacyDummies(kit: BrandKit): BrandKit {
+  const out = { ...kit };
+  for (const k of IDENTITY_KEYS) {
+    if (out[k] === defaultBrandKit[k]) out[k] = "";
+  }
+  return out;
+}
+
 const KEY_PREFIX = "medipost.brandkit.v1";
 
 // Brand kits are namespaced per signed-in account so switching accounts in the
@@ -38,7 +64,7 @@ function brandKitKey(userId: string) {
 }
 
 export function readBrandKit(userId: string): BrandKit {
-  if (typeof window === "undefined") return defaultBrandKit;
+  if (typeof window === "undefined") return emptyBrandKit;
   try {
     let raw = window.localStorage.getItem(brandKitKey(userId));
     if (!raw) {
@@ -52,10 +78,10 @@ export function readBrandKit(userId: string): BrandKit {
         raw = legacy;
       }
     }
-    if (!raw) return defaultBrandKit;
-    return { ...defaultBrandKit, ...(JSON.parse(raw) as Partial<BrandKit>) };
+    if (!raw) return emptyBrandKit;
+    return stripLegacyDummies({ ...emptyBrandKit, ...(JSON.parse(raw) as Partial<BrandKit>) });
   } catch {
-    return defaultBrandKit;
+    return emptyBrandKit;
   }
 }
 
@@ -95,8 +121,8 @@ async function hydrateFromDb(userId: string): Promise<void> {
   const str = (v: unknown): string | undefined =>
     typeof v === "string" && v.trim() ? v : undefined;
 
-  // Only non-empty DB values override the cache, so defaults still backfill
-  // fields the doctor left blank instead of rendering empty creatives.
+  // Only non-empty DB values override the cache; fields the doctor left blank
+  // stay empty so creatives simply omit them (never placeholder data).
   const fromDb: Partial<BrandKit> = {};
   const put = (key: keyof BrandKit, value: string | undefined) => {
     if (value !== undefined) (fromDb as Record<string, string>)[key] = value;
@@ -120,7 +146,7 @@ async function hydrateFromDb(userId: string): Promise<void> {
 
 export function useBrandKit(): [BrandKit, (next: BrandKit) => void] {
   const [userId, setUserId] = useState<string | null>(null);
-  const [kit, setKit] = useState<BrandKit>(defaultBrandKit);
+  const [kit, setKit] = useState<BrandKit>(emptyBrandKit);
 
   // Track which account is signed in so reads/writes always land in that
   // account's own bucket — resolved async, so state starts at defaults.
@@ -130,13 +156,13 @@ export function useBrandKit(): [BrandKit, (next: BrandKit) => void] {
       if (cancelled) return;
       const id = session?.user?.id ?? null;
       setUserId(id);
-      setKit(id ? readBrandKit(id) : defaultBrandKit);
+      setKit(id ? readBrandKit(id) : emptyBrandKit);
       if (id) void hydrateFromDb(id);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const id = session?.user?.id ?? null;
       setUserId(id);
-      setKit(id ? readBrandKit(id) : defaultBrandKit);
+      setKit(id ? readBrandKit(id) : emptyBrandKit);
       if (id) void hydrateFromDb(id);
     });
     return () => {

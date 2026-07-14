@@ -11,7 +11,8 @@
  * density, reading direction and type hierarchy differ per archetype instead of
  * every archetype sharing one header→title→middle→cta→footer scaffold.
  */
-import { Globe, Phone, ImagePlus, Check } from "lucide-react";
+import { ImagePlus, Check } from "lucide-react";
+import { BrandContactBar } from "@/components/brand-frame";
 import { iconsFor, type SlideLayout, getTheme } from "@/lib/carousel-themes";
 import { useBrandKit } from "@/lib/brand-kit";
 import type { ContentCategory } from "@/lib/mock-data";
@@ -36,28 +37,33 @@ export type LayoutProps = SlideCanvasProps & {
 };
 
 export function BrandHeader({ p }: { p: LayoutProps }) {
+  // No placeholder logo box: creatives without brand data show pure content.
+  if (!p.brand.logo && !p.brand.clinicName) return null;
   return (
     <div className="flex items-center gap-2 relative z-10">
-      {p.brand.logo
-        ? <img src={p.brand.logo} alt="" className="h-8 w-8 rounded-md object-cover bg-white" />
-        : <div className="h-8 w-8 rounded-md grid place-items-center" style={{ background: `${p.theme.heading}22`, color: p.theme.heading }}>
-            <p.PrimaryIcon className="h-4 w-4" />
-          </div>}
-      <p className="text-[11px] font-semibold tracking-wide truncate" style={{ color: p.theme.heading }}>{p.brand.clinicName}</p>
+      {p.brand.logo && <img src={p.brand.logo} alt="" className="h-8 w-8 rounded-md object-cover bg-white" />}
+      {p.brand.clinicName && (
+        <p className="text-[11px] font-semibold tracking-wide truncate" style={{ color: p.theme.heading }}>{p.brand.clinicName}</p>
+      )}
     </div>
   );
 }
 
 export function BrandFooter({ p }: { p: LayoutProps }) {
+  const hasName = !!p.brand.doctorName;
+  const hasContact = !!(p.brand.phone || p.brand.website || p.brand.address);
+  if (!hasName && !hasContact) return null;
   return (
-    <div className="flex items-center gap-3 text-[9px] relative z-10 pt-2 border-t" style={{ borderColor: `${p.theme.heading}33`, color: p.theme.text }}>
-      {p.brand.doctorName && (
-        <span className="font-semibold truncate" style={{ color: p.theme.heading }}>
+    <div className="relative z-10 pt-2 space-y-1.5">
+      {hasName && (
+        <p className="text-[10px] font-bold tracking-wide truncate text-center" style={{ color: p.theme.heading }}>
           {p.brand.doctorName}{p.specialty ? ` · ${p.specialty}` : ""}
-        </span>
+        </p>
       )}
-      <span className="inline-flex items-center gap-1 truncate"><Globe className="h-2.5 w-2.5" /> {p.brand.website}</span>
-      <span className="inline-flex items-center gap-1 truncate"><Phone className="h-2.5 w-2.5" /> {p.brand.phone}</span>
+      <BrandContactBar
+        phone={p.brand.phone} website={p.brand.website} address={p.brand.address}
+        bg={p.theme.accent} fg="#ffffff"
+      />
     </div>
   );
 }

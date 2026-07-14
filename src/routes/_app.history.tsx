@@ -22,11 +22,12 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import PostCard from "@/components/PostCard";
 import FestiveCard from "@/components/FestiveCard";
-import { SlideCanvas } from "@/routes/_app.generate";
+import { SlideCanvas, ExactScalePreview, CREATIVE_DESIGN_WIDTH } from "@/routes/_app.generate";
 import { useBrandKit } from "@/lib/brand-kit";
 import { getTheme, suggestThemeId, carouselThemes } from "@/lib/carousel-themes";
 import { resolveSinglePostStrategy, resolveVisualStrategy } from "@/lib/visual-strategy";
 import type { ContentCategory } from "@/lib/mock-data";
+import type { SlideCanvasProps } from "@/components/carousel-layouts";
 
 export const Route = createFileRoute("/_app/history")({
   head: () => ({ meta: [{ title: "Content History — Medipost AI" }] }),
@@ -54,6 +55,8 @@ type BrandSnap = {
   doctorName:     string;
   clinicName:     string;
   phone:          string;
+  website?:       string;
+  address?:       string;
   primaryColor?:  string;
   secondaryColor?: string;
   logo?:          string;
@@ -258,6 +261,51 @@ function PostDetailDialog({
   const isReel     = kind === "reel";
   const isCampaign = kind === "campaign";
 
+  // SlideCanvas is designed at a fixed 540px width (fixed-px type sizes), so it
+  // must never render at the dialog's natural width — the preview scales a
+  // 540px render to fit (ExactScalePreview) and the download captures an
+  // offscreen full-size copy, exactly like the studio.
+  const canvasProps: SlideCanvasProps | null =
+    isSingle && singleStrategy
+      ? {
+          slideTitle: p?.headline ?? row.topic,
+          slideBody: p?.content ?? "",
+          slideIndex: 0,
+          totalSlides: 1,
+          isCta: true,
+          cta: p?.cta ?? "",
+          specialty: row.specialty,
+          theme: slideTheme,
+          layout: singleStrategy.archetype,
+          fontScale: 1,
+          showIcons: true,
+          brand: slideBrand,
+          imageUrl: directImageUrl,
+          topic: row.topic,
+          category: row.content_category as ContentCategory,
+          composition: singleStrategy.composition,
+        }
+      : isCarousel && carouselStrategy && slides[slideIdx]
+      ? {
+          slideTitle: slides[slideIdx].title,
+          slideBody: slides[slideIdx].content,
+          slideIndex: slideIdx,
+          totalSlides: slides.length,
+          isCta: slideIdx === slides.length - 1,
+          cta: p?.cta ?? "",
+          specialty: row.specialty,
+          theme: slideTheme,
+          layout: carouselStrategy.archetype,
+          fontScale: 1,
+          showIcons: true,
+          brand: slideBrand,
+          imageUrl: slideImages[slideIdx] ?? undefined,
+          topic: row.topic,
+          category: row.content_category as ContentCategory,
+          composition: carouselStrategy.composition,
+        }
+      : null;
+
   const wideDialog = isCarousel || isCampaign;
 
   return (
@@ -270,28 +318,13 @@ function PostDetailDialog({
         {/* ── CAROUSEL viewer — same content-aware creative as the studio;
                slides with a generated image show it, the rest render the
                default archetype background ── */}
-        {isCarousel && carouselStrategy && slides[slideIdx] && (
+        {isCarousel && canvasProps && (
           <div className="space-y-3">
             <div className="flex justify-center overflow-auto max-h-[70vh]">
-              <div className="w-full max-w-md" ref={cardRef}>
-                <SlideCanvas
-                  slideTitle={slides[slideIdx].title}
-                  slideBody={slides[slideIdx].content}
-                  slideIndex={slideIdx}
-                  totalSlides={slides.length}
-                  isCta={slideIdx === slides.length - 1}
-                  cta={p?.cta ?? ""}
-                  specialty={row.specialty}
-                  theme={slideTheme}
-                  layout={carouselStrategy.archetype}
-                  fontScale={1}
-                  showIcons={true}
-                  brand={slideBrand}
-                  imageUrl={slideImages[slideIdx] ?? undefined}
-                  topic={row.topic}
-                  category={row.content_category as ContentCategory}
-                  composition={carouselStrategy.composition}
-                />
+              <div className="w-full max-w-md">
+                <ExactScalePreview>
+                  <SlideCanvas {...canvasProps} />
+                </ExactScalePreview>
               </div>
             </div>
             <div className="flex gap-2">
@@ -365,27 +398,23 @@ function PostDetailDialog({
         )}
 
         {/* ── SINGLE POST viewer — same content-aware archetype as the studio ── */}
-        {isSingle && singleStrategy && (
+        {isSingle && canvasProps && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
-            <div className="w-full max-w-md" ref={cardRef}>
-              <SlideCanvas
-                slideTitle={p?.headline ?? row.topic}
-                slideBody={p?.content ?? ""}
-                slideIndex={0}
-                totalSlides={1}
-                isCta={true}
-                cta={p?.cta ?? ""}
-                specialty={row.specialty}
-                theme={slideTheme}
-                layout={singleStrategy.archetype}
-                fontScale={1}
-                showIcons={true}
-                brand={slideBrand}
-                imageUrl={directImageUrl}
-                topic={row.topic}
-                category={row.content_category as ContentCategory}
-                composition={singleStrategy.composition}
-              />
+            <div className="w-full max-w-md">
+              <ExactScalePreview>
+                <SlideCanvas {...canvasProps} />
+              </ExactScalePreview>
+            </div>
+          </div>
+        )}
+
+        {/* Offscreen full-size render — capture source for the PNG download,
+            so the downloaded post is the complete 540px creative regardless of
+            the dialog's width (same pattern as the studio). */}
+        {canvasProps && (
+          <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: CREATIVE_DESIGN_WIDTH }}>
+            <div ref={cardRef}>
+              <SlideCanvas {...canvasProps} />
             </div>
           </div>
         )}
@@ -395,10 +424,11 @@ function PostDetailDialog({
           <div className="flex justify-center overflow-auto max-h-[70vh]">
             <PostCard
               ref={cardRef}
-              doctorName={brand.doctorName || "Dr. Your Name"}
+              doctorName={brand.doctorName}
               specialty={row.specialty}
-              clinicName={brand.clinicName || "Your Clinic"}
+              clinicName={brand.clinicName}
               phone={brand.phone}
+              address={brand.address}
               imageUrl={directImageUrl}
               title={title}
               bodyText={bodyText}
@@ -420,6 +450,9 @@ function PostDetailDialog({
               brand={{
                 doctorName:    brand.doctorName,
                 clinicName:    brand.clinicName,
+                phone:         brand.phone,
+                website:       brand.website,
+                address:       brand.address,
                 primaryColor:  brand.primaryColor,
                 secondaryColor: brand.secondaryColor,
                 logo:          brand.logo,
@@ -477,7 +510,7 @@ function History() {
       // Fetch brand kit
       const { data: bk } = await supabase
         .from("brand_kits")
-        .select("doctor_name, clinic_name, phone, logo_url, doctor_photo_url, brand_colors")
+        .select("doctor_name, clinic_name, phone, website, address, logo_url, doctor_photo_url, brand_colors")
         .eq("user_id", user.id)
         .maybeSingle();
       if (!cancelled && bk) {
@@ -486,6 +519,8 @@ function History() {
           doctorName:     bk.doctor_name ?? "",
           clinicName:     bk.clinic_name ?? "",
           phone:          bk.phone ?? "",
+          website:        bk.website ?? undefined,
+          address:        bk.address ?? undefined,
           logo:           bk.logo_url ?? undefined,
           doctorPhoto:    bk.doctor_photo_url ?? undefined,
           primaryColor:   colors.primary ?? undefined,

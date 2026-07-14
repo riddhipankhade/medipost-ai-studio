@@ -1,10 +1,14 @@
 import { forwardRef } from "react";
+import { BrandContactBar } from "@/components/brand-frame";
 
 export type FestiveCardBrand = {
   doctorName?: string;
   clinicName?: string;
   doctorPhoto?: string;
   logo?: string;
+  phone?: string;
+  website?: string;
+  address?: string;
   primaryColor?: string;
   secondaryColor?: string;
 };
@@ -49,18 +53,30 @@ const FestiveCard = forwardRef<
         <p className="text-xs uppercase tracking-[0.3em] opacity-80">Happy</p>
         <p className="text-4xl font-bold mt-1 mb-6 leading-tight">{festival}</p>
         <p className="text-base leading-relaxed flex-1">{greeting}</p>
-        <div className="mt-6 pt-4 border-t border-white/30 flex items-center gap-3">
-          {brand.doctorPhoto ? (
-            <img src={brand.doctorPhoto} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white/70 shrink-0" />
-          ) : brand.logo ? (
-            <img src={brand.logo} alt="" className="h-9 w-9 rounded-lg object-cover bg-white shrink-0" />
-          ) : null}
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide opacity-80">With warm wishes from</p>
-            <p className="text-sm font-semibold truncate">{brand.doctorName || "Dr. Your Name"}</p>
-            <p className="text-[11px] opacity-80 truncate">{brand.clinicName || `${specialty ?? ""} Clinic`}</p>
+        {(brand.doctorName || brand.clinicName) && (
+          <div className="mt-6 pt-4 border-t border-white/30 flex items-center gap-3">
+            {brand.doctorPhoto ? (
+              <img src={brand.doctorPhoto} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white/70 shrink-0" />
+            ) : brand.logo ? (
+              <img src={brand.logo} alt="" className="h-9 w-9 rounded-lg object-cover bg-white shrink-0" />
+            ) : null}
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wide opacity-80">With warm wishes from</p>
+              {brand.doctorName && <p className="text-sm font-semibold truncate">{brand.doctorName}</p>}
+              {brand.clinicName && <p className="text-[11px] opacity-80 truncate">{brand.clinicName}</p>}
+            </div>
           </div>
-        </div>
+        )}
+        <BrandContactBar
+          phone={brand.phone}
+          website={brand.website}
+          address={brand.address}
+          bg="rgba(255,255,255,0.95)"
+          fg={c3}
+          badgeBg={c1}
+          badgeFg="#ffffff"
+          className={brand.doctorName || brand.clinicName ? "mt-3" : "mt-6"}
+        />
       </div>
     </div>
   );
