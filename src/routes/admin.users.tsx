@@ -2,10 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Loader2, Trash2 } from "lucide-react";
 import { AdminShell } from "@/components/admin-shell";
-import { getAllUsers } from "@/lib/api/admin.functions";
+import { getAllUsers, deleteUser } from "@/lib/api/admin.functions";
 
 export const Route = createFileRoute("/admin/users")({
   head: () => ({ meta: [{ title: "Users — Admin" }] }),
@@ -15,21 +17,44 @@ export const Route = createFileRoute("/admin/users")({
 type User = Awaited<ReturnType<typeof getAllUsers>>[number];
 
 function AdminUsers() {
-  const [users,   setUsers]   = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search,  setSearch]  = useState("");
+  const [users,     setUsers]     = useState<User[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [search,    setSearch]    = useState("");
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deleting,  setDeleting]  = useState(false);
+  const [error,     setError]     = useState<string | null>(null);
 
-  useEffect(() => {
+  async function load() {
+    setLoading(true);
     getAllUsers().then((data) => {
       setUsers(data);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function handleDelete() {
+    if (!confirmId) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteUser({ data: { userId: confirmId } });
+      setConfirmId(null);
+      await load();
+    } catch (e: any) {
+      setError(e.message ?? "Delete failed.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const filtered = users.filter((u) =>
     u.name.toLowerCase().includes(search.toLowerCase()) ||
     u.email.toLowerCase().includes(search.toLowerCase())
   );
+
+  const confirmUser = users.find((u) => u.id === confirmId);
 
   return (
     <AdminShell>
@@ -65,7 +90,8 @@ function AdminUsers() {
                   <div className="col-span-2">Plan</div>
                   <div className="col-span-2">Status</div>
                   <div className="col-span-2">Generations</div>
-                  <div className="col-span-2 text-right">Joined</div>
+                  <div className="col-span-1 text-right">Joined</div>
+                  <div className="col-span-1"></div>
                 </div>
                 {filtered.map((u) => (
                   <div key={u.id} className="grid grid-cols-12 items-center px-5 py-3 text-sm">
@@ -86,10 +112,19 @@ function AdminUsers() {
                       </span>
                     </div>
                     <div className="col-span-2 text-muted-foreground">{u.gens}</div>
-                    <div className="col-span-2 text-right text-muted-foreground text-xs">
+                    <div className="col-span-1 text-right text-muted-foreground text-xs">
                       {new Date(u.joined).toLocaleDateString("en-IN", {
-                        day: "numeric", month: "short", year: "numeric",
+                        day: "numeric", month: "short",
                       })}
+                    </div>
+                    <div className="col-span-1 flex justify-end">
+                      <button
+                        onClick={() => { setError(null); setConfirmId(u.id); }}
+                        className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                        aria-label="Delete user"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -103,6 +138,30 @@ function AdminUsers() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Confirm delete dialog */}
+      <Dialog open={!!confirmId} onOpenChange={(o) => { if (!o) setConfirmId(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete user?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will permanently delete{" "}
+            <span className="font-medium text-foreground">{confirmUser?.email}</span>{" "}
+            and all their content and subscription data. This cannot be undone.
+          </p>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmId(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Delete permanently
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminShell>
   );
 }

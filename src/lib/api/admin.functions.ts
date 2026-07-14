@@ -8,6 +8,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
 import { getRequestHeader } from "@tanstack/react-start/server";
+import { z } from "zod";
 
 function getSupabase() {
   const cookieHeader = getRequestHeader("cookie") ?? "";
@@ -45,7 +46,7 @@ async function assertAdmin(supabase: ReturnType<typeof getSupabase>, userId: str
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. getDashboardStats — top-level numbers + recent activity table
+// 1. getDashboardStats
 // ─────────────────────────────────────────────────────────────────────────────
 export const getDashboardStats = createServerFn({ method: "GET" })
   .handler(async () => {
@@ -56,12 +57,10 @@ export const getDashboardStats = createServerFn({ method: "GET" })
 
     const admin = getSupabaseAdmin();
 
-    // Total users
     const { count: totalUsers } = await admin
       .from("profiles")
       .select("*", { count: "exact", head: true });
 
-    // New users this month
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
@@ -70,7 +69,6 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       .select("*", { count: "exact", head: true })
       .gte("created_at", startOfMonth.toISOString());
 
-    // Active paid subscriptions
     const { count: activeSubscriptions } = await admin
       .from("subscriptions")
       .select("*", { count: "exact", head: true })
@@ -78,21 +76,18 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       .eq("status", "active")
       .gt("plan_expires_at", new Date().toISOString());
 
-    // Total content generated
     const { count: totalGenerated } = await admin
       .from("content_generations")
       .select("*", { count: "exact", head: true })
       .not("generated_text", "is", null)
       .neq("generated_text", "");
 
-    // Activity in last 24 hours
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { count: activity24h } = await admin
       .from("content_generations")
       .select("*", { count: "exact", head: true })
       .gte("created_at", since24h);
 
-    // Recent users with their plan + generation count
     const { data: profiles } = await admin
       .from("profiles")
       .select("id, full_name, email, created_at")
@@ -137,7 +132,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. getAllUsers — full user list with plan + generation count
+// 2. getAllUsers
 // ─────────────────────────────────────────────────────────────────────────────
 export const getAllUsers = createServerFn({ method: "GET" })
   .handler(async () => {
@@ -164,13 +159,13 @@ export const getAllUsers = createServerFn({ method: "GET" })
         const isPro = sub?.plan === "pro" && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
 
         return {
-          id:          p.id,
-          name:        p.full_name ?? "—",
-          email:       p.email ?? "—",
-          plan:        isPro ? "Pro" : "Free",
-          status:      isPro ? "Active" : (sub ? "Free" : "Trial"),
-          gens:        sub?.generations_used ?? 0,
-          joined:      p.created_at,
+          id:     p.id,
+          name:   p.full_name ?? "—",
+          email:  p.email ?? "—",
+          plan:   isPro ? "Pro" : "Free",
+          status: isPro ? "Active" : (sub ? "Free" : "Trial"),
+          gens:   sub?.generations_used ?? 0,
+          joined: p.created_at,
         };
       })
     );
@@ -179,7 +174,7 @@ export const getAllUsers = createServerFn({ method: "GET" })
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. getContentAnalytics — breakdown by content type + totals
+// 3. getContentAnalytics
 // ─────────────────────────────────────────────────────────────────────────────
 export const getContentAnalytics = createServerFn({ method: "GET" })
   .handler(async () => {
@@ -190,14 +185,12 @@ export const getContentAnalytics = createServerFn({ method: "GET" })
 
     const admin = getSupabaseAdmin();
 
-    // Total all-time
     const { count: totalAllTime } = await admin
       .from("content_generations")
       .select("*", { count: "exact", head: true })
       .not("generated_text", "is", null)
       .neq("generated_text", "");
 
-    // This week
     const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { count: thisWeek } = await admin
       .from("content_generations")
@@ -206,7 +199,6 @@ export const getContentAnalytics = createServerFn({ method: "GET" })
       .not("generated_text", "is", null)
       .neq("generated_text", "");
 
-    // Avg per user
     const { count: totalUsers } = await admin
       .from("profiles")
       .select("*", { count: "exact", head: true });
@@ -215,7 +207,6 @@ export const getContentAnalytics = createServerFn({ method: "GET" })
       ? (totalAllTime / totalUsers).toFixed(1)
       : "0";
 
-    // Breakdown by workflow_kind
     const { data: rows } = await admin
       .from("content_generations")
       .select("workflow_kind")
@@ -243,4 +234,24 @@ export const getContentAnalytics = createServerFn({ method: "GET" })
       avgPerUser,
       byType,
     };
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. deleteUser — permanently removes a user from auth + all their data
+// ─────────────────────────────────────────────────────────────────────────────
+export const deleteUser = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ userId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const supabase = getSupabase();
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) throw new Error("Unauthorized");
+    await assertAdmin(supabase, user.id);
+
+    if (data.userId === user.id) throw new Error("Cannot delete your own account.");
+
+    const admin = getSupabaseAdmin();
+    const { error: deleteError } = await admin.auth.admin.deleteUser(data.userId);
+    if (deleteError) throw new Error(deleteError.message);
+
+    return { success: true };
   });
