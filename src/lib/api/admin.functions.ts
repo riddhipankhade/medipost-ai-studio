@@ -215,16 +215,16 @@ export const getContentAnalytics = createServerFn({ method: "GET" })
       ? (totalAllTime / totalUsers).toFixed(1)
       : "0";
 
-    // Breakdown by content_type (adjust field name if different in your DB)
+    // Breakdown by workflow_kind
     const { data: rows } = await admin
       .from("content_generations")
-      .select("content_type")
+      .select("workflow_kind")
       .not("generated_text", "is", null)
       .neq("generated_text", "");
 
     const typeCounts: Record<string, number> = {};
     for (const row of rows ?? []) {
-      const t = (row as any).content_type ?? "Unknown";
+      const t = (row as any).workflow_kind ?? "Unknown";
       typeCounts[t] = (typeCounts[t] ?? 0) + 1;
     }
 
