@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { AdminShell } from "@/components/admin-shell";
 
 export const Route = createFileRoute("/admin/plans")({
@@ -91,6 +91,20 @@ export const getPlans = createServerFn({ method: "GET" }).handler(async (): Prom
   return result;
 });
 
+export const deletePlan = createServerFn({ method: "POST" })
+  .validator((d: unknown) => d as { id: string })
+  .handler(async ({ data }) => {
+    const supabase = getSupabase();
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) throw new Error("Unauthorized");
+    await assertAdmin(supabase, user.id);
+
+    const admin = getSupabaseAdmin();
+    const { error: err } = await admin.from("plans").delete().eq("id", data.id);
+    if (err) throw new Error(err.message);
+    return { success: true };
+  });
+
 export const upsertPlan = createServerFn({ method: "POST" })
   .validator((d: unknown) => d as {
     id?: string;
@@ -158,12 +172,14 @@ const EMPTY_FORM: FormState = {
 // ── Component ──────────────────────────────────────────────────────────────────
 
 function AdminPlans() {
-  const [plans,   setPlans]   = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving,  setSaving]  = useState(false);
-  const [error,   setError]   = useState<string | null>(null);
-  const [open,    setOpen]    = useState(false);
-  const [form,    setForm]    = useState<FormState>(EMPTY_FORM);
+  const [plans,     setPlans]     = useState<Plan[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [saving,    setSaving]    = useState(false);
+  const [deleting,  setDeleting]  = useState<string | null>(null);
+  const [error,     setError]     = useState<string | null>(null);
+  const [open,      setOpen]      = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [form,      setForm]      = useState<FormState>(EMPTY_FORM);
 
   async function load() {
     setLoading(true);
@@ -196,6 +212,19 @@ function AdminPlans() {
     });
     setError(null);
     setOpen(true);
+  }
+
+  async function handleDelete(id: string) {
+    setDeleting(id);
+    try {
+      await deletePlan({ data: { id } });
+      setConfirmId(null);
+      await load();
+    } catch (e: any) {
+      setError(e.message ?? "Delete failed.");
+    } finally {
+      setDeleting(null);
+    }
   }
 
   async function handleSave() {
@@ -259,20 +288,56 @@ function AdminPlans() {
                       <li>· ₹{p.price_yearly.toLocaleString("en-IN")} / yr</li>
                     )}
                   </ul>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => openEdit(p)}
-                  >
-                    Edit plan
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => openEdit(p)}
+                    >
+                      Edit plan
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setConfirmId(p.id)}
+                      disabled={deleting === p.id}
+                    >
+                      {deleting === p.id
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Trash2 className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
       </div>
+
+      {/* Confirm delete dialog */}
+      <Dialog open={!!confirmId} onOpenChange={() => setConfirmId(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete plan?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will permanently remove the plan. Users already on this plan won't be affected, but no new signups can use it.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmId(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => confirmId && handleDelete(confirmId)}
+              disabled={!!deleting}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit / New plan dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
