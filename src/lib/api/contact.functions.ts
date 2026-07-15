@@ -31,7 +31,7 @@ export const sendContactEmail = createServerFn({ method: "POST" })
     const { error } = await resend.emails.send({
       from,
       to,
-      reply_to: data.email,
+      replyTo: data.email,
       subject: `New contact message from ${data.name}`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;">
