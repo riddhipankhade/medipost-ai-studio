@@ -28,6 +28,7 @@ import { getTheme, suggestThemeId, carouselThemes } from "@/lib/carousel-themes"
 import { resolveSinglePostStrategy, resolveVisualStrategy } from "@/lib/visual-strategy";
 import type { ContentCategory } from "@/lib/mock-data";
 import type { SlideCanvasProps } from "@/components/carousel-layouts";
+import { getTemplateFrame } from "@/components/template-frames";
 import { ShareButtons } from "@/components/ShareButtons";
 
 export const Route = createFileRoute("/_app/history")({
@@ -73,6 +74,7 @@ const KIND_LABELS: Record<string, string> = {
   reel:     "Reel Script",
   campaign: "Campaign",
   festive:  "Festive",
+  template: "Template Post",
 };
 
 function parsePost(text: string | null): Record<string, any> | null {
@@ -89,6 +91,7 @@ function bodyPreview(row: ContentRow): string {
     case "story":    return (p.message ?? "").slice(0, 200);
     case "reel":     return (p.hook ?? "").slice(0, 200);
     case "campaign": return (p.objective ?? "").slice(0, 200);
+    case "template": return (p.subline || p.headline || "").slice(0, 200);
     default:         return (p.content ?? "").slice(0, 200);
   }
 }
@@ -113,6 +116,7 @@ function fullCopyText(row: ContentRow): string {
   if (!p) return row.topic;
   const parts: string[] = [];
   if (p?.headline)          parts.push(p.headline);
+  if (p?.subline)           parts.push(p.subline);
   if (p?.slides?.length)    parts.push(p.slides.map((s: any) => `${s.title}\n${s.content}`).join("\n\n"));
   if (p?.content)           parts.push(p.content);
   if (p?.caption)           parts.push(p.caption);
@@ -243,6 +247,26 @@ function PostDetailDialog({
   const isCarousel = kind === "carousel";
   const isReel     = kind === "reel";
   const isCampaign = kind === "campaign";
+  const isTemplate = kind === "template";
+
+  // Template rows don't persist the frame choice (picked live in the studio),
+  // so History renders the default frame with the saved copy + image.
+  const TemplateFrame = isTemplate ? getTemplateFrame(null).Frame : null;
+  const templateProps = isTemplate
+    ? {
+        headline: p?.headline ?? row.topic,
+        subline:  p?.subline ?? "",
+        cta:      p?.cta ?? "",
+        logo:         brand.logo,
+        businessName: brand.clinicName,
+        phone:        brand.phone,
+        colors: {
+          primary:   brand.primaryColor   || p?.visual?.colors?.[0] || "#0E7C7B",
+          secondary: brand.secondaryColor || p?.visual?.colors?.[1] || "#134e4a",
+        },
+        imageUrl: directImageUrl ?? null,
+      }
+    : null;
 
   const canvasProps: SlideCanvasProps | null =
     isSingle && singleStrategy
@@ -408,6 +432,24 @@ function PostDetailDialog({
           </div>
         )}
 
+        {isTemplate && TemplateFrame && templateProps && (
+          <>
+            <div className="flex justify-center overflow-auto max-h-[70vh]">
+              <div className="w-full max-w-md">
+                <ExactScalePreview>
+                  <TemplateFrame {...templateProps} />
+                </ExactScalePreview>
+              </div>
+            </div>
+            {/* offscreen full-size render — capture source for the PNG download */}
+            <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: CREATIVE_DESIGN_WIDTH }}>
+              <div ref={cardRef}>
+                <TemplateFrame {...templateProps} />
+              </div>
+            </div>
+          </>
+        )}
+
         {isFestive && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
             <FestiveCard
@@ -440,7 +482,7 @@ function PostDetailDialog({
           >
             <Copy className="h-3.5 w-3.5" /> Copy Text
           </Button>
-          {(isPostCard || isFestive || isSingle || isCarousel) && (
+          {(isPostCard || isFestive || isSingle || isCarousel || isTemplate) && (
             <Button size="sm" className="flex-1 gap-1.5" onClick={download} disabled={downloading}>
               {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
               {isCarousel ? `Download Slide ${slideIdx + 1}` : "Download Post"}
