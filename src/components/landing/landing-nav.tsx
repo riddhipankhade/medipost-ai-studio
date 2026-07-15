@@ -7,6 +7,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Brand } from "@/components/brand";
 import { cn } from "@/lib/utils";
 
+const ENQUIRY_EMAIL = "office@sayitdoc.com";
+
 const links = [
   { href: "#features", label: "Content Studio" },
   { href: "#how", label: "How it works" },
@@ -59,6 +61,9 @@ export function LandingNav() {
           ))}
         </nav>
         <div className="hidden md:flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <a href={`mailto:${ENQUIRY_EMAIL}`}>Enquire</a>
+          </Button>
           <Button variant="ghost" size="sm" asChild><Link to="/login">Sign in</Link></Button>
           <Button size="sm" asChild><Link to="/register">Get started</Link></Button>
         </div>
@@ -87,6 +92,11 @@ export function LandingNav() {
               ))}
             </nav>
             <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-border/70">
+              <Button variant="outline" asChild>
+                <a href={`mailto:${ENQUIRY_EMAIL}`} onClick={() => setMobileOpen(false)}>
+                  Enquire
+                </a>
+              </Button>
               <Button variant="ghost" asChild onClick={() => setMobileOpen(false)}>
                 <Link to="/login">Sign in</Link>
               </Button>
