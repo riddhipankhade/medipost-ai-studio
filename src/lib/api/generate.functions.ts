@@ -174,7 +174,7 @@ const CategoryEnum = z.enum([
 ]);
 
 const InputSchema = z.object({
-  kind:               z.enum(["single", "carousel", "story", "reel", "campaign", "festive"]),
+  kind:               z.enum(["single", "carousel", "story", "reel", "campaign", "festive", "template"]),
   category:           CategoryEnum.default("educational"),
   specialty:          z.string().min(1),
   topic:              z.string().min(1),
@@ -194,6 +194,9 @@ const InputSchema = z.object({
     ])
     .optional(),
   slideCount: z.number().int().min(2).max(10).optional(),
+  // Template posts: language the on-creative copy is written in (poster-style
+  // local-language ads — e.g. Hindi "हर्निया ट्रीटमेंट सेंटर").
+  language:   z.string().max(40).optional(),
   brand:      BrandSchema,
 });
 
@@ -263,13 +266,24 @@ export type FestivePost = {
   visual:   Visual;
 };
 
+export type TemplatePost = {
+  kind:     "template";
+  headline: string;
+  subline:  string;
+  cta:      string;
+  caption:  string;
+  hashtags: string[];
+  visual:   Visual;
+};
+
 export type GenerateOutput =
   | SinglePost
   | CarouselPost
   | StoryPost
   | ReelScript
   | Campaign
-  | FestivePost;
+  | FestivePost
+  | TemplatePost;
 
 const SHARED_RULES = `CONTENT SAFETY RULES (strict)
 - Be accurate, evidence-aligned, marketing-friendly, and culturally respectful.
@@ -390,6 +404,23 @@ then a final line stating when to seek care immediately.`;
   }
 }
 
+/**
+ * All formats can write their patient-facing copy in a regional language
+ * (poster ads, greetings, reel scripts in Hindi/Kannada/…). Two hard rules:
+ * "visual" stays English (goes to the image model), and structural markers
+ * the client layouts parse (e.g. "Myth: "/"Fact: ") stay English verbatim.
+ */
+function languageBlock(lang?: string): string {
+  const l = lang?.trim();
+  if (!l || l.toLowerCase() === "english") return "";
+  return `LANGUAGE (important)
+- Write ALL patient-facing text (headlines, body/slide content, greetings, captions, CTAs, hooks, talking points, plan ideas) in ${l}, using its native script — the way local clinics actually talk to their patients (e.g. Hindi "ब्लड प्रेशर हेल्थ सेंटर").
+- Widely-used English medical terms may stay in English where patients commonly say them.
+- Keep "hashtags" mostly English.
+- EXCEPTION 1: every field inside "visual" (concept, style, composition, imagePrompt) MUST stay in English — it is sent to an image-generation model.
+- EXCEPTION 2: structural markers a CONTENT STRUCTURE requires (e.g. the paragraph prefixes "Myth: " and "Fact: ") stay in English EXACTLY as specified — only the text after the marker is written in ${l}.`;
+}
+
 function brandBlock(b: GenerateInput["brand"]): string {
   if (!b) return "BRAND: not provided. Keep content brand-neutral.";
   const lines: string[] = ["BRAND CONTEXT (subtly weave in, do not stuff):"];
@@ -427,6 +458,19 @@ const FESTIVE_VISUAL_BLOCK = `"visual": {
     "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words) for a warm, premium FESTIVE creative tied to the specific festival named above — real decor/symbols/colors people actually associate with it (e.g. diyas and marigolds for Diwali, lanterns and red-gold for Lunar New Year, string lights and pine for Christmas, crescent and lanterns for Eid) rendered as elegant photorealistic or soft-bokeh photography. Do NOT depict a clinic, doctor, stethoscope, or hospital — this is a greeting-card background, not a medical scene. No text, no watermark, no people's faces, Instagram-ready, premium aesthetic."
   }`;
 
+// Template posts drop the AI photo into a fixed shaped window (circle, hexagon,
+// angled panel) next to designed text blocks — the image must be a clean,
+// SUBJECT-CENTERED photo that survives cropping, not a busy full composition.
+const TEMPLATE_VISUAL_BLOCK = `"visual": {
+    "concept": "one-sentence description of the SINGLE photographic subject (person/scene) for this ad",
+    "colors": ["#RRGGBB","#RRGGBB","#RRGGBB","#RRGGBB"],
+    "style": "short visual style note",
+    "layout": "Instagram Square Post",
+    "visualStyle": "pick ONE: 'Modern Healthcare' | 'Premium Clinic' | 'Lifestyle Photography' | 'Awareness Campaign'",
+    "composition": "1-line composition instructions",
+    "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words) for ONE clear photographic subject relevant to the condition/service — e.g. a patient showing the symptom, a doctor consulting, a treatment close-up. Single subject centered with generous space around it, clean soft neutral or softly blurred background, photorealistic, warm trustworthy healthcare-ad mood. The photo will be cropped into a shaped window on a designed poster, so NO text, NO watermark, NO logos, NO graphic overlays, subject must not touch the frame edges."
+  }`;
+
 function buildPrompt(d: GenerateInput): { system: string; user: string } {
   const base = `BRIEF
 - Specialty: ${d.specialty}
@@ -439,6 +483,8 @@ CATEGORY GUIDANCE
 ${CATEGORY_HINTS[d.category]}
 
 ${brandBlock(d.brand)}
+
+${languageBlock(d.language)}
 
 ${SHARED_RULES}`;
 
@@ -585,6 +631,25 @@ Return STRICT JSON:
 }`,
       };
     }
+
+    case "template":
+      return {
+        system:
+          "You are Medipost AI, a copywriter for poster-style local healthcare ads (clinic flyers, treatment-center promos). Respond ONLY with strict JSON.",
+        user: `${base}
+
+TASK: Write the copy for ONE poster-style promo creative about "${d.topic}" — the kind of ad a local clinic prints or posts on social media: a bold service headline, a short benefit line, and a contact-style CTA.
+
+Return STRICT JSON:
+{
+  "headline": "3-6 word poster headline naming the service/condition center or promise (e.g. 'Hernia Treatment Center', 'Are You Suffering From Piles?')",
+  "subline": "1-2 short benefit/action lines, 8-16 words total, specific and reassuring (e.g. 'Get checked here, treat it early')",
+  "cta": "2-4 word action line (e.g. 'Contact Now', 'Book Appointment')",
+  "caption": "1-2 sentence social caption",
+  "hashtags": ["#tag1","... 8-12 hashtags"],
+  ${TEMPLATE_VISUAL_BLOCK}
+}`,
+      };
   }
 }
 
@@ -678,6 +743,16 @@ function normalize(kind: GenerateInput["kind"], raw: any): GenerateOutput {
         kind:     "festive",
         festival: String(raw?.festival ?? ""),
         greeting: String(raw?.greeting ?? ""),
+        caption:  String(raw?.caption ?? ""),
+        hashtags: Array.isArray(raw?.hashtags) ? raw.hashtags.map(String) : [],
+        visual,
+      };
+    case "template":
+      return {
+        kind:     "template",
+        headline: String(raw?.headline ?? ""),
+        subline:  String(raw?.subline ?? ""),
+        cta:      String(raw?.cta ?? ""),
         caption:  String(raw?.caption ?? ""),
         hashtags: Array.isArray(raw?.hashtags) ? raw.hashtags.map(String) : [],
         visual,

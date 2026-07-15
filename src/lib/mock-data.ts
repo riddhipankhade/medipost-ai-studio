@@ -134,11 +134,11 @@ export const contentCategories: {
   { id: "did-you-know", title: "Did You Know?", tagline: "Eye-opening fact", emoji: "💡", bestFor: ["single", "story", "reel"] },
   { id: "patient-faq", title: "Patient FAQ", tagline: "Answer a real question", emoji: "❓", bestFor: ["carousel", "single"] },
   { id: "health-tips", title: "Health Tips", tagline: "Quick actionable tips", emoji: "✅", bestFor: ["carousel", "single", "reel"] },
-  { id: "warning-signs", title: "Warning Signs", tagline: "When to seek care", emoji: "⚠️", bestFor: ["carousel", "single", "reel"] },
+  { id: "warning-signs", title: "Warning Signs", tagline: "When to seek care", emoji: "⚠️", bestFor: ["carousel", "single", "reel", "template"] },
   { id: "prevention", title: "Prevention Tips", tagline: "Stay ahead of disease", emoji: "🛡️", bestFor: ["carousel", "single"] },
   { id: "doctor-explains", title: "Doctor Explains", tagline: "Authority-led explainer", emoji: "🩺", bestFor: ["reel", "single", "carousel"] },
-  { id: "awareness", title: "Awareness Campaign", tagline: "Build movement around a cause", emoji: "📣", bestFor: ["campaign", "single"] },
-  { id: "clinic-promo", title: "Clinic Promotion", tagline: "Highlight services & offers", emoji: "🏥", bestFor: ["single", "story", "carousel"] },
+  { id: "awareness", title: "Awareness Campaign", tagline: "Build movement around a cause", emoji: "📣", bestFor: ["campaign", "single", "template"] },
+  { id: "clinic-promo", title: "Clinic Promotion", tagline: "Highlight services & offers", emoji: "🏥", bestFor: ["single", "story", "carousel", "template"] },
   { id: "greeting", title: "Greeting Post", tagline: "Festive & occasion wishes", emoji: "🎉", bestFor: ["festive", "single", "story"] },
   { id: "reel-hook", title: "Reel Hook", tagline: "3-second scroll stopper", emoji: "🎬", bestFor: ["reel", "story"] },
 ];
@@ -150,6 +150,7 @@ export function defaultCategoryFor(kind: WorkflowKind): ContentCategory {
     case "reel": return "reel-hook";
     case "campaign": return "awareness";
     case "festive": return "greeting";
+    case "template": return "clinic-promo";
     default: return "educational";
   }
 }
@@ -160,7 +161,8 @@ export type WorkflowKind =
   | "story"
   | "reel"
   | "campaign"
-  | "festive";
+  | "festive"
+  | "template";
 
 export const workflows: {
   kind: WorkflowKind;
@@ -174,6 +176,7 @@ export const workflows: {
   { kind: "reel", title: "Reel Script", tagline: "Hook · Points · CTA", icon: "film" },
   { kind: "campaign", title: "Awareness Campaign", tagline: "Weekly content plan", icon: "calendar" },
   { kind: "festive", title: "Festive Wishes", tagline: "Greetings for any occasion", icon: "sparkles" },
+  { kind: "template", title: "Template Post", tagline: "Ready-made promo designs", icon: "layout" },
 ];
 
 export function generateMockContent(opts: {
