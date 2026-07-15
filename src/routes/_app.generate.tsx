@@ -1404,6 +1404,24 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
   const { cardRef, download } = useDownloadPost(brand.doctorName || brand.clinicName || "medipost");
+
+  // Card colors are pickable: brand colors can clash with the generated festive
+  // image (e.g. teal contact bar on a warm Diwali photo). Toggle swaps brand
+  // colors for the AI festival palette; pickers override either. Toggling
+  // clears manual picks so the switch visibly changes the card.
+  const [useBrandColors, setUseBrandColors] = useState(true);
+  const [frameColor, setFrameColor] = useState<string | null>(null);
+  const [glowColor, setGlowColor] = useState<string | null>(null);
+  const [accentColor, setAccentColor] = useState<string | null>(null);
+  const palette = post.visual.colors;
+  const cardColors = {
+    frame: frameColor ?? ((useBrandColors && brand.primaryColor) || palette[0] || "#0E7C7B"),
+    glow: glowColor ?? (palette[1] || "#f4b400"),
+    accent: accentColor ?? ((useBrandColors && brand.secondaryColor) || palette[2] || "#0a3d62"),
+  };
+  const hasManualColors = frameColor !== null || glowColor !== null || accentColor !== null;
+  const resetManualColors = () => { setFrameColor(null); setGlowColor(null); setAccentColor(null); };
+
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
@@ -1420,6 +1438,7 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
             imageUrl={ai.url}
             imageLoading={ai.loading}
             loadingOverlay={<ImageLoadingOverlay />}
+            colorOverrides={cardColors}
           />
         </div>
         <div className="flex flex-wrap justify-center gap-2">
@@ -1428,6 +1447,27 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
           <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" onClick={download} disabled={ai.loading}>
             <ImageDown className="h-3.5 w-3.5" /> Download post
           </Button>
+        </div>
+
+        <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Card colors</Label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <span>Use clinic brand colors</span>
+              <input type="checkbox" checked={useBrandColors} className="accent-[color:var(--teal)]"
+                onChange={(e) => { setUseBrandColors(e.target.checked); resetManualColors(); }} />
+            </label>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <MiniColor label="Frame" value={cardColors.frame} onChange={setFrameColor} />
+            <MiniColor label="Glow" value={cardColors.glow} onChange={setGlowColor} />
+            <MiniColor label="Text accent" value={cardColors.accent} onChange={setAccentColor} />
+          </div>
+          {hasManualColors && (
+            <button type="button" onClick={resetManualColors} className="text-[11px] text-[color:var(--teal)] hover:underline">
+              Reset to suggested colors
+            </button>
+          )}
         </div>
 
         <SectionBlock title="Greeting Message" body={post.greeting} />

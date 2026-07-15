@@ -1,6 +1,16 @@
 import { forwardRef } from "react";
 import { BrandContactBar } from "@/components/brand-frame";
 
+/** Optional per-card color overrides (studio pickers). Falls back to brand kit → AI palette → defaults. */
+export type FestiveCardColors = {
+  /** gradient base + contact-bar badge circles */
+  frame?: string | null;
+  /** radial highlight at the top-right of the gradient */
+  glow?: string | null;
+  /** contact-bar text + gradient outer edge */
+  accent?: string | null;
+};
+
 export type FestiveCardBrand = {
   doctorName?: string;
   clinicName?: string;
@@ -30,11 +40,12 @@ const FestiveCard = forwardRef<
     imageUrl?: string | null;
     imageLoading?: boolean;
     loadingOverlay?: React.ReactNode;
+    colorOverrides?: FestiveCardColors;
   }
->(({ festival, greeting, colors, brand, specialty, imageUrl, imageLoading, loadingOverlay }, ref) => {
-  const c1 = brand.primaryColor || colors[0] || "#0E7C7B";
-  const c2 = colors[1] || "#f4b400";
-  const c3 = brand.secondaryColor || colors[2] || "#0a3d62";
+>(({ festival, greeting, colors, brand, specialty, imageUrl, imageLoading, loadingOverlay, colorOverrides }, ref) => {
+  const c1 = colorOverrides?.frame || brand.primaryColor || colors[0] || "#0E7C7B";
+  const c2 = colorOverrides?.glow || colors[1] || "#f4b400";
+  const c3 = colorOverrides?.accent || brand.secondaryColor || colors[2] || "#0a3d62";
 
   return (
     <div
