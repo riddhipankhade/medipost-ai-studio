@@ -15,6 +15,7 @@ import { LandingNav } from "@/components/landing/landing-nav";
 import { Sparkles, Check, Palette, History, Zap, Crown, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SpotlightCard } from "@/components/landing/spotlight-card";
+import { ContactSection } from "@/components/landing/ContactSection";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -213,6 +214,9 @@ function Landing() {
           </RevealGroup>
         </div>
       </section>
+
+      {/* ── Contact ──────────────────────────────────────────────────────────── */}
+      <ContactSection />
 
       {/* ── Final CTA ────────────────────────────────────────────────────────── */}
       <Reveal className="relative py-20 md:py-28">
