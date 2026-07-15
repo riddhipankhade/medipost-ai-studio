@@ -16,7 +16,12 @@ export type TemplateFrameId =
   | "photo-panel"
   | "hex-accent"
   | "curve-card"
-  | "bold-ask";
+  | "bold-ask"
+  | "full-photo"
+  | "top-banner"
+  | "tilt-card"
+  | "arch-window"
+  | "ribbon-banner";
 
 export type TemplateFrameProps = {
   headline: string;
@@ -296,6 +301,172 @@ function BoldAsk(p: TemplateFrameProps) {
   );
 }
 
+/* ── Frame 6: edge-to-edge photo with overlay text (full-background) ────────── */
+function FullPhoto(p: TemplateFrameProps) {
+  const { primary } = p.colors;
+  const shadow = { textShadow: "0 2px 10px rgba(0,0,0,0.45)" };
+  return (
+    <FrameShell>
+      {p.imageLoading && p.loadingOverlay}
+      <div className="absolute overflow-hidden" style={{ inset: 0, bottom: BAR_H }}>
+        <PhotoFill imageUrl={p.imageUrl} />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(8,14,24,0.5) 0%, rgba(8,14,24,0.08) 42%, rgba(8,14,24,0.78) 100%)" }} />
+      </div>
+      <div className="absolute flex flex-col justify-end text-white" style={{ left: 0, right: 0, top: 0, bottom: BAR_H, padding: "26px 26px 22px", gap: 12 }}>
+        <p className="font-extrabold" style={{ fontSize: fitSize(30, p.headline, 32), lineHeight: 1.22, wordBreak: "break-word", ...shadow }}>{p.headline}</p>
+        {p.subline && <p style={{ fontSize: 15, lineHeight: 1.55, opacity: 0.96, wordBreak: "break-word", ...shadow }}>{p.subline}</p>}
+        {p.cta && (
+          <span className="self-start rounded-full font-bold text-white" style={{ background: primary, padding: "9px 20px", fontSize: 14, boxShadow: "0 4px 14px rgba(0,0,0,0.3)" }}>
+            {p.cta}
+          </span>
+        )}
+      </div>
+      <LogoSlot logo={p.logo} placeholders={p.placeholders} />
+      <ContactBar
+        businessName={p.businessName} phone={p.phone} placeholders={p.placeholders}
+        bg="rgba(8,14,24,0.92)" fg="#ffffff" pillBg={primary} pillFg="#ffffff"
+      />
+    </FrameShell>
+  );
+}
+
+/* ── Frame 7: headline banner on top, rounded photo below ───────────────────── */
+function TopBanner(p: TemplateFrameProps) {
+  const { primary, secondary } = p.colors;
+  return (
+    <FrameShell style={{ background: `linear-gradient(180deg, ${primary}10 0%, #ffffff 55%)` }}>
+      {p.imageLoading && p.loadingOverlay}
+      {[{ left: 26, top: 90 }, { right: 30, top: 60 }].map((pos, i) => (
+        <span key={i} className="absolute font-bold" style={{ ...(pos as React.CSSProperties), fontSize: 20, color: `${primary}55` }}>+</span>
+      ))}
+      <div className="absolute flex flex-col items-center text-center" style={{ left: 24, right: 24, top: 24, gap: 9 }}>
+        <p className="font-extrabold" style={{ fontSize: fitSize(27, p.headline, 34), lineHeight: 1.25, color: secondary, wordBreak: "break-word" }}>{p.headline}</p>
+        {p.subline && <p style={{ fontSize: 14, lineHeight: 1.5, color: "#475569", maxWidth: 420, wordBreak: "break-word" }}>{p.subline}</p>}
+      </div>
+      <div
+        className="absolute overflow-hidden"
+        style={{ left: 24, right: 24, top: 192, bottom: BAR_H + 18, borderRadius: 24, border: "5px solid #ffffff", boxShadow: "0 10px 26px rgba(0,0,0,0.16)" }}
+      >
+        <PhotoFill imageUrl={p.imageUrl} />
+      </div>
+      {p.cta && (
+        <span
+          className="absolute rounded-full font-bold text-white"
+          style={{ left: "50%", transform: "translateX(-50%)", bottom: BAR_H + 4, background: primary, padding: "9px 22px", fontSize: 14, boxShadow: "0 6px 16px rgba(0,0,0,0.22)", whiteSpace: "nowrap" }}
+        >
+          {p.cta}
+        </span>
+      )}
+      <LogoSlot logo={p.logo} placeholders={p.placeholders} />
+      <ContactBar
+        businessName={p.businessName} phone={p.phone} placeholders={p.placeholders}
+        bg={secondary} fg="#ffffff" pillBg="#ffffff" pillFg={secondary}
+      />
+    </FrameShell>
+  );
+}
+
+/* ── Frame 8: tilted photo card over a diagonal colour wedge ────────────────── */
+function TiltCard(p: TemplateFrameProps) {
+  const { primary, secondary } = p.colors;
+  return (
+    <FrameShell style={{ background: "#f8fafc" }}>
+      {p.imageLoading && p.loadingOverlay}
+      <div
+        className="absolute"
+        style={{ inset: 0, bottom: BAR_H, background: `linear-gradient(135deg, ${primary} 0%, ${secondary} 100%)`, clipPath: "polygon(0 34%, 100% 78%, 100% 100%, 0 100%)" }}
+      />
+      <div
+        className="absolute overflow-hidden"
+        style={{ right: 30, top: 34, width: 300, height: 250, borderRadius: 22, transform: "rotate(5deg)", border: "6px solid #ffffff", boxShadow: "0 12px 28px rgba(0,0,0,0.2)" }}
+      >
+        <PhotoFill imageUrl={p.imageUrl} />
+      </div>
+      <div className="absolute flex flex-col justify-end text-white" style={{ left: 26, width: "56%", bottom: BAR_H + 20, gap: 11 }}>
+        <p className="font-extrabold" style={{ fontSize: fitSize(26, p.headline, 32), lineHeight: 1.27, wordBreak: "break-word" }}>{p.headline}</p>
+        {p.subline && <p style={{ fontSize: 13.5, lineHeight: 1.55, opacity: 0.94, wordBreak: "break-word" }}>{p.subline}</p>}
+        {p.cta && (
+          <span className="self-start rounded-full font-bold" style={{ background: "#ffffff", color: primary, padding: "8px 18px", fontSize: 13.5 }}>
+            {p.cta}
+          </span>
+        )}
+      </div>
+      <LogoSlot logo={p.logo} placeholders={p.placeholders} />
+      <ContactBar
+        businessName={p.businessName} phone={p.phone} placeholders={p.placeholders}
+        bg={secondary} fg="#ffffff" pillBg="#ffffff" pillFg={secondary}
+      />
+    </FrameShell>
+  );
+}
+
+/* ── Frame 9: centered heading + arch-shaped photo window ───────────────────── */
+function ArchWindow(p: TemplateFrameProps) {
+  const { primary, secondary } = p.colors;
+  const dots: React.CSSProperties = {
+    backgroundImage: `radial-gradient(${primary}33 2px, transparent 2px)`,
+    backgroundSize: "16px 16px",
+  };
+  return (
+    <FrameShell style={{ background: "#ffffff" }}>
+      {p.imageLoading && p.loadingOverlay}
+      <div className="absolute" style={{ left: 18, top: 18, width: 110, height: 110, ...dots }} />
+      <div className="absolute" style={{ right: 18, bottom: BAR_H + 14, width: 110, height: 110, ...dots }} />
+      <div className="absolute flex flex-col items-center" style={{ inset: 0, bottom: BAR_H, padding: "22px 26px 14px", gap: 9 }}>
+        <p className="font-extrabold text-center" style={{ fontSize: fitSize(24, p.headline, 36), lineHeight: 1.25, color: secondary, maxWidth: 420, wordBreak: "break-word" }}>{p.headline}</p>
+        {p.subline && <p className="text-center" style={{ fontSize: 13, lineHeight: 1.5, color: "#475569", maxWidth: 400, wordBreak: "break-word" }}>{p.subline}</p>}
+        <div
+          className="overflow-hidden relative"
+          style={{ width: 330, flex: 1, minHeight: 0, borderRadius: "165px 165px 24px 24px", border: `6px solid ${primary}`, boxShadow: "0 10px 24px rgba(0,0,0,0.15)" }}
+        >
+          <PhotoFill imageUrl={p.imageUrl} />
+        </div>
+        {p.cta && (
+          <span className="rounded-full font-bold text-white" style={{ background: primary, padding: "8px 22px", fontSize: 13.5, marginTop: 3 }}>
+            {p.cta}
+          </span>
+        )}
+      </div>
+      <LogoSlot logo={p.logo} placeholders={p.placeholders} />
+      <ContactBar
+        businessName={p.businessName} phone={p.phone} placeholders={p.placeholders}
+        bg={secondary} fg="#ffffff" pillBg={primary} pillFg="#ffffff"
+      />
+    </FrameShell>
+  );
+}
+
+/* ── Frame 10: photo on top, message band below (chevron seam) ──────────────── */
+function RibbonBanner(p: TemplateFrameProps) {
+  const { primary, secondary } = p.colors;
+  return (
+    <FrameShell>
+      {p.imageLoading && p.loadingOverlay}
+      <div className="absolute" style={{ left: 0, right: 0, top: "46%", bottom: BAR_H, background: `linear-gradient(160deg, ${secondary} 0%, ${primary} 130%)` }} />
+      <div
+        className="absolute overflow-hidden"
+        style={{ left: 0, right: 0, top: 0, height: "52%", clipPath: "polygon(0 0, 100% 0, 100% 84%, 50% 100%, 0 84%)" }}
+      >
+        <PhotoFill imageUrl={p.imageUrl} />
+      </div>
+      <div className="absolute flex flex-col items-center justify-center text-center text-white" style={{ left: 26, right: 26, top: "52%", bottom: BAR_H, gap: 10 }}>
+        <p className="font-extrabold" style={{ fontSize: fitSize(25, p.headline, 36), lineHeight: 1.27, wordBreak: "break-word" }}>{p.headline}</p>
+        {p.subline && <p style={{ fontSize: 13.5, lineHeight: 1.5, opacity: 0.94, maxWidth: 420, wordBreak: "break-word" }}>{p.subline}</p>}
+        {p.cta && (
+          <span className="rounded-full font-bold" style={{ background: "#ffffff", color: secondary, padding: "8px 20px", fontSize: 13.5, marginTop: 2 }}>
+            {p.cta}
+          </span>
+        )}
+      </div>
+      <LogoSlot logo={p.logo} placeholders={p.placeholders} />
+      <ContactBar
+        businessName={p.businessName} phone={p.phone} placeholders={p.placeholders}
+        bg="#ffffff" fg={secondary} pillBg={secondary} pillFg="#ffffff"
+      />
+    </FrameShell>
+  );
+}
+
 export const templateFrames: {
   id: TemplateFrameId;
   name: string;
@@ -307,6 +478,11 @@ export const templateFrames: {
   { id: "hex-accent", name: "Hex Badge", tagline: "Colour card with hexagon photo", Frame: HexAccent },
   { id: "curve-card", name: "Curve Card", tagline: "Rounded panel + photo window", Frame: CurveCard },
   { id: "bold-ask", name: "Bold Question", tagline: "Big question headline beside photo", Frame: BoldAsk },
+  { id: "full-photo", name: "Full Photo", tagline: "Edge-to-edge photo, overlay text", Frame: FullPhoto },
+  { id: "top-banner", name: "Banner Header", tagline: "Headline on top, photo below", Frame: TopBanner },
+  { id: "tilt-card", name: "Tilted Card", tagline: "Angled photo card on colour wedge", Frame: TiltCard },
+  { id: "arch-window", name: "Arch Window", tagline: "Centered heading + arch photo", Frame: ArchWindow },
+  { id: "ribbon-banner", name: "Photo Banner", tagline: "Photo top, message band below", Frame: RibbonBanner },
 ];
 
 export function getTemplateFrame(id: string | null | undefined) {
