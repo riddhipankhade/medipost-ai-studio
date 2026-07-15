@@ -28,6 +28,7 @@ import { getTheme, suggestThemeId, carouselThemes } from "@/lib/carousel-themes"
 import { resolveSinglePostStrategy, resolveVisualStrategy } from "@/lib/visual-strategy";
 import type { ContentCategory } from "@/lib/mock-data";
 import type { SlideCanvasProps } from "@/components/carousel-layouts";
+import { ShareButtons } from "@/components/ShareButtons";
 
 export const Route = createFileRoute("/_app/history")({
   head: () => ({ meta: [{ title: "Content History — Medipost AI" }] }),
@@ -92,8 +93,6 @@ function bodyPreview(row: ContentRow): string {
   }
 }
 
-// Carousel rows store a JSON array of per-slide image URLs in
-// generated_image_url (nulls for slides whose visual was never generated).
 function parseSlideImages(row: ContentRow): (string | null)[] {
   const u = row.generated_image_url;
   if (!u?.startsWith("[")) return [];
@@ -125,9 +124,7 @@ function fullCopyText(row: ContentRow): string {
   return parts.join("\n\n") || row.topic;
 }
 
-// ── PostCard download hook ─────────────────────────────────────────────────────
-// Pre-fetches the card's <img> as a data URL at download time only (not on
-// render), so html-to-image can capture it without CORS issues.
+// ── PostCard download hook ────────────────────────────────────────────────────
 
 function useCardDownload(doctorName: string) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -137,7 +134,6 @@ function useCardDownload(doctorName: string) {
     if (!cardRef.current) return;
     setDownloading(true);
 
-    // --- swap external img src → data URL before capture ---
     const imgEl = cardRef.current.querySelector("img") as HTMLImageElement | null;
     const originalSrc = imgEl?.src ?? null;
     let swapped = false;
@@ -153,9 +149,7 @@ function useCardDownload(doctorName: string) {
         });
         imgEl.src = dataUrl;
         swapped = true;
-      } catch {
-        // CORS or network error — proceed with current src (may miss image in PNG)
-      }
+      } catch {}
     }
 
     try {
@@ -178,7 +172,6 @@ function useCardDownload(doctorName: string) {
       console.error("[download]", err);
       toast.error("Download failed — check console.");
     } finally {
-      // restore original src
       if (swapped && imgEl && originalSrc) imgEl.src = originalSrc;
       setDownloading(false);
     }
@@ -209,7 +202,6 @@ function PostDetailDialog({
   const kind = row.workflow_kind;
   const hashtags = row.hashtags?.join(" ") ?? "";
 
-  // For PostCard types: extract title + body based on JSON shape per kind
   const { title, bodyText } = (() => {
     if (!p) return { title: row.topic, bodyText: "" };
     switch (kind) {
@@ -218,19 +210,13 @@ function PostDetailDialog({
     }
   })();
 
-  // Direct URL — browser <img> displays cross-origin URLs fine without CORS attr.
-  // Pre-fetch as data URL happens only at download time (in useCardDownload).
   const hasImage = !!row.generated_image_url && !row.generated_image_url.startsWith("[");
   const directImageUrl = hasImage ? row.generated_image_url! : undefined;
 
-  // Carousel state
   const slides: { title: string; content: string }[] = kind === "carousel" ? (p?.slides ?? []) : [];
   const [slideIdx, setSlideIdx] = useState(0);
   const slideImages = kind === "carousel" ? parseSlideImages(row) : [];
 
-  // Single post — same content-aware archetype the studio picks, rebuilt from
-  // the saved headline/content/category (the studio's theme/layout customizations
-  // aren't persisted, so this reconstructs the studio's *default* look).
   const singleStrategy = kind === "single"
     ? resolveSinglePostStrategy(
         { headline: p?.headline ?? row.topic, content: p?.content ?? "" },
@@ -245,15 +231,12 @@ function PostDetailDialog({
     fontFamily: carouselThemes[0].fontFamily,
   };
 
-  // Carousel — same content-aware archetype the studio picks per slide.
   const carouselStrategy = kind === "carousel" && slides[slideIdx]
     ? resolveVisualStrategy(slides[slideIdx], row.content_category as ContentCategory, {
         slideIndex: slideIdx, totalSlides: slides.length, isCta: slideIdx === slides.length - 1,
       })
     : null;
 
-  // Reel / Campaign don't use PostCard — they have dedicated viewers.
-  // Festive and Single get their own real creatives (FestiveCard / SlideCanvas), matching the studio.
   const isPostCard = kind === "story";
   const isFestive  = kind === "festive";
   const isSingle   = kind === "single";
@@ -261,10 +244,6 @@ function PostDetailDialog({
   const isReel     = kind === "reel";
   const isCampaign = kind === "campaign";
 
-  // SlideCanvas is designed at a fixed 540px width (fixed-px type sizes), so it
-  // must never render at the dialog's natural width — the preview scales a
-  // 540px render to fit (ExactScalePreview) and the download captures an
-  // offscreen full-size copy, exactly like the studio.
   const canvasProps: SlideCanvasProps | null =
     isSingle && singleStrategy
       ? {
@@ -315,9 +294,6 @@ function PostDetailDialog({
           <DialogTitle className="text-base font-semibold truncate">{row.topic}</DialogTitle>
         </DialogHeader>
 
-        {/* ── CAROUSEL viewer — same content-aware creative as the studio;
-               slides with a generated image show it, the rest render the
-               default archetype background ── */}
         {isCarousel && canvasProps && (
           <div className="space-y-3">
             <div className="flex justify-center overflow-auto max-h-[70vh]">
@@ -334,7 +310,6 @@ function PostDetailDialog({
           </div>
         )}
 
-        {/* ── REEL SCRIPT viewer ── */}
         {isReel && (
           <div className="space-y-3 max-h-[65vh] overflow-y-auto">
             <div className="rounded-xl border-2 border-primary/20 bg-primary/5 p-4">
@@ -362,7 +337,6 @@ function PostDetailDialog({
           </div>
         )}
 
-        {/* ── CAMPAIGN viewer ── */}
         {isCampaign && (
           <div className="space-y-3 max-h-[65vh] overflow-y-auto">
             <div className="rounded-xl bg-primary/5 border border-primary/20 p-4">
@@ -397,7 +371,6 @@ function PostDetailDialog({
           </div>
         )}
 
-        {/* ── SINGLE POST viewer — same content-aware archetype as the studio ── */}
         {isSingle && canvasProps && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
             <div className="w-full max-w-md">
@@ -408,9 +381,6 @@ function PostDetailDialog({
           </div>
         )}
 
-        {/* Offscreen full-size render — capture source for the PNG download,
-            so the downloaded post is the complete 540px creative regardless of
-            the dialog's width (same pattern as the studio). */}
         {canvasProps && (
           <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: CREATIVE_DESIGN_WIDTH }}>
             <div ref={cardRef}>
@@ -419,7 +389,6 @@ function PostDetailDialog({
           </div>
         )}
 
-        {/* ── POSTCARD viewer (story) ── */}
         {isPostCard && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
             <PostCard
@@ -439,7 +408,6 @@ function PostDetailDialog({
           </div>
         )}
 
-        {/* ── FESTIVE viewer — real greeting card, same as the studio ── */}
         {isFestive && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
             <FestiveCard
@@ -479,6 +447,11 @@ function PostDetailDialog({
             </Button>
           )}
         </div>
+
+        {/* Share buttons */}
+        <div className="border-t border-border pt-3">
+          <ShareButtons text={fullCopyText(row)} />
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -496,7 +469,6 @@ function History() {
   const [range,   setRange]   = useState("all");
   const [selected, setSelected] = useState<ContentRow | null>(null);
 
-  // ── Fetch history + brand ─────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -507,7 +479,6 @@ function History() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setError("Not signed in."); setLoading(false); return; }
 
-      // Fetch brand kit
       const { data: bk } = await supabase
         .from("brand_kits")
         .select("doctor_name, clinic_name, phone, website, address, logo_url, doctor_photo_url, brand_colors")
@@ -528,7 +499,6 @@ function History() {
         });
       }
 
-      // Fetch content history (text rows only)
       const { data, error: dbErr } = await supabase
         .from("content_generations")
         .select(
@@ -553,7 +523,6 @@ function History() {
     return () => { cancelled = true; };
   }, []);
 
-  // ── Toggle favourite ──────────────────────────────────────────────────────
   async function toggleFavourite(id: string, current: boolean) {
     setRows((prev) => prev.map((r) => r.id === id ? { ...r, is_favorite: !current } : r));
     const { error: upErr } = await supabase
@@ -566,7 +535,6 @@ function History() {
     }
   }
 
-  // ── Filter ────────────────────────────────────────────────────────────────
   const items = useMemo(() => rows.filter((c) => {
     if (kind !== "all" && c.workflow_kind !== kind) return false;
     if (q) {
@@ -580,7 +548,6 @@ function History() {
     return true;
   }), [rows, q, kind, range]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
       <div>
@@ -590,7 +557,6 @@ function History() {
         </p>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -615,7 +581,6 @@ function History() {
         </Select>
       </div>
 
-      {/* States */}
       {loading && (
         <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /><span>Loading history…</span>
@@ -634,7 +599,6 @@ function History() {
               <CardContent className="py-4 min-w-0">
                 <div className="flex items-start justify-between gap-4 min-w-0">
                   <div className="min-w-0 flex-1 overflow-hidden">
-                    {/* Badges + date */}
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <Badge variant="secondary">{KIND_LABELS[c.workflow_kind] ?? c.workflow_kind}</Badge>
                       {c.specialty && <Badge variant="outline">{c.specialty}</Badge>}
@@ -643,7 +607,6 @@ function History() {
                           {c.content_category.replace("-", " ")}
                         </Badge>
                       )}
-                      {/* Show image indicator dot */}
                       {rowHasImage(c) && (
                         <Badge variant="outline" className="text-xs gap-1 text-emerald-600 border-emerald-200">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
@@ -654,24 +617,16 @@ function History() {
                         {new Date(c.created_at).toLocaleDateString()}
                       </span>
                     </div>
-
-                    {/* Topic */}
                     <p className="font-semibold text-foreground truncate">{c.topic}</p>
-
-                    {/* Preview */}
                     <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">
                       {bodyPreview(c)}
                     </p>
-
-                    {/* Hashtags */}
                     {c.hashtags?.length > 0 && (
                       <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
                         {c.hashtags.slice(0, 5).join(" ")}
                       </p>
                     )}
                   </div>
-
-                  {/* Actions — stop propagation so card click doesn't fire */}
                   <div className="flex flex-col gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="ghost" size="sm"
@@ -709,7 +664,6 @@ function History() {
         </div>
       )}
 
-      {/* Detail dialog */}
       {selected && (
         <PostDetailDialog
           row={selected}

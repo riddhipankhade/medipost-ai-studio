@@ -96,6 +96,7 @@ import {
 import { resolveVisualStrategy, resolveSinglePostStrategy } from "@/lib/visual-strategy";
 import { useDownloadPost } from "@/hooks/useDownloadPost";
 import FestiveCard from "@/components/FestiveCard";
+import { ShareButtons } from "@/components/ShareButtons";
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
@@ -842,6 +843,11 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
         <SectionBlock title="Caption" body={post.caption} />
         <SectionBlock title="Call To Action" body={post.cta} />
         <SectionBlock title="Hashtags" body={post.hashtags.join(" ")} />
+        <div className="pt-3 border-t border-border/60">
+          <ShareButtons
+            text={[post.caption, post.cta, post.hashtags.join(" ")].filter(Boolean).join("\n\n")}
+          />
+        </div>
       </CardContent>
     </Card>
   );
@@ -1040,6 +1046,9 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
         </div>
 
         <SectionBlock title="Hashtags" body={post.hashtags.join(" ")} />
+        <div className="pt-3 border-t border-border/60">
+          <ShareButtons text={post.hashtags.join(" ")} />
+        </div>
       </CardContent>
     </Card>
   );
@@ -1105,7 +1114,6 @@ export function SlideCanvas(p: SlideCanvasProps) {
     </div>
   );
 }
-
 
 function StudioControls(props: {
   themeId: string; setThemeId: (v: string) => void; layout: SlideLayout; setLayout: (v: SlideLayout) => void;
@@ -1281,6 +1289,11 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
         <SectionBlock title="Headline" body={post.headline} />
         <SectionBlock title="Short Message" body={post.message} />
         <SectionBlock title="CTA" body={post.cta} />
+        <div className="pt-3 border-t border-border/60">
+          <ShareButtons
+            text={[post.headline, post.message, post.cta].filter(Boolean).join("\n\n")}
+          />
+        </div>
       </CardContent>
     </Card>
   );
@@ -1314,6 +1327,9 @@ function ReelPreview({ post, specialty }: { post: ReelScript; specialty: string 
             </div>
             <ScriptRow label="CTA" time="End" text={post.cta} />
           </div>
+        </div>
+        <div className="pt-3 border-t border-border/60">
+          <ShareButtons text={fullText} />
         </div>
       </CardContent>
     </Card>
@@ -1417,6 +1433,11 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
         <SectionBlock title="Greeting Message" body={post.greeting} />
         <SectionBlock title="Social Caption" body={post.caption} />
         <SectionBlock title="Hashtags" body={post.hashtags.join(" ")} />
+        <div className="pt-3 border-t border-border/60">
+          <ShareButtons
+            text={[post.caption, post.hashtags.join(" ")].filter(Boolean).join("\n\n")}
+          />
+        </div>
       </CardContent>
     </Card>
   );
