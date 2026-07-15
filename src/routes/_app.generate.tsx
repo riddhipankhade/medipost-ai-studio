@@ -641,7 +641,7 @@ function PreviewToolbar({ onCopy, title }: { onCopy?: () => void; title: string 
 /* Evenly-sized action buttons rendered directly under the creative they act on,
    matching its width — replaces the old right-aligned wrap row above the preview
    that broke onto ragged lines once it held more than two buttons. */
-function CreativeActions({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+export function CreativeActions({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`mx-auto grid w-full max-w-md grid-cols-2 gap-2 ${className}`}>
       {children}
@@ -711,7 +711,7 @@ function useAiImage(contentId?: string | null) {
   return { url, loading, run, setUrl };
 }
 
-function AiImageButton({ loading, hasImage, onClick, size = "sm", label }: { loading: boolean; hasImage: boolean; onClick: () => void; size?: "sm" | "xs"; label?: string }) {
+export function AiImageButton({ loading, hasImage, onClick, size = "sm", label }: { loading: boolean; hasImage: boolean; onClick: () => void; size?: "sm" | "xs"; label?: string }) {
   return (
     <Button
       type="button" onClick={onClick} disabled={loading} size="sm"
@@ -719,7 +719,7 @@ function AiImageButton({ loading, hasImage, onClick, size = "sm", label }: { loa
       className={`gap-1.5 ${size === "xs" ? "h-7 text-[11px] px-2.5" : "h-8"}`}
     >
       {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : hasImage ? <RefreshCw className="h-3.5 w-3.5" /> : <Wand className="h-3.5 w-3.5" />}
-      {loading ? "Generating image…" : label ?? (hasImage ? "Regenerate visual" : "Generate AI visual")}
+      {loading ? "Generating…" : label ?? (hasImage ? "Regenerate visual" : "Generate AI visual")}
     </Button>
   );
 }
@@ -980,12 +980,12 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
             <CreativeActions className="mt-3">
               <AiImageButton
                 loading={loadingSlide === idx} hasImage={!!slideImages[idx]} onClick={() => genSlideImage(idx)}
-                label={slideImages[idx] ? "Regenerate slide visual" : "Generate slide visual"}
+                label={slideImages[idx] ? "Regenerate visual" : "Generate visual"}
               />
               <Button type="button" size="sm" variant="secondary" className="gap-1.5 h-8"
                 disabled={bulkLoading || loadingSlide !== null} onClick={genAll}>
                 {bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand className="h-3.5 w-3.5" />}
-                {bulkLoading ? "Generating all…" : "Generate all visuals"}
+                {bulkLoading ? "Generating…" : "Generate all"}
               </Button>
               <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8"
                 disabled={downloading} onClick={() => downloadSlides([idx])}>
