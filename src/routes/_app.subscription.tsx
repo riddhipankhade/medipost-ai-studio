@@ -24,7 +24,6 @@ declare global {
         params: Record<string, string>,
         handlers: {
           responseHandler: (bolt: { response: Record<string, string> }) => void;
-          // PayU docs name this `catchException`; some builds call `catchExceptionHandler`.
           catchException: (bolt: { message: string }) => void;
           catchExceptionHandler: (bolt: { message: string }) => void;
         }
@@ -134,7 +133,6 @@ function SubscriptionPage() {
 
   const currentPlanName = isPro ? (sub?.plans as any)?.name : "free";
 
-  // Apply voucher code
   async function handleApplyVoucher() {
     if (!voucherInput.trim()) return;
     setApplyingVoucher(true);
@@ -155,7 +153,6 @@ function SubscriptionPage() {
     setVoucherInput("");
   }
 
-  // Get discounted price for a plan
   function getDiscountedPrice(plan: typeof PLANS[0]): { original: number; final: number; discounted: boolean } {
     if (appliedVoucher && appliedVoucher.applicablePlans.includes(plan.key)) {
       const discount = plan.price * (appliedVoucher.discountPercentage / 100);
@@ -193,12 +190,14 @@ function SubscriptionPage() {
           surl:        `${window.location.origin}/subscription`,
           furl:        `${window.location.origin}/subscription`,
           udf1: "", udf2: "", udf3: "", udf4: "", udf5: "",
+          // ── Autopay: register Standing Instruction mandate on first payment ──
+          si:         params.si,          // "1" = register autopay mandate
+          si_details: params.si_details,  // billing schedule (amount, cycle, count)
         },
         {
           responseHandler: async (bolt) => {
             try {
               const r = bolt.response ?? {};
-              // PayU reports cancellation via txnStatus ("CANCEL"), not status.
               const txnStatus = (r.txnStatus ?? "").toUpperCase();
               if (r.status === "success" && txnStatus !== "CANCEL") {
                 try {
@@ -214,6 +213,8 @@ function SubscriptionPage() {
                       email:       r.email,
                       mihpayid:    r.mihpayid ?? "",
                       hash:        r.hash,
+                      // ── Autopay: SI mandate ID returned by PayU after registration ──
+                      subId:       r.sub_id ?? r.subId ?? "",
                     },
                   });
                   toast.success(
@@ -320,7 +321,7 @@ function SubscriptionPage() {
         )}
       </div>
 
-      {/* Plan cards — same visual language as the landing page pricing */}
+      {/* Plan cards */}
       <div className="grid md:grid-cols-3 gap-5 items-start">
         {PLANS.map((plan) => {
           const Icon      = plan.icon;
@@ -359,7 +360,6 @@ function SubscriptionPage() {
                 </div>
                 <p className="text-sm font-medium text-muted-foreground">{plan.name}</p>
 
-                {/* Price — show original + discounted if voucher applied */}
                 <div className="flex items-baseline gap-2 mt-2">
                   {pricing.discounted ? (
                     <>
