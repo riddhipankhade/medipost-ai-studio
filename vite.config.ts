@@ -7,6 +7,12 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  vite: {
+    // Local dev runs on 8081: XAMPP already owns 8080 on this machine, and the
+    // wrapper's default sent Vite there. Only affects local runs — the Lovable
+    // sandbox detects itself and force-pins 8080 regardless of this setting.
+    server: { port: 8081 },
+  },
   tanstackStart: {
     server: {
       entry: "server",
