@@ -26,6 +26,7 @@ import {
   Film,
   CalendarDays,
   Heart,
+  LayoutTemplate,
   ChevronLeft,
   ChevronRight,
   Heart as HeartIcon,
@@ -59,7 +60,14 @@ import {
   type ReelScript,
   type Campaign,
   type FestivePost,
+  type TemplatePost,
 } from "@/lib/api/generate.functions";
+import {
+  templateFrames,
+  getTemplateFrame,
+  TEMPLATE_SAMPLE,
+  type TemplateFrameId,
+} from "@/components/template-frames";
 import {
   carouselThemes,
   slideLayouts,
@@ -70,9 +78,9 @@ import {
   getTheme,
   type SlideLayout,
 } from "@/lib/carousel-themes";
-import { useBrandKit } from "@/lib/brand-kit";
+import { useBrandKit, fileToDataUrl } from "@/lib/brand-kit";
 import { supabase } from "@/lib/supabase";
-import { Phone, ImageDown, RefreshCw, Wand } from "lucide-react";
+import { Phone, ImageDown, RefreshCw, Wand, Upload } from "lucide-react";
 import {
   type SlideCanvasProps,
   CenteredLayout,
@@ -117,7 +125,12 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   film: Film,
   calendar: CalendarDays,
   sparkles: Heart,
+  layout: LayoutTemplate,
 };
+
+const CONTENT_LANGUAGES = [
+  "English", "Hindi", "Marathi", "Kannada", "Tamil", "Telugu", "Bengali", "Gujarati", "Punjabi", "Malayalam",
+];
 
 const BRIEF_STORAGE_PREFIX = "medipost.studio-brief.v1";
 
@@ -153,6 +166,7 @@ const DEFAULT_BRIEF_FORM: Omit<GenerateInput, "kind"> = {
   customInstructions: "",
   festiveStyle: "Warm & Friendly",
   slideCount: 7,
+  language: "English",
 };
 
 function GeneratePage() {
@@ -180,6 +194,7 @@ function GeneratePage() {
   const [kind, setKind] = useState<WorkflowKind>("single");
   const [category, setCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
   const [form, setForm] = useState<Omit<GenerateInput, "kind">>(DEFAULT_BRIEF_FORM);
+  const [templateFrame, setTemplateFrame] = useState<TemplateFrameId>("clinic-classic");
 
   // Re-opening Content Studio from anywhere else in the app should show whatever
   // brief this account last entered or picked, instead of resetting to the defaults.
@@ -344,7 +359,7 @@ function GeneratePage() {
         </p>
       </div>
 
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {workflows.map((w) => {
           const Icon = ICONS[w.icon] ?? Square;
           const active = w.kind === kind;
@@ -470,6 +485,18 @@ function GeneratePage() {
               </Field>
             )}
 
+            <Field label="Content Language">
+              <Select value={form.language ?? "English"} onValueChange={(v) => update("language", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CONTENT_LANGUAGES.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground pt-1">
+                All the text on the creative (and captions/scripts) is written in this language.
+              </p>
+            </Field>
+
             {kind === "carousel" && (
               <Field label={`Slides — ${form.slideCount}`}>
                 <input
@@ -526,20 +553,27 @@ function GeneratePage() {
           )}
 
           {!loading && !result && !outOfCredits && (
-            <Card className="border-border/60 border-dashed">
-              <CardContent className="grid place-items-center text-center py-20 text-muted-foreground">
-                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[color:var(--teal)]/20 to-primary/20 grid place-items-center mb-4">
-                  <Sparkles className="h-6 w-6 text-[color:var(--teal)]" />
-                </div>
-                <p className="font-medium text-foreground">Your {activeWorkflow.title.toLowerCase()} preview will appear here</p>
-                <p className="text-sm mt-1">Fill in the brief and hit Generate.</p>
-              </CardContent>
-            </Card>
+            kind === "template" ? (
+              <TemplateGalleryCard value={templateFrame} onChange={setTemplateFrame} />
+            ) : (
+              <Card className="border-border/60 border-dashed">
+                <CardContent className="grid place-items-center text-center py-20 text-muted-foreground">
+                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[color:var(--teal)]/20 to-primary/20 grid place-items-center mb-4">
+                    <Sparkles className="h-6 w-6 text-[color:var(--teal)]" />
+                  </div>
+                  <p className="font-medium text-foreground">Your {activeWorkflow.title.toLowerCase()} preview will appear here</p>
+                  <p className="text-sm mt-1">Fill in the brief and hit Generate.</p>
+                </CardContent>
+              </Card>
+            )
           )}
 
           {!loading && result && (
             <>
-              <ResultPreview result={result} specialty={form.specialty} rowId={rowId} category={category} topic={form.topic} />
+              <ResultPreview
+                result={result} specialty={form.specialty} rowId={rowId} category={category} topic={form.topic}
+                templateFrame={templateFrame} onTemplateFrameChange={setTemplateFrame}
+              />
               <VisualConceptCard visual={result.visual} />
             </>
           )}
@@ -597,7 +631,10 @@ function LoadingPanel({ stage }: { stage: number }) {
   );
 }
 
-function ResultPreview({ result, specialty, rowId, category, topic }: { result: GenerateOutput; specialty: string; rowId: string | null; category: ContentCategory; topic: string }) {
+function ResultPreview({ result, specialty, rowId, category, topic, templateFrame, onTemplateFrameChange }: {
+  result: GenerateOutput; specialty: string; rowId: string | null; category: ContentCategory; topic: string;
+  templateFrame: TemplateFrameId; onTemplateFrameChange: (id: TemplateFrameId) => void;
+}) {
   switch (result.kind) {
     case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic} />;
     case "carousel": return <CarouselPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic} />;
@@ -605,6 +642,7 @@ function ResultPreview({ result, specialty, rowId, category, topic }: { result: 
     case "reel":     return <ReelPreview post={result} specialty={specialty} />;
     case "campaign": return <CampaignPreview plan={result} />;
     case "festive":  return <FestivePreview post={result} specialty={specialty} rowId={rowId} />;
+    case "template": return <TemplatePreview post={result} rowId={rowId} frameId={templateFrame} onFrameChange={onTemplateFrameChange} />;
   }
 }
 
@@ -641,7 +679,7 @@ function PreviewToolbar({ onCopy, title }: { onCopy?: () => void; title: string 
 /* Evenly-sized action buttons rendered directly under the creative they act on,
    matching its width — replaces the old right-aligned wrap row above the preview
    that broke onto ragged lines once it held more than two buttons. */
-function CreativeActions({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+export function CreativeActions({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`mx-auto grid w-full max-w-md grid-cols-2 gap-2 ${className}`}>
       {children}
@@ -711,7 +749,7 @@ function useAiImage(contentId?: string | null) {
   return { url, loading, run, setUrl };
 }
 
-function AiImageButton({ loading, hasImage, onClick, size = "sm", label }: { loading: boolean; hasImage: boolean; onClick: () => void; size?: "sm" | "xs"; label?: string }) {
+export function AiImageButton({ loading, hasImage, onClick, size = "sm", label }: { loading: boolean; hasImage: boolean; onClick: () => void; size?: "sm" | "xs"; label?: string }) {
   return (
     <Button
       type="button" onClick={onClick} disabled={loading} size="sm"
@@ -719,7 +757,7 @@ function AiImageButton({ loading, hasImage, onClick, size = "sm", label }: { loa
       className={`gap-1.5 ${size === "xs" ? "h-7 text-[11px] px-2.5" : "h-8"}`}
     >
       {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : hasImage ? <RefreshCw className="h-3.5 w-3.5" /> : <Wand className="h-3.5 w-3.5" />}
-      {loading ? "Generating image…" : label ?? (hasImage ? "Regenerate visual" : "Generate AI visual")}
+      {loading ? "Generating…" : label ?? (hasImage ? "Regenerate visual" : "Generate AI visual")}
     </Button>
   );
 }
@@ -981,12 +1019,12 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
             <CreativeActions className="mt-3">
               <AiImageButton
                 loading={loadingSlide === idx} hasImage={!!slideImages[idx]} onClick={() => genSlideImage(idx)}
-                label={slideImages[idx] ? "Regenerate slide visual" : "Generate slide visual"}
+                label={slideImages[idx] ? "Regenerate visual" : "Generate visual"}
               />
               <Button type="button" size="sm" variant="secondary" className="gap-1.5 h-8"
                 disabled={bulkLoading || loadingSlide !== null} onClick={genAll}>
                 {bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand className="h-3.5 w-3.5" />}
-                {bulkLoading ? "Generating all…" : "Generate all visuals"}
+                {bulkLoading ? "Generating…" : "Generate all"}
               </Button>
               <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8"
                 disabled={downloading} onClick={() => downloadSlides([idx])}>
@@ -1406,6 +1444,24 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
   const { cardRef, download } = useDownloadPost(brand.doctorName || brand.clinicName || "medipost");
+
+  // Card colors are pickable: brand colors can clash with the generated festive
+  // image (e.g. teal contact bar on a warm Diwali photo). Toggle swaps brand
+  // colors for the AI festival palette; pickers override either. Toggling
+  // clears manual picks so the switch visibly changes the card.
+  const [useBrandColors, setUseBrandColors] = useState(true);
+  const [frameColor, setFrameColor] = useState<string | null>(null);
+  const [glowColor, setGlowColor] = useState<string | null>(null);
+  const [accentColor, setAccentColor] = useState<string | null>(null);
+  const palette = post.visual.colors;
+  const cardColors = {
+    frame: frameColor ?? ((useBrandColors && brand.primaryColor) || palette[0] || "#0E7C7B"),
+    glow: glowColor ?? (palette[1] || "#f4b400"),
+    accent: accentColor ?? ((useBrandColors && brand.secondaryColor) || palette[2] || "#0a3d62"),
+  };
+  const hasManualColors = frameColor !== null || glowColor !== null || accentColor !== null;
+  const resetManualColors = () => { setFrameColor(null); setGlowColor(null); setAccentColor(null); };
+
   return (
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
@@ -1422,6 +1478,7 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
             imageUrl={ai.url}
             imageLoading={ai.loading}
             loadingOverlay={<ImageLoadingOverlay />}
+            colorOverrides={cardColors}
           />
         </div>
         <div className="flex flex-wrap justify-center gap-2">
@@ -1432,6 +1489,27 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
           </Button>
         </div>
 
+        <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Card colors</Label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <span>Use clinic brand colors</span>
+              <input type="checkbox" checked={useBrandColors} className="accent-[color:var(--teal)]"
+                onChange={(e) => { setUseBrandColors(e.target.checked); resetManualColors(); }} />
+            </label>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <MiniColor label="Frame" value={cardColors.frame} onChange={setFrameColor} />
+            <MiniColor label="Glow" value={cardColors.glow} onChange={setGlowColor} />
+            <MiniColor label="Text accent" value={cardColors.accent} onChange={setAccentColor} />
+          </div>
+          {hasManualColors && (
+            <button type="button" onClick={resetManualColors} className="text-[11px] text-[color:var(--teal)] hover:underline">
+              Reset to suggested colors
+            </button>
+          )}
+        </div>
+
         <SectionBlock title="Greeting Message" body={post.greeting} />
         <SectionBlock title="Social Caption" body={post.caption} />
         <SectionBlock title="Hashtags" body={post.hashtags.join(" ")} />
@@ -1439,6 +1517,214 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
           <ShareButtons
             text={[post.caption, post.hashtags.join(" ")].filter(Boolean).join("\n\n")}
             imageUrl={ai.url}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ---- Template Post — ready-made poster designs with an AI photo window ---- */
+
+function FramePicker({ value, onChange, frameProps }: {
+  value: TemplateFrameId;
+  onChange: (id: TemplateFrameId) => void;
+  frameProps: Parameters<(typeof templateFrames)[number]["Frame"]>[0];
+}) {
+  return (
+    <div className="grid gap-3 grid-cols-2">
+      {templateFrames.map((f) => {
+        const active = f.id === value;
+        return (
+          <button
+            key={f.id} type="button" onClick={() => onChange(f.id)}
+            className={`min-w-0 rounded-xl border p-2 text-left transition-all ${
+              active
+                ? "border-[color:var(--teal)] ring-2 ring-[color:var(--teal)] shadow-sm"
+                : "border-border hover:border-[color:var(--teal)]/50"
+            }`}
+          >
+            <ExactScalePreview>
+              <f.Frame {...frameProps} />
+            </ExactScalePreview>
+            <p className="mt-1.5 text-xs font-semibold">{f.name}</p>
+            <p className="text-[10px] text-muted-foreground">{f.tagline}</p>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* Shown in place of the empty state when Template Post is picked: the browsable
+   design gallery (like the reference template sites) — slots render as
+   "Your Logo" / "Business Name" / "Mobile Number" chips until the brand kit
+   fills them, and the photo window shows where the AI image will land. */
+function TemplateGalleryCard({ value, onChange }: { value: TemplateFrameId; onChange: (id: TemplateFrameId) => void }) {
+  const [brand] = useBrandKit();
+  const frameProps = {
+    ...TEMPLATE_SAMPLE,
+    logo: brand.logo,
+    businessName: brand.clinicName,
+    phone: brand.phone,
+    colors: { primary: brand.primaryColor, secondary: brand.secondaryColor },
+    placeholders: true,
+  };
+  return (
+    <Card className="border-border/60">
+      <CardContent className="pt-6 space-y-4">
+        <PreviewToolbar title="Pick a Template Design" />
+        <p className="text-sm text-muted-foreground">
+          Ready-made promo designs. Your logo, business name and mobile number fill in from your Brand Kit —
+          hit Generate to write the text in your language and create a photo for the image window.
+        </p>
+        <FramePicker value={value} onChange={onChange} frameProps={frameProps} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
+  post: TemplatePost; rowId?: string | null;
+  frameId: TemplateFrameId; onFrameChange: (id: TemplateFrameId) => void;
+}) {
+  const [brand] = useBrandKit();
+  const ai = useAiImage(rowId);
+  const [downloading, setDownloading] = useState(false);
+  const captureRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Doctors can drop their own clinic/patient photo into the window instead of
+  // generating one — it rides the same imageUrl slot the AI image uses, so the
+  // preview, frame switcher and download behave identically. Client-side only:
+  // uploads aren't persisted, so History shows the frame without this photo.
+  async function onUploadPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast.error("Please choose an image file"); return; }
+    try {
+      ai.setUrl(await fileToDataUrl(file));
+      toast.success("Photo added to the template");
+    } catch {
+      toast.error("Couldn't read that file. Please try another image.");
+    }
+  }
+
+  // Same color contract as festive: brand colors by default, toggle swaps in the
+  // AI palette, pickers override either; toggling clears manual picks so the
+  // switch visibly changes the creative.
+  const [useBrandColors, setUseBrandColors] = useState(true);
+  const [primaryPick, setPrimaryPick] = useState<string | null>(null);
+  const [secondaryPick, setSecondaryPick] = useState<string | null>(null);
+  const palette = post.visual.colors;
+  const colors = {
+    primary:   primaryPick   ?? ((useBrandColors ? brand.primaryColor   : "") || palette[0] || "#0E7C7B"),
+    secondary: secondaryPick ?? ((useBrandColors ? brand.secondaryColor : "") || palette[1] || "#134e4a"),
+  };
+  const hasManualColors = primaryPick !== null || secondaryPick !== null;
+  const resetManualColors = () => { setPrimaryPick(null); setSecondaryPick(null); };
+
+  const entry = getTemplateFrame(frameId);
+  const Frame = entry.Frame;
+  const frameProps = {
+    headline: post.headline,
+    subline: post.subline,
+    cta: post.cta,
+    logo: brand.logo,
+    businessName: brand.clinicName,
+    phone: brand.phone,
+    colors,
+    imageUrl: ai.url,
+  };
+
+  async function downloadPost() {
+    if (!captureRef.current) return;
+    setDownloading(true);
+    try {
+      const { toPng } = await import("html-to-image");
+      const png = await toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+      savePng(png, "medipost-template-post.png");
+      toast.success("Post downloaded (1080×1080)");
+    } catch (e) {
+      console.error("[TemplatePreview] download failed:", e);
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <Card className="border-border/60">
+      <CardContent className="pt-6 space-y-5">
+        <PreviewToolbar title={`Template Post — ${entry.name}`} />
+
+        <div className="mx-auto w-full max-w-md">
+          <ExactScalePreview>
+            <Frame {...frameProps} imageLoading={ai.loading} loadingOverlay={<ImageLoadingOverlay />} />
+          </ExactScalePreview>
+          <CreativeActions className="mt-3">
+            <AiImageButton
+              loading={ai.loading} hasImage={!!ai.url}
+              label={ai.url ? "Regenerate photo" : "Generate photo"}
+              onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+            />
+            <Button
+              type="button" size="sm" variant="outline" className="gap-1.5 h-8"
+              onClick={() => fileInputRef.current?.click()} disabled={ai.loading}
+            >
+              <Upload className="h-3.5 w-3.5" /> Upload photo
+            </Button>
+            <Button
+              type="button" size="sm" variant="outline" className="gap-1.5 h-8 col-span-2"
+              onClick={downloadPost} disabled={downloading || ai.loading}
+            >
+              {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+              Download post
+            </Button>
+          </CreativeActions>
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onUploadPhoto} />
+        </div>
+        {/* offscreen full-size render — capture source for the 1080×1080 PNG download */}
+        <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: CREATIVE_DESIGN_WIDTH }}>
+          <div ref={captureRef}>
+            <Frame {...frameProps} />
+          </div>
+        </div>
+
+        <div className="mx-auto w-full max-w-md space-y-2">
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Design</Label>
+          <FramePicker value={frameId} onChange={onFrameChange} frameProps={frameProps} />
+        </div>
+
+        <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Colors</Label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <span>Use clinic brand colors</span>
+              <input type="checkbox" checked={useBrandColors} className="accent-[color:var(--teal)]"
+                onChange={(e) => { setUseBrandColors(e.target.checked); resetManualColors(); }} />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <MiniColor label="Primary" value={colors.primary} onChange={setPrimaryPick} />
+            <MiniColor label="Secondary" value={colors.secondary} onChange={setSecondaryPick} />
+          </div>
+          {hasManualColors && (
+            <button type="button" onClick={resetManualColors} className="text-[11px] text-[color:var(--teal)] hover:underline">
+              Reset to suggested colors
+            </button>
+          )}
+        </div>
+
+        <SectionBlock title="Headline" body={post.headline} />
+        <SectionBlock title="Supporting Line" body={post.subline} />
+        <SectionBlock title="Call To Action" body={post.cta} />
+        <SectionBlock title="Caption" body={post.caption} />
+        <SectionBlock title="Hashtags" body={post.hashtags.join(" ")} />
+        <div className="pt-3 border-t border-border/60">
+          <ShareButtons
+            text={[post.caption, post.cta, post.hashtags.join(" ")].filter(Boolean).join("\n\n")}
           />
         </div>
       </CardContent>
