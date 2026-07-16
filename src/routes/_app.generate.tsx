@@ -134,8 +134,6 @@ const CONTENT_LANGUAGES = [
 
 const BRIEF_STORAGE_PREFIX = "medipost.studio-brief.v1";
 
-// Briefs are namespaced per signed-in account so switching accounts in the same
-// browser never shows one account's in-progress brief to another.
 function briefStorageKey(userId: string) {
   return `${BRIEF_STORAGE_PREFIX}:${userId}`;
 }
@@ -188,17 +186,12 @@ function GeneratePage() {
 
   const specialtyAppliedRef = useRef(false);
 
-  // The account's own brief is only known once loadBrand() below resolves who's
-  // signed in, so state starts at hard defaults and is hydrated per-account then.
   const [userId, setUserId] = useState<string | null>(null);
   const [kind, setKind] = useState<WorkflowKind>("single");
   const [category, setCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
   const [form, setForm] = useState<Omit<GenerateInput, "kind">>(DEFAULT_BRIEF_FORM);
   const [templateFrame, setTemplateFrame] = useState<TemplateFrameId>("clinic-classic");
 
-  // Re-opening Content Studio from anywhere else in the app should show whatever
-  // brief this account last entered or picked, instead of resetting to the defaults.
-  // Namespaced per-account, and never written until we know which account this is.
   useEffect(() => {
     if (typeof window === "undefined" || !userId) return;
     window.localStorage.setItem(briefStorageKey(userId), JSON.stringify({ kind, category, form }));
@@ -230,9 +223,6 @@ function GeneratePage() {
 
       if (cancelled) return;
 
-      // Default the specialty to whatever the brand kit has saved, falling back to
-      // what was picked at signup — only the first time, and never over a brief
-      // this account already saved locally.
       const signupSpecialty = (user.user_metadata?.specialty as string) ?? "";
       const kitSpecialty = data ? ((data as unknown as Record<string, unknown>).specialty as string) ?? "" : "";
       const specialty = kitSpecialty || signupSpecialty;
@@ -255,9 +245,6 @@ function GeneratePage() {
       const website        = (d.website             as string) ?? "";
       const phone          = (d.phone               as string) ?? "";
 
-      // The visual previews get this same row via useBrandKit's own DB
-      // hydration (brand-kit.ts) — pushing it into setBrand here raced the
-      // hook's async userId resolution and silently dropped the write.
       setSupabaseBrand({
         clinicName,
         doctorName,
@@ -660,9 +647,6 @@ function savePng(dataUrl: string, name: string) {
   document.body.removeChild(link);
 }
 
-/* Copy is only offered for text deliverables (reel script, campaign plan) —
-   visual posts are downloaded, and their caption/hashtag sections carry their
-   own per-section Copy buttons. */
 function PreviewToolbar({ onCopy, title }: { onCopy?: () => void; title: string }) {
   return (
     <div className="flex items-center justify-between gap-3 mb-3">
@@ -676,9 +660,6 @@ function PreviewToolbar({ onCopy, title }: { onCopy?: () => void; title: string 
   );
 }
 
-/* Evenly-sized action buttons rendered directly under the creative they act on,
-   matching its width — replaces the old right-aligned wrap row above the preview
-   that broke onto ragged lines once it held more than two buttons. */
 export function CreativeActions({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`mx-auto grid w-full max-w-md grid-cols-2 gap-2 ${className}`}>
@@ -687,11 +668,6 @@ export function CreativeActions({ children, className = "" }: { children: React.
   );
 }
 
-/** WYSIWYG preview: renders the creative at the same fixed design width the PNG
- *  download captures (540px), then scales it down with a CSS transform to fit
- *  the preview column. The slide's type sizes are fixed px, so rendering the
- *  preview at any other width changes how text wraps and fills the canvas —
- *  this guarantees the preview is pixel-for-pixel the downloaded post. */
 export const CREATIVE_DESIGN_WIDTH = 540;
 
 export function ExactScalePreview({ children }: { children: React.ReactNode }) {
@@ -706,11 +682,6 @@ export function ExactScalePreview({ children }: { children: React.ReactNode }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  // The child is absolutely positioned so its unscaled 540px layout size never
-  // reaches the layout: otherwise it sets the grid column's min-content width,
-  // which forces the whole studio wider than the viewport on smaller windows
-  // (transform: scale is visual only). The host supplies the real footprint —
-  // width from the column, height from the measured scale.
   return (
     <div
       ref={hostRef}
@@ -762,12 +733,6 @@ export function AiImageButton({ loading, hasImage, onClick, size = "sm", label }
   );
 }
 
-/* ---- Single Post — category-driven creative on the SlideCanvas system ----
-   The same content-aware archetypes the carousel uses render the single post:
-   the category picked in the brief selects the template (Myth vs Fact → split
-   panels, Health Tips / Prevention → checklist, Did You Know → big-stat poster,
-   Patient FAQ → Q&A bubbles, Warning Signs → alert poster), and the full
-   studio controls (theme, layout, font, colors, brand toggle) apply. */
 function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: SinglePost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
@@ -846,7 +811,6 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
                 Download post
               </Button>
             </CreativeActions>
-            {/* offscreen full-size render — capture source for the 1080×1080 PNG download */}
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
               <div ref={captureRef}>
                 <SlideCanvas {...canvasProps} imageUrl={ai.url} />
@@ -857,7 +821,6 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
           <StudioControls
             themeId={themeId}
             setThemeId={(id) => {
-              // same contract as the carousel: picking a theme applies ALL of it
               setThemeId(id); setFontFamily(getTheme(id).fontFamily);
               setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
             }}
@@ -892,7 +855,6 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
   );
 }
 
-/* ---- Carousel ---- */
 function CarouselPreview({ post, specialty, rowId, category, topic }: { post: CarouselPost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string }) {
   const [brand] = useBrandKit();
   const callImage = useServerFn(generateImage);
@@ -911,7 +873,6 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
   const [loadingSlide, setLoadingSlide] = useState<number | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  // full-size capture nodes rendered inside the scaled-down thumbnails — one per slide
   const thumbCaptureRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   if (slideImages.length !== post.slides.length) setSlideImages(post.slides.map(() => null));
@@ -1038,9 +999,6 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
               </Button>
             </CreativeActions>
 
-            {/* offscreen full-size render of every slide — capture source for the PNG
-                downloads only, never visible (thumbnail strip removed intentionally:
-                too small to read; arrows + in-slide dots handle navigation) */}
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
               {post.slides.map((s, i) => {
                 const st = resolveVisualStrategy(s, category, { slideIndex: i, totalSlides: total, isCta: i === total - 1 });
@@ -1063,9 +1021,6 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
           <StudioControls
             themeId={themeId}
             setThemeId={(id) => {
-              // picking a theme applies ALL of it: background, palette, font.
-              // Brand-color override + manual color tweaks are reset so the click
-              // visibly changes the slide (re-enable via the brand-colors toggle).
               setThemeId(id); setFontFamily(getTheme(id).fontFamily);
               setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
             }}
@@ -1093,9 +1048,6 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
   );
 }
 
-/** Layouts with no photo-aware rendering of their own — an AI-generated slide image
- *  still routes these through FullImageOverlayLayout. The 10 content-driven archetypes
- *  are not in this set: they accept p.imageUrl directly (see carousel-layouts.tsx). */
 const LEGACY_PHOTO_LAYOUTS = new Set<SlideLayout>(["centered", "image-left", "full-image", "split", "modern-card"]);
 
 export function SlideCanvas(p: SlideCanvasProps) {
@@ -1116,10 +1068,6 @@ export function SlideCanvas(p: SlideCanvasProps) {
       {p.showIcons && !p.imageUrl && (
         <ContextualBackground specialty={p.specialty} opacity={p.theme.iconOpacity} color={p.theme.heading} />
       )}
-      {/* The 5 original manual-format layouts have no photo-aware treatment of their own,
-          so an AI-generated slide image still forces the dedicated overlay layout for them.
-          The 10 content-driven archetypes below accept p.imageUrl directly and render their
-          own contrast-safe treatment on top of it instead of being bypassed. */}
       {p.imageUrl && LEGACY_PHOTO_LAYOUTS.has(p.layout) ? <FullImageOverlayLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
         : p.layout === "centered" ? <CenteredLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
         : p.layout === "image-left" ? <ImageLeftLayout {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
@@ -1136,7 +1084,6 @@ export function SlideCanvas(p: SlideCanvasProps) {
         : p.layout === "faq-card" ? <FaqCards {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
         : p.layout === "checklist" ? <Checklist {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />
         : <RadialDiagram {...p} titleSize={titleSize} bodySize={bodySize} PrimaryIcon={PrimaryIcon} />}
-      {/* slide counter + dots are a carousel swipe cue — meaningless on a single post */}
       {p.totalSlides > 1 && (
         <>
           <div className="absolute top-3 right-4 z-20 text-[10px] font-medium opacity-80" style={{ color: p.theme.heading }}>
@@ -1243,9 +1190,6 @@ function MiniColor({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-/* ---- Story ----
-   Renders the story CREATIVE only, at 9:16 — no phone frame, no fake story
-   progress bars, no account row. What you see is exactly what downloads. */
 function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string }) {
   const [brand] = useBrandKit();
   const ai = useAiImage();
@@ -1339,7 +1283,6 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
   );
 }
 
-/* ---- Reel ---- */
 function ReelPreview({ post, specialty }: { post: ReelScript; specialty: string }) {
   const fullText = `HOOK (0-3s)\n${post.hook}\n\nMAIN TALKING POINTS\n` +
     post.talkingPoints.map((p, i) => `${i + 1}. ${p}`).join("\n") + `\n\nCTA\n${post.cta}`;
@@ -1388,7 +1331,6 @@ function ScriptRow({ label, time, text, accent }: { label: string; time: string;
   );
 }
 
-/* ---- Campaign ---- */
 function CampaignPreview({ plan }: { plan: Campaign }) {
   const fullText = `Theme: ${plan.theme}\nObjective: ${plan.objective}\n\nPost ideas:\n` +
     plan.postIdeas.map((p, i) => `${i + 1}. ${p}`).join("\n") + `\n\nWeekly schedule:\n` +
@@ -1439,16 +1381,11 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
   );
 }
 
-/* ---- Festive — greeting card + Download ---- */
 function FestivePreview({ post, specialty, rowId }: { post: FestivePost; specialty: string; rowId?: string | null }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
   const { cardRef, download } = useDownloadPost(brand.doctorName || brand.clinicName || "medipost");
 
-  // Card colors are pickable: brand colors can clash with the generated festive
-  // image (e.g. teal contact bar on a warm Diwali photo). Toggle swaps brand
-  // colors for the AI festival palette; pickers override either. Toggling
-  // clears manual picks so the switch visibly changes the card.
   const [useBrandColors, setUseBrandColors] = useState(true);
   const [frameColor, setFrameColor] = useState<string | null>(null);
   const [glowColor, setGlowColor] = useState<string | null>(null);
@@ -1524,8 +1461,6 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
   );
 }
 
-/* ---- Template Post — ready-made poster designs with an AI photo window ---- */
-
 function FramePicker({ value, onChange, frameProps }: {
   value: TemplateFrameId;
   onChange: (id: TemplateFrameId) => void;
@@ -1556,10 +1491,6 @@ function FramePicker({ value, onChange, frameProps }: {
   );
 }
 
-/* Shown in place of the empty state when Template Post is picked: the browsable
-   design gallery (like the reference template sites) — slots render as
-   "Your Logo" / "Business Name" / "Mobile Number" chips until the brand kit
-   fills them, and the photo window shows where the AI image will land. */
 function TemplateGalleryCard({ value, onChange }: { value: TemplateFrameId; onChange: (id: TemplateFrameId) => void }) {
   const [brand] = useBrandKit();
   const frameProps = {
@@ -1594,10 +1525,6 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
   const captureRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Doctors can drop their own clinic/patient photo into the window instead of
-  // generating one — it rides the same imageUrl slot the AI image uses, so the
-  // preview, frame switcher and download behave identically. Client-side only:
-  // uploads aren't persisted, so History shows the frame without this photo.
   async function onUploadPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -1611,9 +1538,6 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
     }
   }
 
-  // Same color contract as festive: brand colors by default, toggle swaps in the
-  // AI palette, pickers override either; toggling clears manual picks so the
-  // switch visibly changes the creative.
   const [useBrandColors, setUseBrandColors] = useState(true);
   const [primaryPick, setPrimaryPick] = useState<string | null>(null);
   const [secondaryPick, setSecondaryPick] = useState<string | null>(null);
@@ -1685,7 +1609,6 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
           </CreativeActions>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onUploadPhoto} />
         </div>
-        {/* offscreen full-size render — capture source for the 1080×1080 PNG download */}
         <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: CREATIVE_DESIGN_WIDTH }}>
           <div ref={captureRef}>
             <Frame {...frameProps} />
@@ -1725,6 +1648,7 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
         <div className="pt-3 border-t border-border/60">
           <ShareButtons
             text={[post.caption, post.cta, post.hashtags.join(" ")].filter(Boolean).join("\n\n")}
+            imageUrl={ai.url}
           />
         </div>
       </CardContent>

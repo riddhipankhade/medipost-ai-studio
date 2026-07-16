@@ -63,7 +63,7 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
 
   // ── WhatsApp ───────────────────────────────────────────────────────────
   // On mobile: shares image + text via Web Share API if imageUrl is available
-  // On desktop: opens WhatsApp Web with text pre-filled (WhatsApp Web doesn't support image sharing)
+  // On desktop: opens WhatsApp Web with text pre-filled (no image support on desktop)
   async function shareWhatsApp() {
     if (imageUrl && typeof navigator !== "undefined" && navigator.share) {
       try {
