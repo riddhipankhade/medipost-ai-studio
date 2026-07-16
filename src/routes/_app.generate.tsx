@@ -846,6 +846,7 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
         <div className="pt-3 border-t border-border/60">
           <ShareButtons
             text={[post.caption, post.cta, post.hashtags.join(" ")].filter(Boolean).join("\n\n")}
+            imageUrl={ai.url}
           />
         </div>
       </CardContent>
@@ -1047,7 +1048,7 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
 
         <SectionBlock title="Hashtags" body={post.hashtags.join(" ")} />
         <div className="pt-3 border-t border-border/60">
-          <ShareButtons text={post.hashtags.join(" ")} />
+          <ShareButtons text={post.hashtags.join(" ")} imageUrl={slideImages[idx]} />
         </div>
       </CardContent>
     </Card>
@@ -1292,6 +1293,7 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
         <div className="pt-3 border-t border-border/60">
           <ShareButtons
             text={[post.headline, post.message, post.cta].filter(Boolean).join("\n\n")}
+            imageUrl={ai.url}
           />
         </div>
       </CardContent>
@@ -1436,6 +1438,7 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
         <div className="pt-3 border-t border-border/60">
           <ShareButtons
             text={[post.caption, post.hashtags.join(" ")].filter(Boolean).join("\n\n")}
+            imageUrl={ai.url}
           />
         </div>
       </CardContent>

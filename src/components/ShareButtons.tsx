@@ -2,15 +2,12 @@
  * src/components/ShareButtons.tsx
  *
  * Share generated content to WhatsApp, Facebook, Instagram.
- * Pass `text` for caption sharing, `imageUrl` (data URL) for image download/share.
- *
- * Usage:
- *   <ShareButtons text={generatedText} />
- *   <ShareButtons text={generatedText} imageUrl={cardDataUrl} />
+ * - WhatsApp: shares image via Web Share API on mobile, text-only on desktop
+ * - Facebook/Instagram: copies caption to clipboard + shows clear "now paste" panel
  */
 
 import { useState } from "react";
-import { Check, Copy, Download, Share2 } from "lucide-react";
+import { Check, Copy, Download, Share2, X } from "lucide-react";
 
 // ── Platform SVG icons ──────────────────────────────────────────────────────
 
@@ -38,57 +35,76 @@ function InstagramIcon() {
   );
 }
 
-// ── Component ───────────────────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────────────
 
 interface ShareButtonsProps {
-  /** The generated text/caption to share */
   text: string;
-  /** Optional image data URL (e.g. from a captured PostCard). Enables Download + image share. */
   imageUrl?: string | null;
   className?: string;
 }
 
+type PendingPlatform = "facebook" | "instagram" | null;
+
+// ── Component ───────────────────────────────────────────────────────────────
+
 export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsProps) {
-  const [copied, setCopied] = useState(false);
-  const [toast,  setToast]  = useState<string | null>(null);
+  const [copied, setCopied]                 = useState(false);
+  const [pendingPlatform, setPending]       = useState<PendingPlatform>(null);
+  const [clipboardReady, setClipboardReady] = useState(false);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
-  }
-
-  // Copy text to clipboard
+  // ── Copy text ──────────────────────────────────────────────────────────
   async function copyText() {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showToast("Could not copy — please copy manually.");
+    } catch {}
+  }
+
+  // ── WhatsApp ───────────────────────────────────────────────────────────
+  // On mobile: shares image + text via Web Share API if imageUrl is available
+  // On desktop: opens WhatsApp Web with text pre-filled (WhatsApp Web doesn't support image sharing)
+  async function shareWhatsApp() {
+    if (imageUrl && typeof navigator !== "undefined" && navigator.share) {
+      try {
+        const res  = await fetch(imageUrl);
+        const blob = await res.blob();
+        const file = new File([blob], "medipost-card.png", { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], text });
+          return;
+        }
+      } catch {}
     }
+    // Desktop fallback — text only via WhatsApp Web
+    window.open(
+      `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`,
+      "_blank", "noopener,noreferrer"
+    );
   }
 
-  // WhatsApp: direct URL share with text
-  function shareWhatsApp() {
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+  // ── Facebook / Instagram ───────────────────────────────────────────────
+  // FB and IG removed raw-text URL sharing from their APIs.
+  // Copy caption first, then show a clear "paste it in your post" panel.
+  async function preparePlatform(platform: "facebook" | "instagram") {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {}
+    setClipboardReady(ok);
+    setPending(platform);
+  }
+
+  function openPlatform() {
+    const url = pendingPlatform === "facebook"
+      ? "https://www.facebook.com/"
+      : "https://www.instagram.com/";
     window.open(url, "_blank", "noopener,noreferrer");
+    setPending(null);
   }
 
-  // Facebook: copies caption then opens Facebook (FB removed raw-text URL sharing)
-  async function shareFacebook() {
-    try { await navigator.clipboard.writeText(text); } catch {}
-    window.open("https://www.facebook.com/", "_blank", "noopener,noreferrer");
-    showToast("Caption copied! Create a new post on Facebook and paste it.");
-  }
-
-  // Instagram: copies caption then opens Instagram
-  async function shareInstagram() {
-    try { await navigator.clipboard.writeText(text); } catch {}
-    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
-    showToast("Caption copied! Create a new post on Instagram and paste it.");
-  }
-
-  // Download image card
+  // ── Download image ─────────────────────────────────────────────────────
   function downloadImage() {
     if (!imageUrl) return;
     const a = document.createElement("a");
@@ -99,7 +115,7 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
     document.body.removeChild(a);
   }
 
-  // Native Web Share API (shows system share sheet on Android/iOS)
+  // ── Native share (mobile "More") ───────────────────────────────────────
   async function nativeShare() {
     if (!navigator.share) return;
     try {
@@ -109,9 +125,7 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
           const res  = await fetch(imageUrl);
           const blob = await res.blob();
           const file = new File([blob], "medipost-card.png", { type: "image/png" });
-          if (navigator.canShare({ files: [file] })) {
-            shareData.files = [file];
-          }
+          if (navigator.canShare({ files: [file] })) shareData.files = [file];
         } catch {}
       }
       await navigator.share(shareData);
@@ -138,7 +152,7 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
 
         {/* Facebook */}
         <button
-          onClick={shareFacebook}
+          onClick={() => preparePlatform("facebook")}
           className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-[#1877F2] text-white hover:bg-[#1464d0] transition-colors"
         >
           <FacebookIcon />
@@ -147,7 +161,7 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
 
         {/* Instagram */}
         <button
-          onClick={shareInstagram}
+          onClick={() => preparePlatform("instagram")}
           className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-white transition-colors"
           style={{ background: "linear-gradient(135deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%)" }}
         >
@@ -164,7 +178,7 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
           {copied ? "Copied!" : "Copy text"}
         </button>
 
-        {/* Download image (only if imageUrl provided) */}
+        {/* Download image */}
         {imageUrl && (
           <button
             onClick={downloadImage}
@@ -175,7 +189,7 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
           </button>
         )}
 
-        {/* Native share (mobile only — shows system share sheet) */}
+        {/* Native share — mobile only */}
         {canNativeShare && (
           <button
             onClick={nativeShare}
@@ -187,11 +201,55 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
         )}
       </div>
 
-      {/* Inline toast */}
-      {toast && (
-        <p className="mt-2.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-1.5">
-          {toast}
-        </p>
+      {/* ── Facebook / Instagram "paste" panel ────────────────────────────── */}
+      {pendingPlatform && (
+        <div className="mt-3 rounded-xl border border-border bg-card p-4 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold">
+                {clipboardReady ? "✅ Caption copied to clipboard!" : "Almost there!"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                {clipboardReady
+                  ? `Open ${pendingPlatform === "facebook" ? "Facebook" : "Instagram"}, create a new post, and paste your caption (Ctrl+V / ⌘V).`
+                  : `Copy the caption below, then open ${pendingPlatform === "facebook" ? "Facebook" : "Instagram"} and paste it into a new post.`}
+              </p>
+              {!clipboardReady && (
+                <button
+                  onClick={copyText}
+                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[color:var(--teal)] hover:underline"
+                >
+                  <Copy className="h-3 w-3" /> Copy caption manually
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => setPending(null)}
+              className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={openPlatform}
+              className="flex-1 rounded-lg py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+              style={{
+                background: pendingPlatform === "facebook"
+                  ? "#1877F2"
+                  : "linear-gradient(135deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%)",
+              }}
+            >
+              Open {pendingPlatform === "facebook" ? "Facebook" : "Instagram"} →
+            </button>
+            <button
+              onClick={() => setPending(null)}
+              className="rounded-lg px-3 py-2 text-xs font-medium border border-border bg-background hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
