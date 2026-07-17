@@ -51,6 +51,7 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
   const [copied, setCopied]                 = useState(false);
   const [pendingPlatform, setPending]       = useState<PendingPlatform>(null);
   const [clipboardReady, setClipboardReady] = useState(false);
+  const [imageDownloaded, setImageDownloaded] = useState(false);
 
   // ── Copy text ──────────────────────────────────────────────────────────
   async function copyText() {
@@ -84,15 +85,16 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
   }
 
   // ── Facebook / Instagram ───────────────────────────────────────────────
-  // FB and IG removed raw-text URL sharing from their APIs.
-  // Copy caption first, then show a clear "paste it in your post" panel.
+  // FB and IG don't accept programmatic image pushes.
+  // Strategy: auto-download the image + copy caption, then show paste panel.
   async function preparePlatform(platform: "facebook" | "instagram") {
-    let ok = false;
-    try {
-      await navigator.clipboard.writeText(text);
-      ok = true;
-    } catch {}
-    setClipboardReady(ok);
+    // Run both in parallel — caption copy and image download
+    const [, downloaded] = await Promise.all([
+      navigator.clipboard.writeText(text).then(() => true).catch(() => false),
+      imageUrl ? downloadImage() : Promise.resolve(false),
+    ]);
+    setClipboardReady(true);
+    setImageDownloaded(downloaded as boolean);
     setPending(platform);
   }
 
@@ -105,14 +107,36 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
   }
 
   // ── Download image ─────────────────────────────────────────────────────
-  function downloadImage() {
-    if (!imageUrl) return;
-    const a = document.createElement("a");
-    a.href = imageUrl;
-    a.download = "medipost-card.png";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  // Fetches as blob first so cross-origin Pollinations URLs actually download
+  // instead of just navigating to the image (which a plain anchor would do).
+  async function downloadImage() {
+    if (!imageUrl) return false;
+    try {
+      let blob: Blob;
+      if (imageUrl.startsWith("data:")) {
+        const [header, b64] = imageUrl.split(",");
+        const mime           = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
+        const bytes          = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        blob                 = new Blob([bytes], { type: mime });
+      } else {
+        const res = await fetch(imageUrl);
+        if (!res.ok) throw new Error(`fetch ${res.status}`);
+        blob = await res.blob();
+      }
+      const objectUrl = URL.createObjectURL(blob);
+      const a         = document.createElement("a");
+      a.href          = objectUrl;
+      a.download      = "medipost-card.jpg";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+      return true;
+    } catch (err) {
+      console.warn("[ShareButtons] download failed, opening in new tab:", err);
+      window.open(imageUrl, "_blank", "noopener,noreferrer");
+      return false;
+    }
   }
 
   // ── Native share (mobile "More") ───────────────────────────────────────
@@ -181,7 +205,7 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
         {/* Download image */}
         {imageUrl && (
           <button
-            onClick={downloadImage}
+            onClick={() => downloadImage()}
             className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border border-border bg-background hover:bg-muted transition-colors"
           >
             <Download className="h-3.5 w-3.5" />
@@ -205,32 +229,45 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
       {pendingPlatform && (
         <div className="mt-3 rounded-xl border border-border bg-card p-4 space-y-3">
           <div className="flex items-start justify-between gap-2">
-            <div>
-              <p className="text-sm font-semibold">
-                {clipboardReady ? "✅ Caption copied to clipboard!" : "Almost there!"}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                {clipboardReady
-                  ? `Open ${pendingPlatform === "facebook" ? "Facebook" : "Instagram"}, create a new post, and paste your caption (Ctrl+V / ⌘V).`
-                  : `Copy the caption below, then open ${pendingPlatform === "facebook" ? "Facebook" : "Instagram"} and paste it into a new post.`}
-              </p>
-              {!clipboardReady && (
-                <button
-                  onClick={copyText}
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[color:var(--teal)] hover:underline"
-                >
-                  <Copy className="h-3 w-3" /> Copy caption manually
-                </button>
-              )}
-            </div>
+            <p className="text-sm font-semibold">
+              Ready to post on {pendingPlatform === "facebook" ? "Facebook" : "Instagram"}
+            </p>
             <button
-              onClick={() => setPending(null)}
+              onClick={() => { setPending(null); setImageDownloaded(false); }}
               className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex gap-2">
+
+          {/* Status checklist */}
+          <ul className="space-y-1.5 text-xs">
+            <li className="flex items-center gap-2">
+              <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+              <span className="text-muted-foreground">Caption copied to clipboard</span>
+            </li>
+            {imageUrl && (
+              <li className="flex items-center gap-2">
+                {imageDownloaded
+                  ? <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                  : <Download className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+                <span className="text-muted-foreground">
+                  {imageDownloaded
+                    ? "Image saved to Downloads"
+                    : "Image opened in new tab — save it manually"}
+                </span>
+              </li>
+            )}
+          </ul>
+
+          {/* Steps */}
+          <ol className="list-decimal list-inside space-y-1 text-xs text-muted-foreground leading-relaxed">
+            {imageUrl && <li>Create a new post and <strong>upload the downloaded image</strong></li>}
+            <li>Paste your caption (<kbd className="px-1 py-0.5 bg-muted border rounded text-xs">Ctrl+V</kbd> / <kbd className="px-1 py-0.5 bg-muted border rounded text-xs">⌘V</kbd>)</li>
+            <li>Publish!</li>
+          </ol>
+
+          <div className="flex gap-2 pt-0.5">
             <button
               onClick={openPlatform}
               className="flex-1 rounded-lg py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
@@ -242,8 +279,17 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
             >
               Open {pendingPlatform === "facebook" ? "Facebook" : "Instagram"} →
             </button>
+            {imageUrl && (
+              <button
+                onClick={downloadImage}
+                className="rounded-lg px-3 py-2 text-xs font-medium border border-border bg-background hover:bg-muted transition-colors inline-flex items-center gap-1"
+              >
+                <Download className="h-3 w-3" />
+                Re-download
+              </button>
+            )}
             <button
-              onClick={() => setPending(null)}
+              onClick={() => { setPending(null); setImageDownloaded(false); }}
               className="rounded-lg px-3 py-2 text-xs font-medium border border-border bg-background hover:bg-muted transition-colors"
             >
               Cancel
