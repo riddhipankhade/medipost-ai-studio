@@ -63,21 +63,37 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
   }
 
   // ── WhatsApp ───────────────────────────────────────────────────────────
-  // On mobile: shares image + text via Web Share API if imageUrl is available
-  // On desktop: opens WhatsApp Web with text pre-filled (no image support on desktop)
+  // On mobile: shares image + text via Web Share API if imageUrl is available.
+  // Handles both data: URLs (base64) and remote http URLs.
+  // On desktop: opens WhatsApp Web with text pre-filled (no image support there).
   async function shareWhatsApp() {
     if (imageUrl && typeof navigator !== "undefined" && navigator.share) {
       try {
-        const res  = await fetch(imageUrl);
-        const blob = await res.blob();
-        const file = new File([blob], "medipost-card.png", { type: "image/png" });
+        let blob: Blob;
+
+        if (imageUrl.startsWith("data:")) {
+          // data URL — decode directly without fetch() which fails on some browsers
+          const [header, b64] = imageUrl.split(",");
+          const mime           = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
+          const bytes          = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          blob                 = new Blob([bytes], { type: mime });
+        } else {
+          const res = await fetch(imageUrl);
+          if (!res.ok) throw new Error(`fetch ${res.status}`);
+          blob = await res.blob();
+        }
+
+        const file = new File([blob], "medipost-card.jpg", { type: blob.type || "image/jpeg" });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({ files: [file], text });
           return;
         }
-      } catch {}
+        // canShare returned false — fall through to text-only
+      } catch (e) {
+        console.warn("[ShareButtons] WhatsApp image share failed:", e);
+      }
     }
-    // Desktop fallback — text only via WhatsApp Web
+    // Desktop fallback (or image share unavailable) — text only via WhatsApp Web
     window.open(
       `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`,
       "_blank", "noopener,noreferrer"
