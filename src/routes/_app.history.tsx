@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Search, Copy, Loader2, Star, ImageDown, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
-import PostCard from "@/components/PostCard";
+import StoryCard from "@/components/StoryCard";
 import FestiveCard from "@/components/FestiveCard";
 import { SlideCanvas, ExactScalePreview, CREATIVE_DESIGN_WIDTH } from "@/routes/_app.generate";
 import { useBrandKit } from "@/lib/brand-kit";
@@ -128,7 +128,7 @@ function fullCopyText(row: ContentRow): string {
   return parts.join("\n\n") || row.topic;
 }
 
-// ── PostCard download hook ────────────────────────────────────────────────────
+// ── Card download hook ──────────────────────────────────────────────────────
 
 function useCardDownload(doctorName: string) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -171,7 +171,7 @@ function useCardDownload(doctorName: string) {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success("PostCard downloaded!");
+      toast.success("Post downloaded!");
     } catch (err) {
       console.error("[download]", err);
       toast.error("Download failed — check console.");
@@ -204,15 +204,6 @@ function PostDetailDialog({
   const [slideBrand] = useBrandKit();
 
   const kind = row.workflow_kind;
-  const hashtags = row.hashtags?.join(" ") ?? "";
-
-  const { title, bodyText } = (() => {
-    if (!p) return { title: row.topic, bodyText: "" };
-    switch (kind) {
-      case "story":   return { title: p.headline ?? row.topic, bodyText: p.message ?? "" };
-      default:        return { title: row.topic, bodyText: "" };
-    }
-  })();
 
   const hasImage = !!row.generated_image_url && !row.generated_image_url.startsWith("[");
   const directImageUrl = hasImage ? row.generated_image_url! : undefined;
@@ -241,7 +232,7 @@ function PostDetailDialog({
       })
     : null;
 
-  const isPostCard = kind === "story";
+  const isStory    = kind === "story";
   const isFestive  = kind === "festive";
   const isSingle   = kind === "single";
   const isCarousel = kind === "carousel";
@@ -413,21 +404,17 @@ function PostDetailDialog({
           </div>
         )}
 
-        {isPostCard && (
+        {isStory && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
-            <PostCard
+            <StoryCard
               ref={cardRef}
-              doctorName={brand.doctorName}
+              headline={p?.headline ?? row.topic}
+              message={p?.message ?? ""}
+              cta={p?.cta ?? ""}
+              colors={p?.visual?.colors ?? []}
+              brand={slideBrand}
               specialty={row.specialty}
-              clinicName={brand.clinicName}
-              phone={brand.phone}
-              address={brand.address}
               imageUrl={directImageUrl}
-              title={title}
-              bodyText={bodyText}
-              hashtags={hashtags}
-              isTrial={true}
-              maxBodyLength={Infinity}
             />
           </div>
         )}
@@ -482,7 +469,7 @@ function PostDetailDialog({
           >
             <Copy className="h-3.5 w-3.5" /> Copy Text
           </Button>
-          {(isPostCard || isFestive || isSingle || isCarousel || isTemplate) && (
+          {(isStory || isFestive || isSingle || isCarousel || isTemplate) && (
             <Button size="sm" className="flex-1 gap-1.5" onClick={download} disabled={downloading}>
               {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
               {isCarousel ? `Download Slide ${slideIdx + 1}` : "Download Post"}

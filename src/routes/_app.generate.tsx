@@ -37,7 +37,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { SpecialtySelect } from "@/components/specialty-select";
-import { BrandContactBar } from "@/components/brand-frame";
 import {
   tones,
   audiences,
@@ -104,6 +103,7 @@ import {
 import { resolveVisualStrategy, resolveSinglePostStrategy } from "@/lib/visual-strategy";
 import { useDownloadPost } from "@/hooks/useDownloadPost";
 import FestiveCard from "@/components/FestiveCard";
+import StoryCard from "@/components/StoryCard";
 import { ShareButtons } from "@/components/ShareButtons";
 
 export const Route = createFileRoute("/_app/generate")({
@@ -1201,10 +1201,6 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
   const ai = useAiImage();
   const storyRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
-  const c1 = brand.primaryColor || post.visual.colors[0] || "#0E7C7B";
-  const c2 = brand.secondaryColor || post.visual.colors[1] || "#1f4e79";
-  const c3 = post.visual.colors[2] || "#0a3d62";
-  const aiOrPhoto = ai.url || brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
 
   async function captureStoryPng(): Promise<string | null> {
     if (!storyRef.current) return null;
@@ -1236,42 +1232,18 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
         <PreviewToolbar title="Story (9:16) Preview" />
-        <div className="mx-auto rounded-xl overflow-hidden shadow-lg border border-border" style={{ width: 270 }}>
-          <div ref={storyRef} className="relative w-full flex flex-col p-5 text-white" style={{ aspectRatio: "9 / 16", background: `linear-gradient(160deg, ${c1}, ${c2} 60%, ${c3})` }}>
-            {ai.loading && <ImageLoadingOverlay />}
-            {aiOrPhoto && (
-              <>
-                <img src={aiOrPhoto} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                <div className="absolute inset-0" style={{ background: ai.url ? "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.75) 100%)" : `linear-gradient(180deg, ${c1}b3 0%, ${c2}f0 100%)` }} />
-              </>
-            )}
-            <ContextualBackground specialty={specialty} opacity={0.08} color="#ffffff" />
-            <div className="relative z-10 flex flex-col h-full">
-              <div className="flex-1 grid place-items-center text-center">
-                <div>
-                  <p className="text-2xl font-bold leading-tight">{post.headline}</p>
-                  <p className="text-sm mt-3 opacity-95">{post.message}</p>
-                </div>
-              </div>
-              {(brand.doctorName || brand.clinicName) && (
-                <p className="text-center text-[11px] font-semibold tracking-wide mb-1.5 truncate">
-                  {[brand.doctorName, brand.clinicName].filter(Boolean).join(" · ")}
-                </p>
-              )}
-              <BrandContactBar
-                phone={brand.phone}
-                website={brand.website}
-                address={brand.address}
-                bg="rgba(255,255,255,0.18)"
-                fg="#ffffff"
-                badgeBg="#ffffff"
-                badgeFg={c1}
-                className="mb-2"
-              />
-              <div className="rounded-full bg-white text-sm font-semibold py-2.5 text-center shadow" style={{ color: c1 }}>{post.cta}</div>
-            </div>
-          </div>
-        </div>
+        <StoryCard
+          ref={storyRef}
+          headline={post.headline}
+          message={post.message}
+          cta={post.cta}
+          colors={post.visual.colors}
+          brand={brand}
+          specialty={specialty}
+          imageUrl={ai.url}
+          imageLoading={ai.loading}
+          loadingOverlay={<ImageLoadingOverlay />}
+        />
         <div className="flex flex-wrap justify-center gap-2">
           <AiImageButton loading={ai.loading} hasImage={!!ai.url}
             onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
@@ -1402,14 +1374,16 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
   const [frameColor, setFrameColor] = useState<string | null>(null);
   const [glowColor, setGlowColor] = useState<string | null>(null);
   const [accentColor, setAccentColor] = useState<string | null>(null);
+  const [contactBgColor, setContactBgColor] = useState<string | null>(null);
   const palette = post.visual.colors;
   const cardColors = {
     frame: frameColor ?? ((useBrandColors && brand.primaryColor) || palette[0] || "#0E7C7B"),
     glow: glowColor ?? (palette[1] || "#f4b400"),
     accent: accentColor ?? ((useBrandColors && brand.secondaryColor) || palette[2] || "#0a3d62"),
+    contactBg: contactBgColor ?? "#ffffff",
   };
-  const hasManualColors = frameColor !== null || glowColor !== null || accentColor !== null;
-  const resetManualColors = () => { setFrameColor(null); setGlowColor(null); setAccentColor(null); };
+  const hasManualColors = frameColor !== null || glowColor !== null || accentColor !== null || contactBgColor !== null;
+  const resetManualColors = () => { setFrameColor(null); setGlowColor(null); setAccentColor(null); setContactBgColor(null); };
 
   return (
     <Card className="border-border/60">
@@ -1447,10 +1421,11 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
                 onChange={(e) => { setUseBrandColors(e.target.checked); resetManualColors(); }} />
             </label>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <MiniColor label="Frame" value={cardColors.frame} onChange={setFrameColor} />
             <MiniColor label="Glow" value={cardColors.glow} onChange={setGlowColor} />
             <MiniColor label="Text accent" value={cardColors.accent} onChange={setAccentColor} />
+            <MiniColor label="Contact bar" value={cardColors.contactBg} onChange={setContactBgColor} />
           </div>
           {hasManualColors && (
             <button type="button" onClick={resetManualColors} className="text-[11px] text-[color:var(--teal)] hover:underline">

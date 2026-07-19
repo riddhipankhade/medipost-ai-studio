@@ -9,6 +9,8 @@ export type FestiveCardColors = {
   glow?: string | null;
   /** contact-bar text + gradient outer edge */
   accent?: string | null;
+  /** contact-bar (name/address/phone strip) background */
+  contactBg?: string | null;
 };
 
 export type FestiveCardBrand = {
@@ -46,11 +48,12 @@ const FestiveCard = forwardRef<
   const c1 = colorOverrides?.frame || brand.primaryColor || colors[0] || "#0E7C7B";
   const c2 = colorOverrides?.glow || colors[1] || "#f4b400";
   const c3 = colorOverrides?.accent || brand.secondaryColor || colors[2] || "#0a3d62";
+  const contactBg = colorOverrides?.contactBg || "rgba(255,255,255,0.95)";
 
   return (
     <div
       ref={ref}
-      className="relative w-full max-w-md aspect-square overflow-hidden rounded-2xl shadow-lg border border-border/60 flex flex-col text-white"
+      className="relative w-full max-w-md min-h-112 overflow-hidden rounded-2xl shadow-lg border border-border/60 flex flex-col text-white"
       style={{ background: `radial-gradient(circle at top right, ${c2} 0%, ${c1} 60%, ${c3})` }}
     >
       {imageLoading && loadingOverlay}
@@ -60,10 +63,11 @@ const FestiveCard = forwardRef<
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
         </>
       )}
-      <div className="relative z-10 flex flex-col h-full p-8">
+      <div className="relative z-10 flex flex-col flex-1 p-8">
         <p className="text-xs uppercase tracking-[0.3em] opacity-80">Happy</p>
         <p className="text-4xl font-bold mt-1 mb-6 leading-tight">{festival}</p>
-        <p className="text-base leading-relaxed flex-1">{greeting}</p>
+        <p className="text-base leading-relaxed whitespace-pre-line">{greeting}</p>
+        <div className="flex-1" />
         {(brand.doctorName || brand.clinicName) && (
           <div className="mt-6 pt-4 border-t border-white/30 flex items-center gap-3">
             {brand.doctorPhoto ? (
@@ -82,7 +86,7 @@ const FestiveCard = forwardRef<
           phone={brand.phone}
           website={brand.website}
           address={brand.address}
-          bg="rgba(255,255,255,0.95)"
+          bg={contactBg}
           fg={c3}
           badgeBg={c1}
           badgeFg="#ffffff"
