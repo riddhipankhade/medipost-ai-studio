@@ -769,12 +769,17 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
     topic, category, composition: strategy.composition,
   };
 
+  async function captureSinglePostPng(): Promise<string | null> {
+    if (!captureRef.current) return null;
+    const { toPng } = await import("html-to-image");
+    return toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+  }
+
   async function downloadPost() {
-    if (!captureRef.current) return;
     setDownloading(true);
     try {
-      const { toPng } = await import("html-to-image");
-      const png = await toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+      const png = await captureSinglePostPng();
+      if (!png) return;
       savePng(png, "medipost-post.png");
       toast.success("Post downloaded");
     } catch (e) {
@@ -848,6 +853,7 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
           <ShareButtons
             text={[post.caption, post.cta, post.hashtags.join(" ")].filter(Boolean).join("\n\n")}
             imageUrl={ai.url}
+            captureImage={captureSinglePostPng}
           />
         </div>
       </CardContent>
@@ -1041,7 +1047,7 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
 
         <SectionBlock title="Hashtags" body={post.hashtags.join(" ")} />
         <div className="pt-3 border-t border-border/60">
-          <ShareButtons text={post.hashtags.join(" ")} imageUrl={slideImages[idx]} />
+          <ShareButtons text={post.hashtags.join(" ")} imageUrl={slideImages[idx]} captureImage={() => captureSlidePng(idx)} />
         </div>
       </CardContent>
     </Card>
@@ -1200,12 +1206,17 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
   const c3 = post.visual.colors[2] || "#0a3d62";
   const aiOrPhoto = ai.url || brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
 
+  async function captureStoryPng(): Promise<string | null> {
+    if (!storyRef.current) return null;
+    const { toPng } = await import("html-to-image");
+    return toPng(storyRef.current, { canvasWidth: 1080, canvasHeight: 1920, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+  }
+
   async function downloadStory() {
-    if (!storyRef.current) return;
     setDownloading(true);
     try {
-      const { toPng } = await import("html-to-image");
-      const png = await toPng(storyRef.current, { canvasWidth: 1080, canvasHeight: 1920, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+      const png = await captureStoryPng();
+      if (!png) return;
       const link = document.createElement("a");
       link.download = `medipost-story-${Date.now()}.png`;
       link.href = png;
@@ -1276,6 +1287,7 @@ function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string 
           <ShareButtons
             text={[post.headline, post.message, post.cta].filter(Boolean).join("\n\n")}
             imageUrl={ai.url}
+            captureImage={captureStoryPng}
           />
         </div>
       </CardContent>
@@ -1384,7 +1396,7 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
 function FestivePreview({ post, specialty, rowId }: { post: FestivePost; specialty: string; rowId?: string | null }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId);
-  const { cardRef, download } = useDownloadPost(brand.doctorName || brand.clinicName || "medipost");
+  const { cardRef, download, captureDataUrl } = useDownloadPost(brand.doctorName || brand.clinicName || "medipost");
 
   const [useBrandColors, setUseBrandColors] = useState(true);
   const [frameColor, setFrameColor] = useState<string | null>(null);
@@ -1454,6 +1466,7 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
           <ShareButtons
             text={[post.caption, post.hashtags.join(" ")].filter(Boolean).join("\n\n")}
             imageUrl={ai.url}
+            captureImage={captureDataUrl}
           />
         </div>
       </CardContent>
@@ -1562,12 +1575,17 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
     imageUrl: ai.url,
   };
 
+  async function captureTemplatePng(): Promise<string | null> {
+    if (!captureRef.current) return null;
+    const { toPng } = await import("html-to-image");
+    return toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+  }
+
   async function downloadPost() {
-    if (!captureRef.current) return;
     setDownloading(true);
     try {
-      const { toPng } = await import("html-to-image");
-      const png = await toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+      const png = await captureTemplatePng();
+      if (!png) return;
       savePng(png, "medipost-template-post.png");
       toast.success("Post downloaded (1080×1080)");
     } catch (e) {
@@ -1649,6 +1667,7 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
           <ShareButtons
             text={[post.caption, post.cta, post.hashtags.join(" ")].filter(Boolean).join("\n\n")}
             imageUrl={ai.url}
+            captureImage={captureTemplatePng}
           />
         </div>
       </CardContent>

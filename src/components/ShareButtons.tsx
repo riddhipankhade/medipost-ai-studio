@@ -2,11 +2,25 @@
  * src/components/ShareButtons.tsx
  *
  * Share generated content to WhatsApp, Facebook, Instagram.
- * - WhatsApp: shares image via Web Share API on mobile, text-only on desktop
- * - Facebook/Instagram: copies caption to clipboard + shows clear "now paste" panel
+ *
+ * Callers should pass `captureImage` (an async fn that renders the actual
+ * on-screen creative — headline/caption/branding baked in — to a PNG data URL,
+ * typically via html-to-image against the same node the "Download" button
+ * captures). `imageUrl` alone is only the raw AI background photo and is often
+ * absent (generating one is optional), which is why sharing used to silently
+ * fall back to text-only even when a finished creative was visible on screen.
+ * `imageUrl` is kept as a fallback if `captureImage` is omitted or fails.
+ *
+ * - WhatsApp: shares the image + caption via the Web Share API on mobile
+ *   (attaches directly into the chat); on desktop (no Web Share support),
+ *   downloads the image + copies the caption, then opens WhatsApp Web with
+ *   the text pre-filled
+ * - Facebook/Instagram: no website can push an image into their composer, so
+ *   this downloads the image + copies the caption, then shows a clear
+ *   "now paste" panel
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy, Download, Share2, X } from "lucide-react";
 
 // ── Platform SVG icons ──────────────────────────────────────────────────────
@@ -40,18 +54,69 @@ function InstagramIcon() {
 interface ShareButtonsProps {
   text: string;
   imageUrl?: string | null;
+  /**
+   * Lazily renders the actual finished creative (headline/caption/branding
+   * baked in) to a data URL at share time. Takes priority over `imageUrl`
+   * whenever it succeeds — `imageUrl` is only a fallback.
+   */
+  captureImage?: () => Promise<string | null>;
   className?: string;
 }
 
-type PendingPlatform = "facebook" | "instagram" | null;
+type PendingPlatform = "facebook" | "instagram" | "whatsapp" | null;
+
+// ── Blob helpers ─────────────────────────────────────────────────────────────
+
+async function urlToBlob(url: string): Promise<Blob> {
+  if (url.startsWith("data:")) {
+    // data URL — decode directly without fetch() which fails on some browsers
+    const [header, b64] = url.split(",");
+    const mime           = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
+    const bytes          = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    return new Blob([bytes], { type: mime });
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`fetch ${res.status}`);
+  return res.blob();
+}
+
+function extensionForMime(mime: string): string {
+  if (mime.includes("png")) return "png";
+  if (mime.includes("webp")) return "webp";
+  return "jpg";
+}
 
 // ── Component ───────────────────────────────────────────────────────────────
 
-export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsProps) {
+export function ShareButtons({ text, imageUrl, captureImage, className = "" }: ShareButtonsProps) {
   const [copied, setCopied]                 = useState(false);
   const [pendingPlatform, setPending]       = useState<PendingPlatform>(null);
   const [clipboardReady, setClipboardReady] = useState(false);
   const [imageDownloaded, setImageDownloaded] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const hasImage = !!imageUrl || !!captureImage;
+
+  // The "ready to send/post" panel renders below the fold in most previews
+  // (especially inside scrollable dialogs) — scroll it into view so it's
+  // obvious something happened right after the platform button is clicked.
+  useEffect(() => {
+    if (pendingPlatform) panelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [pendingPlatform]);
+
+  // Resolves the image to actually share: prefers a fresh capture of the
+  // rendered creative over the raw (often absent) AI background photo.
+  async function resolveImage(): Promise<string | null> {
+    if (captureImage) {
+      try {
+        const captured = await captureImage();
+        if (captured) return captured;
+      } catch (e) {
+        console.warn("[ShareButtons] card capture failed, falling back to raw image:", e);
+      }
+    }
+    return imageUrl ?? null;
+  }
 
   // ── Copy text ──────────────────────────────────────────────────────────
   async function copyText() {
@@ -63,51 +128,41 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
   }
 
   // ── WhatsApp ───────────────────────────────────────────────────────────
-  // On mobile: shares image + text via Web Share API if imageUrl is available.
-  // Handles both data: URLs (base64) and remote http URLs.
-  // On desktop: opens WhatsApp Web with text pre-filled (no image support there).
+  // On mobile: shares image + text via Web Share API if an image is available —
+  // this attaches the actual image straight into the WhatsApp chat.
+  // On desktop (no Web Share support): falls back to the same
+  // download-image + copy-caption + open pattern used for Facebook/Instagram,
+  // since WhatsApp Web has no API for pre-attaching an image from a website.
   async function shareWhatsApp() {
-    if (imageUrl && typeof navigator !== "undefined" && navigator.share) {
+    const img = await resolveImage();
+    if (img && typeof navigator !== "undefined" && navigator.share) {
       try {
-        let blob: Blob;
-
-        if (imageUrl.startsWith("data:")) {
-          // data URL — decode directly without fetch() which fails on some browsers
-          const [header, b64] = imageUrl.split(",");
-          const mime           = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
-          const bytes          = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-          blob                 = new Blob([bytes], { type: mime });
-        } else {
-          const res = await fetch(imageUrl);
-          if (!res.ok) throw new Error(`fetch ${res.status}`);
-          blob = await res.blob();
-        }
-
-        const file = new File([blob], "medipost-card.jpg", { type: blob.type || "image/jpeg" });
+        const blob = await urlToBlob(img);
+        const file = new File([blob], `medipost-card.${extensionForMime(blob.type)}`, { type: blob.type || "image/jpeg" });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({ files: [file], text });
           return;
         }
-        // canShare returned false — fall through to text-only
-      } catch (e) {
+        // canShare returned false — fall through to download/copy flow
+      } catch (e: any) {
+        if (e?.name === "AbortError") return; // user dismissed the native share sheet
         console.warn("[ShareButtons] WhatsApp image share failed:", e);
       }
     }
-    // Desktop fallback (or image share unavailable) — text only via WhatsApp Web
-    window.open(
-      `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`,
-      "_blank", "noopener,noreferrer"
-    );
+    // Desktop (or image share unavailable) — download image + copy caption,
+    // then open WhatsApp Web with the text pre-filled
+    await preparePlatform("whatsapp", img);
   }
 
-  // ── Facebook / Instagram ───────────────────────────────────────────────
-  // FB and IG don't accept programmatic image pushes.
+  // ── Facebook / Instagram / WhatsApp (desktop) ──────────────────────────
+  // None of these accept programmatic image pushes from a website.
   // Strategy: auto-download the image + copy caption, then show paste panel.
-  async function preparePlatform(platform: "facebook" | "instagram") {
+  async function preparePlatform(platform: "facebook" | "instagram" | "whatsapp", preResolvedImg?: string | null) {
+    const img = preResolvedImg !== undefined ? preResolvedImg : await resolveImage();
     // Run both in parallel — caption copy and image download
     const [, downloaded] = await Promise.all([
       navigator.clipboard.writeText(text).then(() => true).catch(() => false),
-      imageUrl ? downloadImage() : Promise.resolve(false),
+      img ? downloadResolvedImage(img) : Promise.resolve(false),
     ]);
     setClipboardReady(true);
     setImageDownloaded(downloaded as boolean);
@@ -117,32 +172,23 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
   function openPlatform() {
     const url = pendingPlatform === "facebook"
       ? "https://www.facebook.com/"
+      : pendingPlatform === "whatsapp"
+      ? `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`
       : "https://www.instagram.com/";
     window.open(url, "_blank", "noopener,noreferrer");
     setPending(null);
   }
 
   // ── Download image ─────────────────────────────────────────────────────
-  // Fetches as blob first so cross-origin Pollinations URLs actually download
+  // Fetches/decodes as blob first so cross-origin URLs actually download
   // instead of just navigating to the image (which a plain anchor would do).
-  async function downloadImage() {
-    if (!imageUrl) return false;
+  async function downloadResolvedImage(img: string): Promise<boolean> {
     try {
-      let blob: Blob;
-      if (imageUrl.startsWith("data:")) {
-        const [header, b64] = imageUrl.split(",");
-        const mime           = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
-        const bytes          = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-        blob                 = new Blob([bytes], { type: mime });
-      } else {
-        const res = await fetch(imageUrl);
-        if (!res.ok) throw new Error(`fetch ${res.status}`);
-        blob = await res.blob();
-      }
+      const blob      = await urlToBlob(img);
       const objectUrl = URL.createObjectURL(blob);
       const a         = document.createElement("a");
       a.href          = objectUrl;
-      a.download      = "medipost-card.jpg";
+      a.download      = `medipost-card.${extensionForMime(blob.type)}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -150,9 +196,15 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
       return true;
     } catch (err) {
       console.warn("[ShareButtons] download failed, opening in new tab:", err);
-      window.open(imageUrl, "_blank", "noopener,noreferrer");
+      if (!img.startsWith("data:")) window.open(img, "_blank", "noopener,noreferrer");
       return false;
     }
+  }
+
+  async function downloadImage(): Promise<boolean> {
+    const img = await resolveImage();
+    if (!img) return false;
+    return downloadResolvedImage(img);
   }
 
   // ── Native share (mobile "More") ───────────────────────────────────────
@@ -160,11 +212,11 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
     if (!navigator.share) return;
     try {
       const shareData: ShareData = { text };
-      if (imageUrl && navigator.canShare) {
+      const img = await resolveImage();
+      if (img && navigator.canShare) {
         try {
-          const res  = await fetch(imageUrl);
-          const blob = await res.blob();
-          const file = new File([blob], "medipost-card.png", { type: "image/png" });
+          const blob = await urlToBlob(img);
+          const file = new File([blob], `medipost-card.${extensionForMime(blob.type)}`, { type: blob.type || "image/png" });
           if (navigator.canShare({ files: [file] })) shareData.files = [file];
         } catch {}
       }
@@ -219,7 +271,7 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
         </button>
 
         {/* Download image */}
-        {imageUrl && (
+        {hasImage && (
           <button
             onClick={() => downloadImage()}
             className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border border-border bg-background hover:bg-muted transition-colors"
@@ -241,12 +293,12 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
         )}
       </div>
 
-      {/* ── Facebook / Instagram "paste" panel ────────────────────────────── */}
+      {/* ── Facebook / Instagram / WhatsApp "paste" panel ─────────────────── */}
       {pendingPlatform && (
-        <div className="mt-3 rounded-xl border border-border bg-card p-4 space-y-3">
+        <div ref={panelRef} className="mt-3 rounded-xl border border-border bg-card p-4 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm font-semibold">
-              Ready to post on {pendingPlatform === "facebook" ? "Facebook" : "Instagram"}
+              Ready to {pendingPlatform === "whatsapp" ? "send on WhatsApp" : `post on ${pendingPlatform === "facebook" ? "Facebook" : "Instagram"}`}
             </p>
             <button
               onClick={() => { setPending(null); setImageDownloaded(false); }}
@@ -260,9 +312,11 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
           <ul className="space-y-1.5 text-xs">
             <li className="flex items-center gap-2">
               <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-              <span className="text-muted-foreground">Caption copied to clipboard</span>
+              <span className="text-muted-foreground">
+                {pendingPlatform === "whatsapp" ? "Caption copied — WhatsApp opens with it pre-filled" : "Caption copied to clipboard"}
+              </span>
             </li>
-            {imageUrl && (
+            {hasImage && (
               <li className="flex items-center gap-2">
                 {imageDownloaded
                   ? <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
@@ -278,9 +332,12 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
 
           {/* Steps */}
           <ol className="list-decimal list-inside space-y-1 text-xs text-muted-foreground leading-relaxed">
-            {imageUrl && <li>Create a new post and <strong>upload the downloaded image</strong></li>}
-            <li>Paste your caption (<kbd className="px-1 py-0.5 bg-muted border rounded text-xs">Ctrl+V</kbd> / <kbd className="px-1 py-0.5 bg-muted border rounded text-xs">⌘V</kbd>)</li>
-            <li>Publish!</li>
+            {hasImage && pendingPlatform === "whatsapp" && <li>Open the chat and <strong>attach the downloaded image</strong></li>}
+            {hasImage && pendingPlatform !== "whatsapp" && <li>Create a new post and <strong>upload the downloaded image</strong></li>}
+            {pendingPlatform === "whatsapp"
+              ? <li>Your message text is already filled in — just hit send</li>
+              : <li>Paste your caption (<kbd className="px-1 py-0.5 bg-muted border rounded text-xs">Ctrl+V</kbd> / <kbd className="px-1 py-0.5 bg-muted border rounded text-xs">⌘V</kbd>)</li>}
+            <li>{pendingPlatform === "whatsapp" ? "Send!" : "Publish!"}</li>
           </ol>
 
           <div className="flex gap-2 pt-0.5">
@@ -290,14 +347,16 @@ export function ShareButtons({ text, imageUrl, className = "" }: ShareButtonsPro
               style={{
                 background: pendingPlatform === "facebook"
                   ? "#1877F2"
+                  : pendingPlatform === "whatsapp"
+                  ? "#25D366"
                   : "linear-gradient(135deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%)",
               }}
             >
-              Open {pendingPlatform === "facebook" ? "Facebook" : "Instagram"} →
+              Open {pendingPlatform === "facebook" ? "Facebook" : pendingPlatform === "whatsapp" ? "WhatsApp" : "Instagram"} →
             </button>
-            {imageUrl && (
+            {hasImage && (
               <button
-                onClick={downloadImage}
+                onClick={() => downloadImage()}
                 className="rounded-lg px-3 py-2 text-xs font-medium border border-border bg-background hover:bg-muted transition-colors inline-flex items-center gap-1"
               >
                 <Download className="h-3 w-3" />

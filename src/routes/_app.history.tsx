@@ -313,7 +313,7 @@ function PostDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className={`${wideDialog ? "max-w-[560px]" : "max-w-[460px]"} p-4`}>
+      <DialogContent className={`${wideDialog ? "max-w-[560px]" : "max-w-[460px]"} p-4 max-h-[90vh] overflow-y-auto`}>
         <DialogHeader className="pb-2">
           <DialogTitle className="text-base font-semibold truncate">{row.topic}</DialogTitle>
         </DialogHeader>
