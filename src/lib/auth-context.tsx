@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { clearStudioSessionPointer } from "./studio-session";
 
 export type Profile = {
   id: string;
@@ -69,8 +70,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session?.user?.id]);
 
   async function signOut() {
+    // Studio's active-workspace pointer is a raw localStorage key, not part
+    // of Supabase's session — it has to be cleared explicitly so the next
+    // login (even the same user) starts on a fresh Studio instead of
+    // resuming whatever post was open before logout.
+    const userId = session?.user?.id;
     await supabase.auth.signOut();
-    // State is cleared by the onAuthStateChange listener above
+    if (userId) clearStudioSessionPointer(userId);
+    // Remaining auth state is cleared by the onAuthStateChange listener above
   }
 
   return (

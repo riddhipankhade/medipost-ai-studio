@@ -115,6 +115,13 @@ import {
 import FestiveCard from "@/components/FestiveCard";
 import StoryCard from "@/components/StoryCard";
 import { ShareButtons } from "@/components/ShareButtons";
+import {
+  readStudioSessionPointer,
+  writeStudioSessionPointer,
+  clearStudioSessionPointer,
+  fetchStudioSessionRow,
+  type StudioSessionRow,
+} from "@/lib/studio-session";
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
@@ -282,6 +289,65 @@ function GeneratePage() {
   const [stage, setStage] = useState(0);
   const [result, setResult] = useState<GenerateOutput | null>(null);
   const [rowId,  setRowId]  = useState<string | null>(null);
+  const [sessionSeed, setSessionSeed] = useState<StudioSessionRow | null>(null);
+  // The category `result` was generated/restored under — frozen separately
+  // from the brief form's `category` (which resets per-tab in switchKind) so
+  // that peeking at another workflow tab and coming back still renders the
+  // preserved result with its own original category, not whatever tab you
+  // last touched.
+  const [resultCategory, setResultCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
+
+  // Restore the active workspace (which post + workflow the user was last
+  // editing) once per login, independent of the brief/brand-kit effect above
+  // so a tab-visibility refresh there can't re-run this and clobber
+  // in-progress edits. Content/images/customization are re-fetched from
+  // `content_generations` by id rather than duplicated into localStorage —
+  // only the pointer (rowId/kind/category) lives there.
+  const didRestoreSessionRef = useRef(false);
+  const [sessionHydrated, setSessionHydrated] = useState(false);
+
+  useEffect(() => {
+    if (!userId || didRestoreSessionRef.current) return;
+    didRestoreSessionRef.current = true;
+    let cancelled = false;
+
+    (async () => {
+      const pointer = readStudioSessionPointer(userId);
+      if (!pointer) { setSessionHydrated(true); return; }
+
+      const row = await fetchStudioSessionRow(pointer.rowId);
+      if (cancelled) return;
+
+      if (row) {
+        setKind(pointer.kind);
+        setCategory(pointer.category);
+        setForm((f) => ({ ...f, category: pointer.category }));
+        setResult(row.result);
+        setRowId(pointer.rowId);
+        setSessionSeed(row);
+        setResultCategory(pointer.category);
+        if (pointer.kind === "template" && row.initialCustomization?.kind === "template") {
+          setTemplateFrame(row.initialCustomization.frameId);
+        }
+      } else {
+        clearStudioSessionPointer(userId);
+      }
+      setSessionHydrated(true);
+    })();
+
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId || !sessionHydrated) return;
+    if (rowId && result) {
+      // Pointer describes the *result*, not whichever tab is currently being
+      // browsed — those can now differ while peeking at another workflow.
+      writeStudioSessionPointer(userId, { rowId, kind: result.kind, category: resultCategory });
+    } else {
+      clearStudioSessionPointer(userId);
+    }
+  }, [userId, sessionHydrated, rowId, result, resultCategory]);
 
   const update = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -291,8 +357,11 @@ function GeneratePage() {
     const nextCat = defaultCategoryFor(next);
     setCategory(nextCat);
     setForm((f) => ({ ...f, category: nextCat }));
-    setResult(null);
-    setRowId(null);
+    // Deliberately leave result/rowId/sessionSeed/resultCategory alone —
+    // switching tabs to peek at another workflow shouldn't discard whatever
+    // was generated under the tab you're leaving. It reappears if you switch
+    // back (see the `result.kind === kind` check below); it's only actually
+    // replaced when Generate succeeds for the new kind.
   }
 
   function pickCategory(next: ContentCategory) {
@@ -307,8 +376,6 @@ function GeneratePage() {
     }
     setLoading(true);
     setStage(0);
-    setResult(null);
-    setRowId(null);
     setOutOfCredits(false);
     const ticker = setInterval(() => {
       setStage((s) => Math.min(s + 1, PROGRESS_STAGES.length - 1));
@@ -322,8 +389,14 @@ function GeneratePage() {
           brand: supabaseBrand,
         },
       });
+      // Only replace the in-memory result once generation actually succeeds
+      // for this kind — a failed attempt leaves whatever was there (this
+      // kind's own previous post, or another kind's preserved-while-peeking
+      // one) intact instead of blanking the screen.
       setRowId((out as any)._rowId ?? null);
       setResult(out);
+      setResultCategory(category);
+      setSessionSeed(null);
       toast.success("Your content is ready");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -346,6 +419,10 @@ function GeneratePage() {
   const activeWorkflow = workflows.find((w) => w.kind === kind)!;
   const recommendedCategories = contentCategories.filter((c) => c.bestFor.includes(kind));
   const otherCategories = contentCategories.filter((c) => !c.bestFor.includes(kind));
+  // Only show `result` while it belongs to the currently-selected tab —
+  // peeking at another workflow hides it (without discarding it) rather
+  // than rendering a different kind's post under the wrong tab.
+  const showResult = !!result && result.kind === kind;
 
   return (
     <div className="space-y-6">
@@ -549,7 +626,7 @@ function GeneratePage() {
             </Card>
           )}
 
-          {!loading && !result && !outOfCredits && (
+          {!loading && !showResult && !outOfCredits && (
             kind === "template" ? (
               <TemplateGalleryCard value={templateFrame} onChange={setTemplateFrame} />
             ) : (
@@ -565,11 +642,12 @@ function GeneratePage() {
             )
           )}
 
-          {!loading && result && (
+          {!loading && showResult && result && (
             <>
               <ResultPreview
-                result={result} specialty={form.specialty} rowId={rowId} category={category} topic={form.topic}
+                result={result} specialty={form.specialty} rowId={rowId} category={resultCategory} topic={form.topic}
                 templateFrame={templateFrame} onTemplateFrameChange={setTemplateFrame}
+                sessionSeed={sessionSeed}
               />
               <VisualConceptCard visual={result.visual} />
             </>
@@ -628,18 +706,28 @@ function LoadingPanel({ stage }: { stage: number }) {
   );
 }
 
-function ResultPreview({ result, specialty, rowId, category, topic, templateFrame, onTemplateFrameChange }: {
+function ResultPreview({ result, specialty, rowId, category, topic, templateFrame, onTemplateFrameChange, sessionSeed }: {
   result: GenerateOutput; specialty: string; rowId: string | null; category: ContentCategory; topic: string;
   templateFrame: TemplateFrameId; onTemplateFrameChange: (id: TemplateFrameId) => void;
+  sessionSeed: StudioSessionRow | null;
 }) {
   switch (result.kind) {
-    case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic} />;
-    case "carousel": return <CarouselPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic} />;
-    case "story":    return <StoryPreview post={result} specialty={specialty} rowId={rowId} />;
+    case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic}
+                        initialImageUrl={sessionSeed?.initialImageUrl ?? null}
+                        initialCustomization={sessionSeed?.initialCustomization?.kind === "single" ? sessionSeed.initialCustomization : null} />;
+    case "carousel": return <CarouselPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic}
+                        initialSlideImages={sessionSeed?.initialSlideImages ?? null}
+                        initialCustomization={sessionSeed?.initialCustomization?.kind === "carousel" ? sessionSeed.initialCustomization : null} />;
+    case "story":    return <StoryPreview post={result} specialty={specialty} rowId={rowId}
+                        initialImageUrl={sessionSeed?.initialImageUrl ?? null} />;
     case "reel":     return <ReelPreview post={result} specialty={specialty} />;
     case "campaign": return <CampaignPreview plan={result} />;
-    case "festive":  return <FestivePreview post={result} specialty={specialty} rowId={rowId} />;
-    case "template": return <TemplatePreview post={result} rowId={rowId} frameId={templateFrame} onFrameChange={onTemplateFrameChange} />;
+    case "festive":  return <FestivePreview post={result} specialty={specialty} rowId={rowId}
+                        initialImageUrl={sessionSeed?.initialImageUrl ?? null}
+                        initialCustomization={sessionSeed?.initialCustomization?.kind === "festive" ? sessionSeed.initialCustomization : null} />;
+    case "template": return <TemplatePreview post={result} rowId={rowId} frameId={templateFrame} onFrameChange={onTemplateFrameChange}
+                        initialImageUrl={sessionSeed?.initialImageUrl ?? null}
+                        initialCustomization={sessionSeed?.initialCustomization?.kind === "template" ? sessionSeed.initialCustomization : null} />;
   }
 }
 
@@ -710,9 +798,9 @@ export function ExactScalePreview({ children }: { children: React.ReactNode }) {
   );
 }
 
-function useAiImage(contentId?: string | null) {
+function useAiImage(contentId?: string | null, initialUrl?: string | null) {
   const call = useServerFn(generateImage);
-  const [url, setUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(initialUrl ?? null);
   const [loading, setLoading] = useState(false);
   const run = async (prompt: string, visualStyle?: string) => {
     if (!prompt || !prompt.trim()) { toast.error("No image prompt available — re-generate the content first."); return; }
@@ -743,19 +831,23 @@ export function AiImageButton({ loading, hasImage, onClick, size = "sm", label }
   );
 }
 
-function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: SinglePost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string }) {
+function SinglePostPreview({ post, specialty, rowId, category, topic, initialImageUrl, initialCustomization }: {
+  post: SinglePost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string;
+  initialImageUrl?: string | null; initialCustomization?: SingleCustomization | null;
+}) {
   const [brand] = useBrandKit();
-  const ai = useAiImage(rowId);
-  const [themeId, setThemeId] = useState<string>(() => suggestThemeId(specialty));
-  const [layout, setLayout] = useState<SlideLayout>("hero-card");
-  const [autoLayout, setAutoLayout] = useState(true);
-  const [fontFamily, setFontFamily] = useState<string>(carouselThemes[0].fontFamily);
-  const [fontScale, setFontScale] = useState<number>(1);
-  const [headingColor, setHeadingColor] = useState<string | null>(null);
-  const [textColor, setTextColor] = useState<string | null>(null);
-  const [accentColor, setAccentColor] = useState<string | null>(null);
-  const [useBrandColors, setUseBrandColors] = useState<boolean>(true);
-  const [showIcons, setShowIcons] = useState<boolean>(true);
+  const ai = useAiImage(rowId, initialImageUrl);
+  const savedTheme = initialCustomization?.theme;
+  const [themeId, setThemeId] = useState<string>(() => savedTheme?.themeId ?? suggestThemeId(specialty));
+  const [layout, setLayout] = useState<SlideLayout>(() => initialCustomization?.strategy.layout ?? "hero-card");
+  const [autoLayout, setAutoLayout] = useState(() => initialCustomization?.autoLayout ?? true);
+  const [fontFamily, setFontFamily] = useState<string>(() => savedTheme?.fontFamily ?? carouselThemes[0].fontFamily);
+  const [fontScale, setFontScale] = useState<number>(() => savedTheme?.fontScale ?? 1);
+  const [headingColor, setHeadingColor] = useState<string | null>(() => savedTheme?.headingColor ?? null);
+  const [textColor, setTextColor] = useState<string | null>(() => savedTheme?.textColor ?? null);
+  const [accentColor, setAccentColor] = useState<string | null>(() => savedTheme?.accentColor ?? null);
+  const [useBrandColors, setUseBrandColors] = useState<boolean>(() => savedTheme?.useBrandColors ?? true);
+  const [showIcons, setShowIcons] = useState<boolean>(() => savedTheme?.showIcons ?? true);
   const [downloading, setDownloading] = useState(false);
   const captureRef = useRef<HTMLDivElement>(null);
 
@@ -780,7 +872,7 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
     strategy: { layout: effectiveLayout, composition: strategy.composition },
     autoLayout,
   }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, effectiveLayout, strategy.composition, autoLayout]);
-  usePersistCustomization(rowId, customization);
+  usePersistCustomization(rowId, customization, !!initialCustomization);
 
   async function captureSinglePostPng(): Promise<string | null> {
     if (!captureRef.current) return null;
@@ -874,21 +966,28 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
   );
 }
 
-function CarouselPreview({ post, specialty, rowId, category, topic }: { post: CarouselPost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string }) {
+function CarouselPreview({ post, specialty, rowId, category, topic, initialSlideImages, initialCustomization }: {
+  post: CarouselPost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string;
+  initialSlideImages?: (string | null)[] | null; initialCustomization?: CarouselCustomization | null;
+}) {
   const [brand] = useBrandKit();
   const callImage = useServerFn(generateImage);
+  const savedTheme = initialCustomization?.theme;
   const [idx, setIdx] = useState(0);
-  const [themeId, setThemeId] = useState<string>(() => suggestThemeId(specialty));
-  const [layout, setLayout] = useState<SlideLayout>("centered");
-  const [autoLayout, setAutoLayout] = useState(true);
-  const [fontFamily, setFontFamily] = useState<string>(carouselThemes[0].fontFamily);
-  const [fontScale, setFontScale] = useState<number>(1);
-  const [headingColor, setHeadingColor] = useState<string | null>(null);
-  const [textColor, setTextColor] = useState<string | null>(null);
-  const [accentColor, setAccentColor] = useState<string | null>(null);
-  const [useBrandColors, setUseBrandColors] = useState<boolean>(true);
-  const [showIcons, setShowIcons] = useState<boolean>(true);
-  const [slideImages, setSlideImages] = useState<(string | null)[]>(() => post.slides.map(() => null));
+  const [themeId, setThemeId] = useState<string>(() => savedTheme?.themeId ?? suggestThemeId(specialty));
+  const [layout, setLayout] = useState<SlideLayout>(() => initialCustomization?.slides[0]?.layout ?? "centered");
+  const [autoLayout, setAutoLayout] = useState(() => initialCustomization?.autoLayout ?? true);
+  const [fontFamily, setFontFamily] = useState<string>(() => savedTheme?.fontFamily ?? carouselThemes[0].fontFamily);
+  const [fontScale, setFontScale] = useState<number>(() => savedTheme?.fontScale ?? 1);
+  const [headingColor, setHeadingColor] = useState<string | null>(() => savedTheme?.headingColor ?? null);
+  const [textColor, setTextColor] = useState<string | null>(() => savedTheme?.textColor ?? null);
+  const [accentColor, setAccentColor] = useState<string | null>(() => savedTheme?.accentColor ?? null);
+  const [useBrandColors, setUseBrandColors] = useState<boolean>(() => savedTheme?.useBrandColors ?? true);
+  const [showIcons, setShowIcons] = useState<boolean>(() => savedTheme?.showIcons ?? true);
+  const [slideImages, setSlideImages] = useState<(string | null)[]>(() => {
+    if (initialSlideImages && initialSlideImages.length === post.slides.length) return initialSlideImages;
+    return post.slides.map(() => null);
+  });
   const [loadingSlide, setLoadingSlide] = useState<number | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -970,7 +1069,7 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
     theme: { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
     autoLayout, slides: slidesStrategy,
   }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, autoLayout, slidesStrategy]);
-  usePersistCustomization(rowId, customization);
+  usePersistCustomization(rowId, customization, !!initialCustomization);
 
   if (!slide) return null;
 
@@ -1217,9 +1316,9 @@ function MiniColor({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function StoryPreview({ post, specialty, rowId }: { post: StoryPost; specialty: string; rowId?: string | null }) {
+function StoryPreview({ post, specialty, rowId, initialImageUrl }: { post: StoryPost; specialty: string; rowId?: string | null; initialImageUrl?: string | null }) {
   const [brand] = useBrandKit();
-  const ai = useAiImage(rowId);
+  const ai = useAiImage(rowId, initialImageUrl);
   const storyRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -1386,16 +1485,19 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
   );
 }
 
-function FestivePreview({ post, specialty, rowId }: { post: FestivePost; specialty: string; rowId?: string | null }) {
+function FestivePreview({ post, specialty, rowId, initialImageUrl, initialCustomization }: {
+  post: FestivePost; specialty: string; rowId?: string | null;
+  initialImageUrl?: string | null; initialCustomization?: FestiveCustomization | null;
+}) {
   const [brand] = useBrandKit();
-  const ai = useAiImage(rowId);
+  const ai = useAiImage(rowId, initialImageUrl);
   const { cardRef, download, captureDataUrl } = useDownloadPost(brand.doctorName || brand.clinicName || "medipost");
 
-  const [useBrandColors, setUseBrandColors] = useState(true);
-  const [frameColor, setFrameColor] = useState<string | null>(null);
-  const [glowColor, setGlowColor] = useState<string | null>(null);
-  const [accentColor, setAccentColor] = useState<string | null>(null);
-  const [contactBgColor, setContactBgColor] = useState<string | null>(null);
+  const [useBrandColors, setUseBrandColors] = useState(() => initialCustomization?.useBrandColors ?? true);
+  const [frameColor, setFrameColor] = useState<string | null>(() => initialCustomization?.frameColor ?? null);
+  const [glowColor, setGlowColor] = useState<string | null>(() => initialCustomization?.glowColor ?? null);
+  const [accentColor, setAccentColor] = useState<string | null>(() => initialCustomization?.accentColor ?? null);
+  const [contactBgColor, setContactBgColor] = useState<string | null>(() => initialCustomization?.contactBgColor ?? null);
   const palette = post.visual.colors;
   const cardColors = resolveFestiveColors({ useBrandColors, frameColor, glowColor, accentColor, contactBgColor }, brand, palette);
   const hasManualColors = frameColor !== null || glowColor !== null || accentColor !== null || contactBgColor !== null;
@@ -1405,7 +1507,7 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
     v: 1, engine: "v1", kind: "festive",
     useBrandColors, frameColor, glowColor, accentColor, contactBgColor,
   }), [useBrandColors, frameColor, glowColor, accentColor, contactBgColor]);
-  usePersistCustomization(rowId, customization);
+  usePersistCustomization(rowId, customization, !!initialCustomization);
 
   return (
     <Card className="border-border/60">
@@ -1525,12 +1627,13 @@ function TemplateGalleryCard({ value, onChange }: { value: TemplateFrameId; onCh
   );
 }
 
-function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
+function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl, initialCustomization }: {
   post: TemplatePost; rowId?: string | null;
   frameId: TemplateFrameId; onFrameChange: (id: TemplateFrameId) => void;
+  initialImageUrl?: string | null; initialCustomization?: TemplateCustomization | null;
 }) {
   const [brand] = useBrandKit();
-  const ai = useAiImage(rowId);
+  const ai = useAiImage(rowId, initialImageUrl);
   const [downloading, setDownloading] = useState(false);
   const captureRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1548,9 +1651,9 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
     }
   }
 
-  const [useBrandColors, setUseBrandColors] = useState(true);
-  const [primaryPick, setPrimaryPick] = useState<string | null>(null);
-  const [secondaryPick, setSecondaryPick] = useState<string | null>(null);
+  const [useBrandColors, setUseBrandColors] = useState(() => initialCustomization?.useBrandColors ?? true);
+  const [primaryPick, setPrimaryPick] = useState<string | null>(() => initialCustomization?.primaryColor ?? null);
+  const [secondaryPick, setSecondaryPick] = useState<string | null>(() => initialCustomization?.secondaryColor ?? null);
   const palette = post.visual.colors;
   const colors = resolveTemplateColors({ useBrandColors, primaryColor: primaryPick, secondaryColor: secondaryPick }, brand, palette);
   const hasManualColors = primaryPick !== null || secondaryPick !== null;
@@ -1560,7 +1663,7 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
     v: 1, engine: "v1", kind: "template",
     frameId, useBrandColors, primaryColor: primaryPick, secondaryColor: secondaryPick,
   }), [frameId, useBrandColors, primaryPick, secondaryPick]);
-  usePersistCustomization(rowId, customization);
+  usePersistCustomization(rowId, customization, !!initialCustomization);
 
   const entry = getTemplateFrame(frameId);
   const Frame = entry.Frame;

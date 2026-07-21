@@ -13,13 +13,23 @@ import type { PostCustomization } from "@/lib/post-customization";
  * Skips the network call entirely when the serialized value hasn't actually
  * changed since the last successful save (re-renders with derived-but-equal
  * objects are common here and shouldn't trigger a write).
+ *
+ * `alreadySaved` should be true when `customization`'s initial value on this
+ * mount was itself read back from the DB (Studio's session restore) rather
+ * than freshly computed defaults — otherwise the hook has no way to know the
+ * value it starts with already matches what's stored, and fires a pointless
+ * (and, right after a restore, occasionally logged-out-and-erroring) write
+ * of unchanged data on mount.
  */
 export function usePersistCustomization(
   contentId: string | null | undefined,
   customization: PostCustomization | null,
+  alreadySaved = false,
 ) {
   const call = useServerFn(updatePostCustomization);
-  const lastSaved = useRef<string | null>(null);
+  const lastSaved = useRef<string | null>(
+    alreadySaved && customization ? JSON.stringify(customization) : null,
+  );
 
   useEffect(() => {
     if (!contentId || !customization) return;
