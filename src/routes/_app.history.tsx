@@ -24,12 +24,20 @@ import StoryCard from "@/components/StoryCard";
 import FestiveCard from "@/components/FestiveCard";
 import { SlideCanvas, ExactScalePreview, CREATIVE_DESIGN_WIDTH } from "@/routes/_app.generate";
 import { useBrandKit } from "@/lib/brand-kit";
-import { getTheme, suggestThemeId, carouselThemes } from "@/lib/carousel-themes";
-import { resolveSinglePostStrategy, resolveVisualStrategy } from "@/lib/visual-strategy";
 import type { ContentCategory } from "@/lib/mock-data";
 import type { SlideCanvasProps } from "@/components/carousel-layouts";
 import { getTemplateFrame } from "@/components/template-frames";
 import { ShareButtons } from "@/components/ShareButtons";
+import {
+  parseCustomization,
+  resolveTheme,
+  resolveFestiveColors,
+  resolveTemplateColors,
+  defaultSingleCustomization,
+  defaultCarouselCustomization,
+  defaultFestiveCustomization,
+  defaultTemplateCustomization,
+} from "@/lib/post-customization";
 
 export const Route = createFileRoute("/_app/history")({
   head: () => ({ meta: [{ title: "Content History — Medipost AI" }] }),
@@ -46,6 +54,7 @@ type ContentRow = {
   topic:               string;
   generated_text:      string | null;
   generated_image_url: string | null;
+  customization:       unknown;
   hashtags:            string[];
   status:              string;
   is_favorite:         boolean;
@@ -212,26 +221,6 @@ function PostDetailDialog({
   const [slideIdx, setSlideIdx] = useState(0);
   const slideImages = kind === "carousel" ? parseSlideImages(row) : [];
 
-  const singleStrategy = kind === "single"
-    ? resolveSinglePostStrategy(
-        { headline: p?.headline ?? row.topic, content: p?.content ?? "" },
-        row.content_category as ContentCategory,
-      )
-    : null;
-  const baseTheme = getTheme(suggestThemeId(row.specialty));
-  const slideTheme = {
-    ...baseTheme,
-    bg: `linear-gradient(135deg, ${slideBrand.primaryColor} 0%, ${slideBrand.secondaryColor} 100%)`,
-    accent: slideBrand.primaryColor,
-    fontFamily: carouselThemes[0].fontFamily,
-  };
-
-  const carouselStrategy = kind === "carousel" && slides[slideIdx]
-    ? resolveVisualStrategy(slides[slideIdx], row.content_category as ContentCategory, {
-        slideIndex: slideIdx, totalSlides: slides.length, isCta: slideIdx === slides.length - 1,
-      })
-    : null;
-
   const isStory    = kind === "story";
   const isFestive  = kind === "festive";
   const isSingle   = kind === "single";
@@ -240,10 +229,30 @@ function PostDetailDialog({
   const isCampaign = kind === "campaign";
   const isTemplate = kind === "template";
 
-  // Template rows don't persist the frame choice (picked live in the studio),
-  // so History renders the default frame with the saved copy + image.
-  const TemplateFrame = isTemplate ? getTemplateFrame(null).Frame : null;
-  const templateProps = isTemplate
+  // Read the Studio customization the user actually finalized; fall back to
+  // today's computed defaults for older rows (or anything that fails
+  // validation) so nothing here duplicates Studio's own resolution logic —
+  // both call the exact same resolveTheme/resolveFestiveColors/
+  // resolveTemplateColors/defaultXCustomization functions from post-customization.ts.
+  const singleCustom = isSingle
+    ? parseCustomization(row.customization, "single")
+      ?? defaultSingleCustomization({ headline: p?.headline ?? row.topic, content: p?.content ?? "" }, row.content_category as ContentCategory, row.specialty)
+    : null;
+  const carouselCustom = isCarousel
+    ? parseCustomization(row.customization, "carousel")
+      ?? defaultCarouselCustomization({ slides }, row.content_category as ContentCategory, row.specialty)
+    : null;
+  const festiveCustom = isFestive
+    ? parseCustomization(row.customization, "festive") ?? defaultFestiveCustomization()
+    : null;
+  const templateCustom = isTemplate
+    ? parseCustomization(row.customization, "template") ?? defaultTemplateCustomization()
+    : null;
+
+  // Template frame choice now comes from persisted customization (falls back
+  // to the default frame for older rows that never saved one).
+  const TemplateFrame = isTemplate && templateCustom ? getTemplateFrame(templateCustom.frameId).Frame : null;
+  const templateProps = isTemplate && templateCustom
     ? {
         headline: p?.headline ?? row.topic,
         subline:  p?.subline ?? "",
@@ -251,16 +260,13 @@ function PostDetailDialog({
         logo:         brand.logo,
         businessName: brand.clinicName,
         phone:        brand.phone,
-        colors: {
-          primary:   brand.primaryColor   || p?.visual?.colors?.[0] || "#0E7C7B",
-          secondary: brand.secondaryColor || p?.visual?.colors?.[1] || "#134e4a",
-        },
+        colors: resolveTemplateColors(templateCustom, slideBrand, p?.visual?.colors ?? []),
         imageUrl: directImageUrl ?? null,
       }
     : null;
 
   const canvasProps: SlideCanvasProps | null =
-    isSingle && singleStrategy
+    isSingle && singleCustom
       ? {
           slideTitle: p?.headline ?? row.topic,
           slideBody: p?.content ?? "",
@@ -269,17 +275,17 @@ function PostDetailDialog({
           isCta: true,
           cta: p?.cta ?? "",
           specialty: row.specialty,
-          theme: slideTheme,
-          layout: singleStrategy.archetype,
-          fontScale: 1,
-          showIcons: true,
+          theme: resolveTheme(singleCustom.theme, slideBrand),
+          layout: singleCustom.strategy.layout,
+          fontScale: singleCustom.theme.fontScale,
+          showIcons: singleCustom.theme.showIcons,
           brand: slideBrand,
           imageUrl: directImageUrl,
           topic: row.topic,
           category: row.content_category as ContentCategory,
-          composition: singleStrategy.composition,
+          composition: singleCustom.strategy.composition,
         }
-      : isCarousel && carouselStrategy && slides[slideIdx]
+      : isCarousel && carouselCustom && slides[slideIdx]
       ? {
           slideTitle: slides[slideIdx].title,
           slideBody: slides[slideIdx].content,
@@ -288,15 +294,15 @@ function PostDetailDialog({
           isCta: slideIdx === slides.length - 1,
           cta: p?.cta ?? "",
           specialty: row.specialty,
-          theme: slideTheme,
-          layout: carouselStrategy.archetype,
-          fontScale: 1,
-          showIcons: true,
+          theme: resolveTheme(carouselCustom.theme, slideBrand),
+          layout: carouselCustom.slides[slideIdx]?.layout ?? "centered",
+          fontScale: carouselCustom.theme.fontScale,
+          showIcons: carouselCustom.theme.showIcons,
           brand: slideBrand,
           imageUrl: slideImages[slideIdx] ?? undefined,
           topic: row.topic,
           category: row.content_category as ContentCategory,
-          composition: carouselStrategy.composition,
+          composition: carouselCustom.slides[slideIdx]?.composition ?? "balanced",
         }
       : null;
 
@@ -437,7 +443,7 @@ function PostDetailDialog({
           </>
         )}
 
-        {isFestive && (
+        {isFestive && festiveCustom && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
             <FestiveCard
               ref={cardRef}
@@ -457,6 +463,7 @@ function PostDetailDialog({
               }}
               specialty={row.specialty}
               imageUrl={directImageUrl}
+              colorOverrides={resolveFestiveColors(festiveCustom, slideBrand, p?.visual?.colors ?? [])}
             />
           </div>
         )}
@@ -532,7 +539,7 @@ function History() {
         .from("content_generations")
         .select(
           "id, workflow_kind, content_category, specialty, topic, " +
-          "generated_text, generated_image_url, hashtags, status, " +
+          "generated_text, generated_image_url, customization, hashtags, status, " +
           "is_favorite, ai_model, created_at"
         )
         .eq("user_id", user.id)

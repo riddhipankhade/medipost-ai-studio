@@ -6,6 +6,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
 import { getRequestHeader } from "@tanstack/react-start/server";
+import { PostCustomizationSchema, defaultCustomizationFor } from "@/lib/post-customization";
 
 function validateEnv(): { supabaseUrl: string; supabaseAnonKey: string; geminiApiKey: string } {
   const supabaseUrl     = process.env.SUPABASE_URL;
@@ -817,6 +818,18 @@ export const generateContent = createServerFn({ method: "POST" })
       const hashtags =
         "hashtags" in result && Array.isArray(result.hashtags) ? result.hashtags : [];
 
+      // Seed a valid default customization in the SAME insert that creates the
+      // row, so History never sees a null-customization window for a brand-new
+      // post (the debounced client save only needs to persist edits *after*
+      // this). Best-effort: never let a customization-computation bug block
+      // the actual content save.
+      let customization: unknown = null;
+      try {
+        customization = defaultCustomizationFor(result, data.category, data.specialty);
+      } catch (e) {
+        console.error("[generateContent] default customization failed:", e);
+      }
+
       const { data: inserted, error: saveError } = await supabase
         .from("content_generations")
         .insert({
@@ -830,6 +843,7 @@ export const generateContent = createServerFn({ method: "POST" })
           hashtags,
           status:           "completed",
           ai_model:         "gemini-2.5-flash",
+          customization,
         })
         .select("id")
         .single();
@@ -957,4 +971,33 @@ export const generateImage = createServerFn({ method: "POST" })
       console.error("FULL SERVER ERROR:", error);
       throw error;
     }
+  });
+
+const UpdateCustomizationInputSchema = z.object({
+  contentId:     z.string().uuid(),
+  customization: PostCustomizationSchema,
+});
+
+/**
+ * Persists Studio's customization knobs (theme/color/layout/frame choices) so
+ * Content History can reproduce the exact design later instead of
+ * recomputing defaults. See src/lib/post-customization.ts for the shared
+ * resolution functions both Studio and History call with this data.
+ */
+export const updatePostCustomization = createServerFn({ method: "POST" })
+  .validator((data: unknown) => UpdateCustomizationInputSchema.parse(data))
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    const { supabaseUrl, supabaseAnonKey } = validateEnv();
+    const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) throw new Error("Unauthorized. Please sign in.");
+
+    const { error } = await supabase
+      .from("content_generations")
+      .update({ customization: data.customization })
+      .eq("id", data.contentId)
+      .eq("user_id", user.id);
+
+    if (error) throw new Error(`Save failed: ${error.message}`);
+    return { ok: true };
   });

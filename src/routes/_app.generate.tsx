@@ -1,6 +1,6 @@
 ﻿import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +102,16 @@ import {
 } from "@/components/carousel-layouts";
 import { resolveVisualStrategy, resolveSinglePostStrategy } from "@/lib/visual-strategy";
 import { useDownloadPost } from "@/hooks/useDownloadPost";
+import { usePersistCustomization } from "@/hooks/usePersistCustomization";
+import {
+  resolveTheme,
+  resolveFestiveColors,
+  resolveTemplateColors,
+  type SingleCustomization,
+  type CarouselCustomization,
+  type FestiveCustomization,
+  type TemplateCustomization,
+} from "@/lib/post-customization";
 import FestiveCard from "@/components/FestiveCard";
 import StoryCard from "@/components/StoryCard";
 import { ShareButtons } from "@/components/ShareButtons";
@@ -625,7 +635,7 @@ function ResultPreview({ result, specialty, rowId, category, topic, templateFram
   switch (result.kind) {
     case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic} />;
     case "carousel": return <CarouselPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic} />;
-    case "story":    return <StoryPreview post={result} specialty={specialty} />;
+    case "story":    return <StoryPreview post={result} specialty={specialty} rowId={rowId} />;
     case "reel":     return <ReelPreview post={result} specialty={specialty} />;
     case "campaign": return <CampaignPreview plan={result} />;
     case "festive":  return <FestivePreview post={result} specialty={specialty} rowId={rowId} />;
@@ -749,15 +759,10 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
   const [downloading, setDownloading] = useState(false);
   const captureRef = useRef<HTMLDivElement>(null);
 
-  const baseTheme = getTheme(themeId);
-  const theme = {
-    ...baseTheme,
-    bg: useBrandColors ? `linear-gradient(135deg, ${brand.primaryColor} 0%, ${brand.secondaryColor} 100%)` : baseTheme.bg,
-    heading: headingColor || baseTheme.heading,
-    text: textColor || baseTheme.text,
-    accent: accentColor || (useBrandColors ? brand.primaryColor : baseTheme.accent),
-    fontFamily,
-  };
+  const theme = resolveTheme(
+    { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
+    brand,
+  );
 
   const strategy = resolveSinglePostStrategy({ headline: post.headline, content: post.content }, category);
   const effectiveLayout: SlideLayout = autoLayout ? strategy.archetype : layout;
@@ -768,6 +773,14 @@ function SinglePostPreview({ post, specialty, rowId, category, topic }: { post: 
     fontScale, showIcons, brand,
     topic, category, composition: strategy.composition,
   };
+
+  const customization: SingleCustomization = useMemo(() => ({
+    v: 1, engine: "v1", kind: "single",
+    theme: { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
+    strategy: { layout: effectiveLayout, composition: strategy.composition },
+    autoLayout,
+  }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, effectiveLayout, strategy.composition, autoLayout]);
+  usePersistCustomization(rowId, customization);
 
   async function captureSinglePostPng(): Promise<string | null> {
     if (!captureRef.current) return null;
@@ -939,18 +952,26 @@ function CarouselPreview({ post, specialty, rowId, category, topic }: { post: Ca
     }
   }
 
-  const baseTheme = getTheme(themeId);
-  const theme = {
-    ...baseTheme,
-    bg: useBrandColors ? `linear-gradient(135deg, ${brand.primaryColor} 0%, ${brand.secondaryColor} 100%)` : baseTheme.bg,
-    heading: headingColor || baseTheme.heading,
-    text: textColor || baseTheme.text,
-    accent: accentColor || (useBrandColors ? brand.primaryColor : baseTheme.accent),
-    fontFamily,
-  };
+  const theme = resolveTheme(
+    { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
+    brand,
+  );
 
   const total = post.slides.length;
   const slide = post.slides[idx];
+
+  const slidesStrategy = useMemo(() => post.slides.map((s, i) => {
+    const st = resolveVisualStrategy(s, category, { slideIndex: i, totalSlides: total, isCta: i === total - 1 });
+    return { layout: (autoLayout ? st.archetype : layout) as SlideLayout, composition: st.composition };
+  }), [post.slides, category, total, autoLayout, layout]);
+
+  const customization: CarouselCustomization = useMemo(() => ({
+    v: 1, engine: "v1", kind: "carousel",
+    theme: { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
+    autoLayout, slides: slidesStrategy,
+  }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, autoLayout, slidesStrategy]);
+  usePersistCustomization(rowId, customization);
+
   if (!slide) return null;
 
   const strategy = resolveVisualStrategy(slide, category, { slideIndex: idx, totalSlides: total, isCta: idx === total - 1 });
@@ -1196,9 +1217,9 @@ function MiniColor({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function StoryPreview({ post, specialty }: { post: StoryPost; specialty: string }) {
+function StoryPreview({ post, specialty, rowId }: { post: StoryPost; specialty: string; rowId?: string | null }) {
   const [brand] = useBrandKit();
-  const ai = useAiImage();
+  const ai = useAiImage(rowId);
   const storyRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -1376,14 +1397,15 @@ function FestivePreview({ post, specialty, rowId }: { post: FestivePost; special
   const [accentColor, setAccentColor] = useState<string | null>(null);
   const [contactBgColor, setContactBgColor] = useState<string | null>(null);
   const palette = post.visual.colors;
-  const cardColors = {
-    frame: frameColor ?? ((useBrandColors && brand.primaryColor) || palette[0] || "#0E7C7B"),
-    glow: glowColor ?? (palette[1] || "#f4b400"),
-    accent: accentColor ?? ((useBrandColors && brand.secondaryColor) || palette[2] || "#0a3d62"),
-    contactBg: contactBgColor ?? "#ffffff",
-  };
+  const cardColors = resolveFestiveColors({ useBrandColors, frameColor, glowColor, accentColor, contactBgColor }, brand, palette);
   const hasManualColors = frameColor !== null || glowColor !== null || accentColor !== null || contactBgColor !== null;
   const resetManualColors = () => { setFrameColor(null); setGlowColor(null); setAccentColor(null); setContactBgColor(null); };
+
+  const customization: FestiveCustomization = useMemo(() => ({
+    v: 1, engine: "v1", kind: "festive",
+    useBrandColors, frameColor, glowColor, accentColor, contactBgColor,
+  }), [useBrandColors, frameColor, glowColor, accentColor, contactBgColor]);
+  usePersistCustomization(rowId, customization);
 
   return (
     <Card className="border-border/60">
@@ -1530,12 +1552,15 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange }: {
   const [primaryPick, setPrimaryPick] = useState<string | null>(null);
   const [secondaryPick, setSecondaryPick] = useState<string | null>(null);
   const palette = post.visual.colors;
-  const colors = {
-    primary:   primaryPick   ?? ((useBrandColors ? brand.primaryColor   : "") || palette[0] || "#0E7C7B"),
-    secondary: secondaryPick ?? ((useBrandColors ? brand.secondaryColor : "") || palette[1] || "#134e4a"),
-  };
+  const colors = resolveTemplateColors({ useBrandColors, primaryColor: primaryPick, secondaryColor: secondaryPick }, brand, palette);
   const hasManualColors = primaryPick !== null || secondaryPick !== null;
   const resetManualColors = () => { setPrimaryPick(null); setSecondaryPick(null); };
+
+  const customization: TemplateCustomization = useMemo(() => ({
+    v: 1, engine: "v1", kind: "template",
+    frameId, useBrandColors, primaryColor: primaryPick, secondaryColor: secondaryPick,
+  }), [frameId, useBrandColors, primaryPick, secondaryPick]);
+  usePersistCustomization(rowId, customization);
 
   const entry = getTemplateFrame(frameId);
   const Frame = entry.Frame;
