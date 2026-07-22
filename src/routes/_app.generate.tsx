@@ -442,12 +442,17 @@ function GeneratePage() {
               key={w.kind}
               type="button"
               onClick={() => switchKind(w.kind)}
-              className={`group text-left rounded-xl border p-4 transition-all ${
+              className={`group relative text-left rounded-xl border p-4 transition-all ${
                 active
                   ? "border-[color:var(--teal)] bg-gradient-to-br from-[color:var(--teal)]/10 to-primary/5 shadow-sm"
                   : "border-border bg-card hover:border-[color:var(--teal)]/50"
               }`}
             >
+              {w.badge && (
+                <Badge variant="warning" className="absolute right-3 top-3 py-0 text-[10px]">
+                  {w.badge}
+                </Badge>
+              )}
               <div
                 className={`h-9 w-9 grid place-items-center rounded-lg mb-2 ${
                   active ? "bg-[color:var(--teal)] text-white" : "bg-accent text-foreground"

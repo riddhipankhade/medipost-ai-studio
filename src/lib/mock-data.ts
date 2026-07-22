@@ -169,6 +169,7 @@ export const workflows: {
   title: string;
   tagline: string;
   icon: string;
+  badge?: string;
 }[] = [
   { kind: "single", title: "Single Post", tagline: "One scroll-stopping post", icon: "square" },
   { kind: "carousel", title: "Carousel Post", tagline: "2–10 swipeable slides", icon: "layers" },
@@ -176,7 +177,7 @@ export const workflows: {
   { kind: "reel", title: "Reel Script", tagline: "Hook · Points · CTA", icon: "film" },
   { kind: "campaign", title: "Awareness Campaign", tagline: "Weekly content plan", icon: "calendar" },
   { kind: "festive", title: "Festive Wishes", tagline: "Greetings for any occasion", icon: "sparkles" },
-  { kind: "template", title: "Template Post", tagline: "Ready-made promo designs", icon: "layout" },
+  { kind: "template", title: "Template Post", tagline: "Ready-made promo designs", icon: "layout", badge: "Beta" },
 ];
 
 export function generateMockContent(opts: {
