@@ -96,6 +96,13 @@ function Landing() {
             <p className="text-muted-foreground mt-3 leading-relaxed">
               Pick a format on the left — the preview updates instantly on the right.
             </p>
+            <div className="flex flex-wrap items-center gap-2 mt-5">
+              {["English", "Hindi", "Marathi", "Tamil", "Telugu", "Kannada", "Bengali", "Gujarati", "Punjabi", "Malayalam"].map((l) => (
+                <span key={l} className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium">
+                  <Check className="h-3 w-3 text-primary" /> {l}
+                </span>
+              ))}
+            </div>
           </Reveal>
           <Reveal direction="scale" delay={0.05}>
             <ContentStudioShowcase />
