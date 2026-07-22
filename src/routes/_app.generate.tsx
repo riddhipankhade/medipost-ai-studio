@@ -64,7 +64,7 @@ import {
 import {
   templateFrames,
   getTemplateFrame,
-  TEMPLATE_SAMPLE,
+  TEMPLATE_SAMPLES,
   type TemplateFrameId,
 } from "@/components/template-frames";
 import {
@@ -1576,7 +1576,7 @@ function FestivePreview({ post, specialty, rowId, initialImageUrl, initialCustom
 function FramePicker({ value, onChange, frameProps }: {
   value: TemplateFrameId;
   onChange: (id: TemplateFrameId) => void;
-  frameProps: Parameters<(typeof templateFrames)[number]["Frame"]>[0];
+  frameProps: Omit<Parameters<(typeof templateFrames)[number]["Frame"]>[0], "headline" | "subline" | "cta">;
 }) {
   return (
     <div className="grid gap-3 grid-cols-2">
@@ -1592,7 +1592,7 @@ function FramePicker({ value, onChange, frameProps }: {
             }`}
           >
             <ExactScalePreview>
-              <f.Frame {...frameProps} />
+              <f.Frame {...TEMPLATE_SAMPLES[f.id]} {...frameProps} />
             </ExactScalePreview>
             <p className="mt-1.5 text-xs font-semibold">{f.name}</p>
             <p className="text-[10px] text-muted-foreground">{f.tagline}</p>
@@ -1606,7 +1606,6 @@ function FramePicker({ value, onChange, frameProps }: {
 function TemplateGalleryCard({ value, onChange }: { value: TemplateFrameId; onChange: (id: TemplateFrameId) => void }) {
   const [brand] = useBrandKit();
   const frameProps = {
-    ...TEMPLATE_SAMPLE,
     logo: brand.logo,
     businessName: brand.clinicName,
     phone: brand.phone,

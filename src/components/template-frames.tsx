@@ -38,11 +38,60 @@ export type TemplateFrameProps = {
   placeholders?: boolean;
 };
 
-/** Sample copy the frame gallery renders before anything is generated. */
-export const TEMPLATE_SAMPLE = {
-  headline: "Hernia Treatment Center",
-  subline: "Get affordable treatment and lasting relief from hernia pain.",
-  cta: "Contact Now",
+/** Sample copy the frame gallery renders before anything is generated — one
+ *  distinct example per template so the gallery doesn't read as ten copies
+ *  of the same card. */
+export const TEMPLATE_SAMPLES: Record<TemplateFrameId, { headline: string; subline: string; cta: string }> = {
+  "clinic-classic": {
+    headline: "Hernia Treatment Center",
+    subline: "Get affordable treatment and lasting relief from hernia pain.",
+    cta: "Contact Now",
+  },
+  "photo-panel": {
+    headline: "Complete Dental Care",
+    subline: "Painless treatments for a healthier, brighter smile.",
+    cta: "Book a Visit",
+  },
+  "hex-accent": {
+    headline: "Advanced Eye Care",
+    subline: "Comprehensive eye exams and vision correction for the whole family.",
+    cta: "Schedule Exam",
+  },
+  "curve-card": {
+    headline: "Skin & Hair Clinic",
+    subline: "Expert dermatology care for clear, healthy skin.",
+    cta: "Book Consultation",
+  },
+  "bold-ask": {
+    headline: "Joint Pain Holding You Back?",
+    subline: "Orthopedic care to get you moving pain-free again.",
+    cta: "Get Relief Today",
+  },
+  "full-photo": {
+    headline: "Complete Women's Wellness",
+    subline: "Compassionate care at every stage of life.",
+    cta: "Book Appointment",
+  },
+  "top-banner": {
+    headline: "Pediatric Care Clinic",
+    subline: "Gentle, expert care for your little ones.",
+    cta: "Schedule Visit",
+  },
+  "tilt-card": {
+    headline: "Physiotherapy & Rehab",
+    subline: "Personalized recovery plans to get you back on your feet.",
+    cta: "Start Recovery",
+  },
+  "arch-window": {
+    headline: "Cardiac Care Center",
+    subline: "Advanced heart screening and treatment, close to home.",
+    cta: "Book Screening",
+  },
+  "ribbon-banner": {
+    headline: "General Surgery Center",
+    subline: "Trusted surgical care with a focus on fast recovery.",
+    cta: "Consult a Surgeon",
+  },
 };
 
 const BAR_H = 58;
@@ -75,7 +124,7 @@ function LogoSlot({ logo, placeholders, corner = "left" }: { logo?: string | nul
   return (
     <div
       className="absolute z-30 grid place-items-center rounded-lg text-white text-center font-semibold shadow"
-      style={{ ...pos, height: 52, width: 52, background: "rgba(23,23,23,0.88)", fontSize: 12, lineHeight: 1.25 }}
+      style={{ ...pos, height: 52, width: 52, background: "rgba(23,23,23,0.78)", border: "1.5px dashed rgba(255,255,255,0.6)", fontSize: 11.5, lineHeight: 1.25 }}
     >
       Your<br />Logo
     </div>
@@ -88,6 +137,8 @@ function ContactBar({
   businessName?: string; phone?: string; placeholders?: boolean;
   bg: string; fg: string; pillBg: string; pillFg: string;
 }) {
+  const hasName = Boolean(businessName);
+  const hasPhone = Boolean(phone);
   const name = businessName || (placeholders ? "Business Name" : "");
   const tel = phone || (placeholders ? "Mobile Number" : "");
   return (
@@ -95,16 +146,21 @@ function ContactBar({
       className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3"
       style={{ height: BAR_H, background: bg, color: fg, padding: "0 18px" }}
     >
-      <span className="truncate font-semibold" style={{ fontSize: 15 }}>{name}</span>
+      <span
+        className="truncate font-semibold"
+        style={{ fontSize: 15, opacity: hasName ? 1 : 0.62, fontStyle: hasName ? "normal" : "italic" }}
+      >
+        {name}
+      </span>
       {tel && (
         <span
           className="flex items-center gap-2 rounded-full font-semibold whitespace-nowrap shrink-0"
-          style={{ background: pillBg, color: pillFg, fontSize: 13, padding: "6px 14px 6px 7px" }}
+          style={{ background: pillBg, color: pillFg, fontSize: 13, padding: "6px 14px 6px 7px", opacity: hasPhone ? 1 : 0.72 }}
         >
           <span className="grid place-items-center rounded-full" style={{ height: 22, width: 22, background: pillFg, color: pillBg }}>
             <Phone style={{ height: 12, width: 12 }} />
           </span>
-          {tel}
+          <span style={{ fontStyle: hasPhone ? "normal" : "italic" }}>{tel}</span>
         </span>
       )}
     </div>
@@ -117,10 +173,20 @@ function PhotoFill({ imageUrl }: { imageUrl?: string | null }) {
   return (
     <div
       className="absolute inset-0 grid place-items-center"
-      style={{ background: "linear-gradient(150deg, #e8edf2 0%, #d4dce4 100%)" }}
+      style={{
+        background: "linear-gradient(150deg, #eef2f6 0%, #d7dfe7 100%)",
+        backgroundImage:
+          "linear-gradient(150deg, #eef2f6 0%, #d7dfe7 100%), radial-gradient(rgba(148,163,184,0.28) 1.5px, transparent 1.5px)",
+        backgroundSize: "auto, 14px 14px",
+      }}
     >
-      <div className="flex flex-col items-center gap-1.5" style={{ color: "#8a99a8" }}>
-        <ImageIcon style={{ height: 30, width: 30 }} />
+      <div className="flex flex-col items-center gap-2" style={{ color: "#7c8c9c" }}>
+        <div
+          className="grid place-items-center rounded-full"
+          style={{ height: 48, width: 48, background: "rgba(255,255,255,0.75)", border: "1.5px dashed #aab6c2" }}
+        >
+          <ImageIcon style={{ height: 21, width: 21 }} />
+        </div>
         <p className="font-medium" style={{ fontSize: 11, letterSpacing: 0.4 }}>AI photo appears here</p>
       </div>
     </div>
