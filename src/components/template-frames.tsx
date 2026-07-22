@@ -169,7 +169,7 @@ function ContactBar({
 
 /** Fills its box with the AI photo, or a quiet slot marker until one is generated. */
 function PhotoFill({ imageUrl }: { imageUrl?: string | null }) {
-  if (imageUrl) return <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />;
+  if (imageUrl) return <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: "50% 12%" }} />;
   return (
     <div
       className="absolute inset-0 grid place-items-center"
