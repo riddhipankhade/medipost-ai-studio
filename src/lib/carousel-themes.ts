@@ -13,6 +13,16 @@ import {
   Eye,
   HeartPulse,
   Microscope,
+  Bone,
+  Ear,
+  Dna,
+  FlaskConical,
+  Thermometer,
+  Droplets,
+  Zap,
+  Wind,
+  Scan,
+  Bandage,
   type LucideIcon,
 } from "lucide-react";
 
@@ -20,10 +30,10 @@ export type CarouselTheme = {
   id: string;
   name: string;
   tagline: string;
-  bg: string; // CSS background (gradient)
-  text: string; // body text color
-  heading: string; // heading color
-  accent: string; // accent/CTA color
+  bg: string;
+  text: string;
+  heading: string;
+  accent: string;
   fontFamily: string;
   iconOpacity: number;
 };
@@ -115,46 +125,179 @@ export type SlideLayout =
   | "radial-diagram";
 
 export const slideLayouts: { id: SlideLayout; name: string; description: string }[] = [
-  { id: "centered", name: "Centered Content", description: "Headline + body, centered" },
-  { id: "image-left", name: "Image Left + Text Right", description: "Visual area on the left" },
-  { id: "full-image", name: "Full Background Image", description: "Photo backdrop, text overlay" },
-  { id: "split", name: "Split Layout", description: "Color band + content panel" },
-  { id: "modern-card", name: "Modern Card", description: "Floating glass card on bg" },
-  { id: "hero-card", name: "Hero Card", description: "One dominant illustration + message" },
-  { id: "icon-grid", name: "Icon Grid", description: "3-6 items with icons, grid layout" },
-  { id: "statistic-hero", name: "Statistic Hero", description: "One large stat, minimal text" },
-  { id: "comparison-split", name: "Comparison Split", description: "Two-column myth vs fact" },
-  { id: "process-flow", name: "Process Flow", description: "Numbered sequential steps" },
-  { id: "callout-diagram", name: "Callout Diagram", description: "Anatomical / warning callouts" },
-  { id: "timeline", name: "Timeline", description: "Staged progression markers" },
-  { id: "faq-card", name: "FAQ Card", description: "Question then answer" },
-  { id: "checklist", name: "Checklist", description: "Vertical list with check markers" },
-  { id: "radial-diagram", name: "Radial Diagram", description: "Central illustration with radiating labels" },
+  { id: "centered",          name: "Centered Content",      description: "Headline + body, centered" },
+  { id: "image-left",        name: "Image Left + Text Right", description: "Visual area on the left" },
+  { id: "full-image",        name: "Full Background Image", description: "Photo backdrop, text overlay" },
+  { id: "split",             name: "Split Layout",          description: "Color band + content panel" },
+  { id: "modern-card",       name: "Modern Card",           description: "Floating glass card on bg" },
+  { id: "hero-card",         name: "Hero Card",             description: "One dominant illustration + message" },
+  { id: "icon-grid",         name: "Icon Grid",             description: "3-6 items with icons, grid layout" },
+  { id: "statistic-hero",    name: "Statistic Hero",        description: "One large stat, minimal text" },
+  { id: "comparison-split",  name: "Comparison Split",      description: "Two-column myth vs fact" },
+  { id: "process-flow",      name: "Process Flow",          description: "Numbered sequential steps" },
+  { id: "callout-diagram",   name: "Callout Diagram",       description: "Anatomical / warning callouts" },
+  { id: "timeline",          name: "Timeline",              description: "Staged progression markers" },
+  { id: "faq-card",          name: "FAQ Card",              description: "Question then answer" },
+  { id: "checklist",         name: "Checklist",             description: "Vertical list with check markers" },
+  { id: "radial-diagram",    name: "Radial Diagram",        description: "Central illustration with radiating labels" },
 ];
 
 export const fontFamilies = [
-  { id: "'Inter', system-ui, sans-serif", name: "Inter (Sans)" },
-  { id: "'Playfair Display', Georgia, serif", name: "Playfair (Serif)" },
-  { id: "'Nunito', 'Inter', sans-serif", name: "Nunito (Rounded)" },
-  { id: "'Poppins', 'Inter', sans-serif", name: "Poppins (Modern)" },
-  { id: "'DM Serif Display', Georgia, serif", name: "DM Serif (Editorial)" },
+  { id: "'Inter', system-ui, sans-serif",       name: "Inter (Sans)" },
+  { id: "'Playfair Display', Georgia, serif",   name: "Playfair (Serif)" },
+  { id: "'Nunito', 'Inter', sans-serif",        name: "Nunito (Rounded)" },
+  { id: "'Poppins', 'Inter', sans-serif",       name: "Poppins (Modern)" },
+  { id: "'DM Serif Display', Georgia, serif",   name: "DM Serif (Editorial)" },
 ];
 
-/** Specialty → suggested decorative icons + primary symbol */
+/**
+ * Specialty → decorative icon set.
+ * Index 0 = primary icon (largest, most prominent).
+ * Indexes 1-3 = supporting icons for the background pattern.
+ *
+ * Rules:
+ *  - Every icon must be directly relevant to the specialty — no generic
+ *    stethoscopes for cardiologists, no pill bottles for dentists.
+ *  - Primary icon should be instantly recognisable for that specialty.
+ *  - Keys must match the strings used in SpecialtySelect exactly.
+ */
 export const specialtyIcons: Record<string, LucideIcon[]> = {
-  Dentist: [Smile, Sparkles, ShieldPlus, Cross],
-  Orthodontist: [Smile, Sparkles, ShieldPlus, Activity],
-  Dermatologist: [Sparkles, ShieldPlus, Eye, Cross],
-  Cardiologist: [Heart, HeartPulse, Activity, Stethoscope],
-  "General Physician": [Stethoscope, Cross, Pill, ShieldPlus],
-  Pediatrician: [Baby, Heart, Smile, ShieldPlus],
-  Gynecologist: [Heart, ShieldPlus, Cross, Activity],
-  Neurologist: [Brain, Activity, Stethoscope, Cross],
-  Default: [Stethoscope, Cross, Heart, ShieldPlus],
+  // ── Dental ──────────────────────────────────────────────────────────────
+  "Dentist":                    [Smile, Sparkles, ShieldPlus, Cross],
+  "Orthodontist":               [Smile, Bone, Sparkles, ShieldPlus],
+  "Oral & Maxillofacial Surgeon": [Smile, Cross, Syringe, ShieldPlus],
+  "Periodontist":               [Smile, ShieldPlus, Sparkles, Cross],
+  "Endodontist":                [Smile, Cross, ShieldPlus, Sparkles],
+  "Prosthodontist":             [Smile, Sparkles, ShieldPlus, Cross],
+
+  // ── Cardiology ──────────────────────────────────────────────────────────
+  "Cardiologist":               [Heart, HeartPulse, Activity, Stethoscope],
+  "Cardiac Surgeon":            [Heart, Cross, Activity, Syringe],
+  "Interventional Cardiologist":[HeartPulse, Heart, Activity, Scan],
+
+  // ── Neurology ───────────────────────────────────────────────────────────
+  "Neurologist":                [Brain, Zap, Activity, Stethoscope],
+  "Neurosurgeon":               [Brain, Cross, Scan, Activity],
+  "Psychiatrist":               [Brain, Heart, Sparkles, Activity],
+  "Psychologist":               [Brain, Heart, Sparkles, Zap],
+
+  // ── Pediatrics ──────────────────────────────────────────────────────────
+  "Pediatrician":               [Baby, Heart, Smile, ShieldPlus],
+  "Neonatologist":              [Baby, Heart, ShieldPlus, Stethoscope],
+  "Pediatric Surgeon":          [Baby, Cross, ShieldPlus, Syringe],
+
+  // ── Women's Health ──────────────────────────────────────────────────────
+  "Gynecologist":               [Heart, ShieldPlus, Activity, Cross],
+  "Obstetrician":               [Baby, Heart, ShieldPlus, Cross],
+  "Gynecologist / Obstetrician":[Baby, Heart, ShieldPlus, Activity],
+  "Fertility Specialist":       [Heart, Dna, Sparkles, ShieldPlus],
+
+  // ── Skin & Hair ─────────────────────────────────────────────────────────
+  "Dermatologist":              [Sparkles, Eye, ShieldPlus, Cross],
+  "Cosmetologist":              [Sparkles, Eye, Heart, ShieldPlus],
+  "Trichologist":               [Sparkles, ShieldPlus, Activity, Cross],
+  "Plastic Surgeon":            [Sparkles, Cross, ShieldPlus, Syringe],
+  "Cosmetic Surgeon":           [Sparkles, Eye, Cross, ShieldPlus],
+
+  // ── Eyes ────────────────────────────────────────────────────────────────
+  "Ophthalmologist":            [Eye, Scan, ShieldPlus, Cross],
+  "Optometrist":                [Eye, Sparkles, ShieldPlus, Scan],
+
+  // ── ENT ─────────────────────────────────────────────────────────────────
+  "ENT Specialist":             [Ear, Stethoscope, ShieldPlus, Cross],
+  "Otolaryngologist":           [Ear, Activity, ShieldPlus, Cross],
+
+  // ── Orthopedics ─────────────────────────────────────────────────────────
+  "Orthopedic Surgeon":         [Bone, Activity, Cross, ShieldPlus],
+  "Spine Surgeon":              [Bone, Scan, Cross, Activity],
+  "Physiotherapist":            [Activity, Bone, Heart, ShieldPlus],
+  "Rheumatologist":             [Bone, Activity, ShieldPlus, Cross],
+  "Sports Medicine":            [Activity, Heart, ShieldPlus, Bone],
+
+  // ── Respiratory ─────────────────────────────────────────────────────────
+  "Pulmonologist":              [Wind, Activity, Stethoscope, ShieldPlus],
+  "Chest Physician":            [Wind, Stethoscope, Activity, Cross],
+
+  // ── Gastro / Liver ──────────────────────────────────────────────────────
+  "Gastroenterologist":         [Activity, Stethoscope, ShieldPlus, Microscope],
+  "Hepatologist":               [Activity, Microscope, ShieldPlus, Cross],
+  "Colorectal Surgeon":         [Activity, Cross, ShieldPlus, Stethoscope],
+  "Bariatric Surgeon":          [Activity, Cross, ShieldPlus, Heart],
+
+  // ── Urology & Nephrology ────────────────────────────────────────────────
+  "Urologist":                  [Droplets, Activity, ShieldPlus, Cross],
+  "Nephrologist":               [Droplets, Activity, Stethoscope, ShieldPlus],
+  "Andrologist":                [Activity, ShieldPlus, Cross, Stethoscope],
+
+  // ── Endocrinology & Metabolism ──────────────────────────────────────────
+  "Endocrinologist":            [Activity, Thermometer, Pill, ShieldPlus],
+  "Diabetologist":              [Droplets, Pill, Activity, HeartPulse],
+
+  // ── Oncology ────────────────────────────────────────────────────────────
+  "Oncologist":                 [Microscope, Dna, Cross, ShieldPlus],
+  "Surgical Oncologist":        [Cross, Microscope, Dna, ShieldPlus],
+  "Radiation Oncologist":       [Scan, Dna, Cross, ShieldPlus],
+  "Hematologist":               [Droplets, Microscope, Activity, Cross],
+
+  // ── General & Emergency ─────────────────────────────────────────────────
+  "General Physician":          [Stethoscope, Cross, Pill, ShieldPlus],
+  "General Surgeon":            [Cross, ShieldPlus, Syringe, Stethoscope],
+  "Emergency Medicine":         [Cross, Activity, Syringe, ShieldPlus],
+  "Anesthesiologist":           [Syringe, Activity, ShieldPlus, Cross],
+  "Intensivist":                [Activity, HeartPulse, Syringe, Cross],
+
+  // ── Diagnostics ─────────────────────────────────────────────────────────
+  "Radiologist":                [Scan, Microscope, Activity, Cross],
+  "Pathologist":                [Microscope, FlaskConical, Dna, Cross],
+  "Lab Medicine":               [FlaskConical, Microscope, Dna, Activity],
+
+  // ── Alternative / Integrative ───────────────────────────────────────────
+  "Ayurvedic Doctor":           [Sparkles, Heart, ShieldPlus, Pill],
+  "Homeopathic Doctor":         [Pill, Sparkles, Heart, Cross],
+  "Naturopath":                 [Sparkles, Heart, Activity, ShieldPlus],
+  "Unani Practitioner":         [Sparkles, Pill, Heart, ShieldPlus],
+
+  // ── Vascular & Thoracic ─────────────────────────────────────────────────
+  "Vascular Surgeon":           [Activity, Heart, Cross, Stethoscope],
+  "Thoracic Surgeon":           [Wind, Cross, Heart, Syringe],
+
+  // ── Other ───────────────────────────────────────────────────────────────
+  "Geriatrician":               [Heart, Stethoscope, ShieldPlus, Pill],
+  "Immunologist":               [ShieldPlus, Dna, Microscope, Cross],
+  "Allergist":                  [ShieldPlus, Activity, Cross, Stethoscope],
+  "Nutritionist":               [Heart, Activity, Sparkles, ShieldPlus],
+  "Dietitian":                  [Activity, Heart, ShieldPlus, Sparkles],
+  "Occupational Therapist":     [Activity, Heart, ShieldPlus, Sparkles],
+  "Speech Therapist":           [Activity, Smile, Heart, ShieldPlus],
+  "Sexologist":                 [Heart, ShieldPlus, Activity, Cross],
+
+  // ── Fallback ────────────────────────────────────────────────────────────
+  "Default":                    [Stethoscope, Cross, Heart, ShieldPlus],
 };
 
+/**
+ * Returns the icon set for a specialty, with fuzzy fallback:
+ * 1. Exact match
+ * 2. Partial match (e.g. "Cardio" matches "Cardiologist")
+ * 3. Default
+ */
 export function iconsFor(specialty: string): LucideIcon[] {
-  return specialtyIcons[specialty] ?? specialtyIcons.Default;
+  if (!specialty) return specialtyIcons.Default;
+
+  // Exact match
+  if (specialtyIcons[specialty]) return specialtyIcons[specialty];
+
+  // Partial match — find first key that includes the specialty string or vice versa
+  const lower = specialty.toLowerCase();
+  const match = Object.keys(specialtyIcons).find(
+    (key) => key !== "Default" && (
+      key.toLowerCase().includes(lower) ||
+      lower.includes(key.toLowerCase().split(" ")[0])  // first word match
+    )
+  );
+  if (match) return specialtyIcons[match];
+
+  return specialtyIcons.Default;
 }
 
 export function primaryIconFor(specialty: string): LucideIcon {
@@ -163,10 +306,26 @@ export function primaryIconFor(specialty: string): LucideIcon {
 
 /** Suggest a theme id based on specialty (used as a smart default). */
 export function suggestThemeId(specialty: string): string {
-  if (specialty === "Dentist" || specialty === "Orthodontist") return "dental-premium";
-  if (specialty === "Pediatrician") return "pediatric-friendly";
-  if (specialty === "Dermatologist") return "luxury-aesthetic";
-  if (specialty === "Cardiologist") return "clinical-blue";
+  const s = specialty.toLowerCase();
+
+  if (s.includes("dent") || s.includes("ortho") || s.includes("perio") || s.includes("endo") || s.includes("prostho"))
+    return "dental-premium";
+
+  if (s.includes("pediatric") || s.includes("neonat") || s.includes("child"))
+    return "pediatric-friendly";
+
+  if (s.includes("dermat") || s.includes("cosmet") || s.includes("aesthetic") || s.includes("plastic") || s.includes("trichol"))
+    return "luxury-aesthetic";
+
+  if (s.includes("cardio") || s.includes("cardiac") || s.includes("heart"))
+    return "clinical-blue";
+
+  if (s.includes("neuro") || s.includes("psych") || s.includes("brain"))
+    return "clinical-blue";
+
+  if (s.includes("onco") || s.includes("hemato") || s.includes("cancer"))
+    return "clinical-blue";
+
   return "modern-healthcare";
 }
 
@@ -174,12 +333,8 @@ export function getTheme(id: string): CarouselTheme {
   return carouselThemes.find((t) => t.id === id) ?? carouselThemes[0];
 }
 
-/* Hooks for future AI image generation pipeline.
- * When connecting Gemini / Imagen / DALL-E, implement:
- *   generateSlideImage({ specialty, slideTitle, themeId }) -> Promise<string url>
- * and inject the returned url into <SlideCanvas imageUrl={...}>.
- */
 export type AiImageProvider = "gemini" | "imagen" | "dall-e";
+
 export interface SlideImageRequest {
   specialty: string;
   slideTitle: string;
@@ -187,7 +342,7 @@ export interface SlideImageRequest {
   themeId: string;
   provider?: AiImageProvider;
 }
+
 export async function generateSlideImage(_req: SlideImageRequest): Promise<string | null> {
-  // Not implemented in the prototype — UI shows a placeholder image area.
   return null;
 }

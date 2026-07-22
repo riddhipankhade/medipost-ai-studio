@@ -100,9 +100,6 @@ async function callPollinationsImage(
   const seed     = Date.now();
   const imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1080&height=1080&model=flux&nologo=true&seed=${seed}`;
 
-  // Budgeted to finish inside Vercel's 60s function limit even on the retry
-  // path: 2 attempts × 25s fetch + 2s backoff ≈ 52s worst case. (3×30s could
-  // run ~100s, which the platform kills mid-flight — the client just sees 500.)
   for (let attempt = 1; attempt <= 2; attempt++) {
     let res: Response;
     try {
@@ -129,7 +126,6 @@ async function callPollinationsImage(
       };
     }
 
-    // Pollinations throws transient 500/502/504s as well as 429/503 under load
     const isRetryable = res.status === 429 || res.status >= 500;
     if (attempt < 2 && isRetryable) {
       console.warn(`[Pollinations] Attempt ${attempt} got ${res.status}. Retrying in 2000ms…`);
@@ -195,8 +191,6 @@ const InputSchema = z.object({
     ])
     .optional(),
   slideCount: z.number().int().min(2).max(10).optional(),
-  // Template posts: language the on-creative copy is written in (poster-style
-  // local-language ads — e.g. Hindi "हर्निया ट्रीटमेंट सेंटर").
   language:   z.string().max(40).optional(),
   brand:      BrandSchema,
 });
@@ -371,11 +365,6 @@ Slide ${n}: CTA`;
   }
 }
 
-/**
- * Single posts render through category-specific visual templates on the client
- * (myth/fact split panels, checklist card, big-stat poster, Q&A bubbles, …).
- * The "content" field must be SHAPED for that template, not free prose.
- */
 function singleStructureFor(category: z.infer<typeof CategoryEnum>): string {
   switch (category) {
     case "myth-fact":
@@ -406,20 +395,25 @@ then a final line stating when to seek care immediately.`;
 }
 
 /**
- * All formats can write their patient-facing copy in a regional language
- * (poster ads, greetings, reel scripts in Hindi/Kannada/…). Two hard rules:
- * "visual" stays English (goes to the image model), and structural markers
- * the client layouts parse (e.g. "Myth: "/"Fact: ") stay English verbatim.
+ * All formats write copy in the selected regional language.
+ * "visual" always stays English (goes to the image model).
+ * Structural markers the client parses (e.g. "Myth: "/"Fact: ") stay English verbatim.
+ *
+ * FIX: Changed from "patient-facing text" to an explicit mandatory requirement
+ * so Gemini doesn't default to English when the audience is healthcare professionals.
  */
 function languageBlock(lang?: string): string {
   const l = lang?.trim();
   if (!l || l.toLowerCase() === "english") return "";
-  return `LANGUAGE (important)
-- Write ALL patient-facing text (headlines, body/slide content, greetings, captions, CTAs, hooks, talking points, plan ideas) in ${l}, using its native script — the way local clinics actually talk to their patients (e.g. Hindi "ब्लड प्रेशर हेल्थ सेंटर").
-- Widely-used English medical terms may stay in English where patients commonly say them.
-- Keep "hashtags" mostly English.
-- EXCEPTION 1: every field inside "visual" (concept, style, composition, imagePrompt) MUST stay in English — it is sent to an image-generation model.
-- EXCEPTION 2: structural markers a CONTENT STRUCTURE requires (e.g. the paragraph prefixes "Myth: " and "Fact: ") stay in English EXACTLY as specified — only the text after the marker is written in ${l}.`;
+  return `LANGUAGE — MANDATORY (non-negotiable, applies to ALL audiences including healthcare professionals)
+You MUST write ALL text content in ${l} using its native script. Do NOT write in English.
+- MUST be in ${l}: headline, content, message, greeting, caption, cta, hook, talkingPoints, theme, objective, postIdeas, all "idea" fields in weeklySchedule, ctaSuggestions, slide titles, slide bodies, subline, title.
+- Write ${l} the way clinics in that region actually speak — clear, professional, natural.
+- Widely-used English medical terms (e.g. "diabetes", "BP", "ECG", "MRI") may stay in English within ${l} sentences.
+- Keep "hashtags" mostly in English.
+- EXCEPTION 1: Every field inside "visual" (concept, style, composition, imagePrompt, visualStyle, layout) MUST stay in English — this goes to an image-generation model that only understands English.
+- EXCEPTION 2: Structural CONTENT STRUCTURE markers (e.g. "Myth: " and "Fact: " prefixes) stay in English exactly as specified — only the text after the marker is in ${l}.
+If any content field is in English instead of ${l}, the output is wrong. Write in ${l}.`;
 }
 
 function brandBlock(b: GenerateInput["brand"]): string {
@@ -447,8 +441,6 @@ const VISUAL_BLOCK = `"visual": {
     "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words). Real photorealistic or editorial healthcare scene. No text, no watermark, Instagram-ready, premium healthcare marketing."
   }`;
 
-// Festive posts need festival decor/mood, not a generic clinic scene — the model
-// otherwise defaults to "doctor in white coat" imagery for every occasion.
 const FESTIVE_VISUAL_BLOCK = `"visual": {
     "concept": "one-sentence scene description of the FESTIVE decor/mood (not a clinic scene)",
     "colors": ["#RRGGBB","#RRGGBB","#RRGGBB","#RRGGBB", "colors drawn from how this specific festival is traditionally decorated/celebrated"],
@@ -459,9 +451,6 @@ const FESTIVE_VISUAL_BLOCK = `"visual": {
     "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words) for a warm, premium FESTIVE creative tied to the specific festival named above — real decor/symbols/colors people actually associate with it (e.g. diyas and marigolds for Diwali, lanterns and red-gold for Lunar New Year, string lights and pine for Christmas, crescent and lanterns for Eid) rendered as elegant photorealistic or soft-bokeh photography. Do NOT depict a clinic, doctor, stethoscope, or hospital — this is a greeting-card background, not a medical scene. No text, no watermark, no people's faces, Instagram-ready, premium aesthetic."
   }`;
 
-// Template posts drop the AI photo into a fixed shaped window (circle, hexagon,
-// angled panel) next to designed text blocks — the image must be a clean,
-// SUBJECT-CENTERED photo that survives cropping, not a busy full composition.
 const TEMPLATE_VISUAL_BLOCK = `"visual": {
     "concept": "one-sentence description of the SINGLE photographic subject (person/scene) for this ad",
     "colors": ["#RRGGBB","#RRGGBB","#RRGGBB","#RRGGBB"],
@@ -485,9 +474,9 @@ ${CATEGORY_HINTS[d.category]}
 
 ${brandBlock(d.brand)}
 
-${languageBlock(d.language)}
+${SHARED_RULES}
 
-${SHARED_RULES}`;
+${languageBlock(d.language)}`;
 
   switch (d.kind) {
     case "single":
@@ -818,11 +807,6 @@ export const generateContent = createServerFn({ method: "POST" })
       const hashtags =
         "hashtags" in result && Array.isArray(result.hashtags) ? result.hashtags : [];
 
-      // Seed a valid default customization in the SAME insert that creates the
-      // row, so History never sees a null-customization window for a brand-new
-      // post (the debounced client save only needs to persist edits *after*
-      // this). Best-effort: never let a customization-computation bug block
-      // the actual content save.
       let customization: unknown = null;
       try {
         customization = defaultCustomizationFor(result, data.category, data.specialty);
@@ -861,8 +845,6 @@ const ImageInputSchema = z.object({
   prompt:      z.string().min(3).max(2000),
   visualStyle: z.string().optional(),
   contentId:   z.string().uuid().optional(),
-  // Carousel slides: position this image in a JSON array stored in
-  // generated_image_url, so History can show each slide's own visual.
   slideIndex:  z.number().int().min(0).max(19).optional(),
   slideCount:  z.number().int().min(1).max(20).optional(),
 });
@@ -978,12 +960,6 @@ const UpdateCustomizationInputSchema = z.object({
   customization: PostCustomizationSchema,
 });
 
-/**
- * Persists Studio's customization knobs (theme/color/layout/frame choices) so
- * Content History can reproduce the exact design later instead of
- * recomputing defaults. See src/lib/post-customization.ts for the shared
- * resolution functions both Studio and History call with this data.
- */
 export const updatePostCustomization = createServerFn({ method: "POST" })
   .validator((data: unknown) => UpdateCustomizationInputSchema.parse(data))
   .handler(async ({ data }): Promise<{ ok: true }> => {

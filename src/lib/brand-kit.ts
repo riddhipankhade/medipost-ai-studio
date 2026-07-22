@@ -47,6 +47,7 @@ export const emptyBrandKit: BrandKit = {
 // persisted that merge, so existing per-account caches carry the dummy
 // identity values. Strip exact matches so they never resurface on creatives.
 const IDENTITY_KEYS = ["clinicName", "doctorName", "specialty", "phone", "website", "address"] as const;
+
 function stripLegacyDummies(kit: BrandKit): BrandKit {
   const out = { ...kit };
   for (const k of IDENTITY_KEYS) {
@@ -91,14 +92,19 @@ export function writeBrandKit(userId: string, kit: BrandKit) {
   window.dispatchEvent(new CustomEvent("brandkit:change"));
 }
 
-// ── DB hydration ─────────────────────────────────────────────────────────────
+// ── DB hydration ────────────────────────────────────────────────────────────
 // The Brand page saves the kit to the Supabase `brand_kits` row — that row is
 // the source of truth; localStorage is only a per-account cache. Hydrating
 // inside the hook (instead of relying on whichever page happens to push DB data
 // into setBrand first) keeps every preview's brand data matching what the
 // Brand page saved.
-
 let lastHydrated = { userId: "", at: 0 };
+
+// Call this after a successful brand kit save so the next useBrandKit mount
+// always fetches fresh data instead of returning the stale cache.
+export function resetHydrationCache() {
+  lastHydrated = { userId: "", at: 0 };
+}
 
 async function hydrateFromDb(userId: string): Promise<void> {
   // dedupe the burst of hook instances mounting on the same page
@@ -114,6 +120,7 @@ async function hydrateFromDb(userId: string): Promise<void> {
     )
     .eq("user_id", userId)
     .maybeSingle();
+
   if (error || !data) return;
 
   const d = data as unknown as Record<string, unknown>;
@@ -127,17 +134,18 @@ async function hydrateFromDb(userId: string): Promise<void> {
   const put = (key: keyof BrandKit, value: string | undefined) => {
     if (value !== undefined) (fromDb as Record<string, string>)[key] = value;
   };
-  put("clinicName", str(d.clinic_name));
-  put("doctorName", str(d.doctor_name));
-  put("specialty", str(d.specialty));
-  put("phone", str(d.phone));
-  put("website", str(d.website));
-  put("address", str(d.address));
-  put("primaryColor", str(colors.primary));
+
+  put("clinicName",     str(d.clinic_name));
+  put("doctorName",     str(d.doctor_name));
+  put("specialty",      str(d.specialty));
+  put("phone",          str(d.phone));
+  put("website",        str(d.website));
+  put("address",        str(d.address));
+  put("primaryColor",   str(colors.primary));
   put("secondaryColor", str(colors.secondary));
-  put("logo", str(d.logo_url));
-  put("doctorPhoto", str(d.doctor_photo_url));
-  put("clinicPhoto", str(d.clinic_photo_url));
+  put("logo",           str(d.logo_url));
+  put("doctorPhoto",    str(d.doctor_photo_url));
+  put("clinicPhoto",    str(d.clinic_photo_url));
 
   // writeBrandKit dispatches "brandkit:change", so every mounted hook instance
   // picks the merged kit up.
@@ -186,6 +194,7 @@ export function useBrandKit(): [BrandKit, (next: BrandKit) => void] {
     setKit(next);
     if (userId) writeBrandKit(userId, next);
   };
+
   return [kit, save];
 }
 
