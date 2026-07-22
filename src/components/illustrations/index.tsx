@@ -106,7 +106,7 @@ export function GlucoseMeterIllustration({ line = "#111827", accent = "#dc2626",
   );
 }
 
-export function StethoscopeIllustration({ line = "#111827", accent = "#0d9488", className, style }: IllustrationProps) {
+export function StethoscopeIllustration({ line = "#111827", accent = "var(--color-primary)", className, style }: IllustrationProps) {
   return (
     <Svg className={className} style={style}>
       <circle cx="100" cy="100" r="86" fill={accent} opacity={0.1} />
@@ -171,7 +171,7 @@ export function WarningTriangleIllustration({ line = "#111827", accent = "#f9731
   );
 }
 
-export function WellnessAbstractIllustration({ line = "#111827", accent = "#0d9488", className, style }: IllustrationProps) {
+export function WellnessAbstractIllustration({ line = "#111827", accent = "var(--color-primary)", className, style }: IllustrationProps) {
   return (
     <Svg className={className} style={style}>
       <circle cx="100" cy="100" r="86" fill={accent} opacity={0.1} />

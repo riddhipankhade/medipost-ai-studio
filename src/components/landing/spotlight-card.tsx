@@ -43,7 +43,7 @@ export const SpotlightCard = React.forwardRef<HTMLDivElement, SpotlightCardProps
           className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover/spotlight:opacity-100"
           style={{
             background:
-              "radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 0%), oklch(0.58 0.1 199 / 0.1), transparent 70%)",
+              "radial-gradient(240px circle at var(--spot-x, 50%) var(--spot-y, 0%), color-mix(in oklch, var(--color-primary) 10%, transparent), transparent 70%)",
           }}
         />
         <div className="relative">{children}</div>

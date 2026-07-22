@@ -36,7 +36,7 @@ export function BrowserFrame({ title = "medipost.ai", className, glow = true, ti
         <div
           aria-hidden
           className="absolute -inset-6 -z-10 rounded-[2rem] opacity-70 blur-3xl"
-          style={{ background: "radial-gradient(closest-side, oklch(0.58 0.1 199 / 0.25), transparent)" }}
+          style={{ background: "radial-gradient(closest-side, color-mix(in oklch, var(--color-primary) 25%, transparent), transparent)" }}
         />
       )}
       <motion.div

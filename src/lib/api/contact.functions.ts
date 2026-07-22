@@ -35,7 +35,7 @@ export const sendContactEmail = createServerFn({ method: "POST" })
       subject: `New contact message from ${data.name}`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;">
-          <h2 style="margin:0 0 16px;font-size:20px;color:#0d9488;">New Contact Form Submission</h2>
+          <h2 style="margin:0 0 16px;font-size:20px;color:#007594;">New Contact Form Submission</h2>
           <table style="width:100%;border-collapse:collapse;">
             <tr>
               <td style="padding:8px 0;color:#6b7280;font-size:13px;width:80px;">Name</td>
@@ -44,7 +44,7 @@ export const sendContactEmail = createServerFn({ method: "POST" })
             <tr>
               <td style="padding:8px 0;color:#6b7280;font-size:13px;">Email</td>
               <td style="padding:8px 0;font-size:14px;">
-                <a href="mailto:${data.email}" style="color:#0d9488;">${data.email}</a>
+                <a href="mailto:${data.email}" style="color:#007594;">${data.email}</a>
               </td>
             </tr>
             <tr>

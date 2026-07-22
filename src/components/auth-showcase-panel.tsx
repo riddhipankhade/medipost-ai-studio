@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { Check, Gift, Sparkles, Stethoscope } from "lucide-react";
+import { Check, Gift, Sparkles } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { FadeIn } from "@/components/motion";
 import { cn } from "@/lib/utils";
@@ -31,7 +31,7 @@ export interface ShowcaseCreative {
   hashtags: string;
 }
 
-/** Floating card showing a real generated creative, rendered in glass on the teal panel. Purely decorative. */
+/** Floating card showing a real generated creative, rendered in glass on the primary-color panel. Purely decorative. */
 function FloatingCreative({ creative, pills }: { creative: ShowcaseCreative; pills: [string, string, string] }) {
   return (
     <div className="relative" aria-hidden>
@@ -173,7 +173,7 @@ export function AuthShowcasePanel({ headline, subtext, creative = defaultCreativ
         />
         <div
           className="absolute -bottom-40 -right-32 h-[500px] w-[500px] rounded-full opacity-40 blur-[110px] animate-mesh-drift"
-          style={{ background: "radial-gradient(closest-side, oklch(0.85 0.12 170 / 0.5), transparent)", animationDelay: "-9s" }}
+          style={{ background: "radial-gradient(closest-side, color-mix(in oklch, var(--color-brand-sky) 50%, transparent), transparent)", animationDelay: "-9s" }}
         />
         <div
           className="absolute inset-0 opacity-[0.07]"
@@ -189,8 +189,8 @@ export function AuthShowcasePanel({ headline, subtext, creative = defaultCreativ
 
       <FadeIn className="relative z-10">
         <Link to="/" className="flex items-center gap-2.5 font-semibold text-white">
-          <span className="grid h-8 w-8 place-items-center rounded-lg border border-white/25 bg-white/15 backdrop-blur">
-            <Stethoscope className="h-4 w-4" strokeWidth={2.25} />
+          <span className="grid h-8 w-8 place-items-center rounded-lg border border-white/25 bg-white/85 backdrop-blur p-1">
+            <img src="/logo-icon.png" alt="" className="h-full w-full" />
           </span>
           <span className="text-[1.05rem] tracking-tight">
             Medipost <span className="text-white/85">AI</span>

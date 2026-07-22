@@ -335,7 +335,7 @@ function SubscriptionPage() {
                 <div className="absolute -inset-1.5 rounded-[1.5rem] bg-gradient-to-r from-primary/50 via-primary/20 to-primary/50 blur-xl opacity-60 animate-card-glow -z-10" />
               )}
               {plan.popular && (
-                <Badge className="absolute -top-3 left-6 z-10 overflow-hidden border-transparent bg-primary text-primary-foreground shadow-[0_2px_12px_-2px_oklch(0.58_0.1_199_/_0.6)]">
+                <Badge className="absolute -top-3 left-6 z-10 overflow-hidden border-transparent bg-primary text-primary-foreground shadow-[0_2px_12px_-2px_color-mix(in_oklch,var(--color-primary)_60%,transparent)]">
                   Most popular
                   <span
                     aria-hidden
@@ -404,7 +404,7 @@ function SubscriptionPage() {
                     className={cn(
                       "w-full mt-7 gap-2 transition-transform duration-200",
                       plan.popular &&
-                        "shadow-[0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.6)] hover:shadow-[0_14px_36px_-8px_oklch(0.58_0.1_199_/_0.7)]",
+                        "shadow-[0_10px_30px_-10px_color-mix(in_oklch,var(--color-primary)_60%,transparent)] hover:shadow-[0_14px_36px_-8px_color-mix(in_oklch,var(--color-primary)_70%,transparent)]",
                     )}
                     variant={plan.popular ? "default" : "outline"}
                     onClick={() => handleUpgrade(plan.key)}

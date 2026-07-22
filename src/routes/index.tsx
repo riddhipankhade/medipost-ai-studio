@@ -221,7 +221,7 @@ function Landing() {
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Ready to delight your patients?</h2>
           <p className="text-muted-foreground mt-3 leading-relaxed">Join 1,200+ doctors creating with Medipost AI.</p>
           <div className="mt-8 flex justify-center gap-3">
-            <Button size="lg" asChild className="gap-2 shadow-[0_0_0_1px_var(--color-primary)_inset,0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.5)]">
+            <Button size="lg" asChild className="gap-2 shadow-[0_0_0_1px_var(--color-primary)_inset,0_10px_30px_-10px_color-mix(in_oklch,var(--color-primary)_50%,transparent)]">
               <Link to="/register"><Sparkles className="h-4 w-4" /> Start free</Link>
             </Button>
             <Button size="lg" variant="outline" asChild><Link to="/login">Sign in</Link></Button>
@@ -327,7 +327,7 @@ function Plan({
         <Badge
           className={cn(
             "absolute -top-3 left-6 z-10 overflow-hidden border-transparent",
-            highlight ? "bg-primary text-primary-foreground shadow-[0_2px_12px_-2px_oklch(0.58_0.1_199_/_0.6)]" : "bg-success/10 text-success border-success/20",
+            highlight ? "bg-primary text-primary-foreground shadow-[0_2px_12px_-2px_color-mix(in_oklch,var(--color-primary)_60%,transparent)]" : "bg-success/10 text-success border-success/20",
           )}
         >
           {badge}
@@ -368,7 +368,7 @@ function Plan({
           asChild
           className={cn(
             "w-full mt-7 transition-transform duration-200",
-            highlight && "shadow-[0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.6)] hover:shadow-[0_14px_36px_-8px_oklch(0.58_0.1_199_/_0.7)]",
+            highlight && "shadow-[0_10px_30px_-10px_color-mix(in_oklch,var(--color-primary)_60%,transparent)] hover:shadow-[0_14px_36px_-8px_color-mix(in_oklch,var(--color-primary)_70%,transparent)]",
           )}
           variant={highlight ? "default" : "outline"}
         >

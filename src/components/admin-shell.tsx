@@ -55,10 +55,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-foreground/2">
       <aside className="hidden md:flex w-64 flex-col border-r border-border bg-sidebar">
-        <div className="px-5 py-5 border-b border-border flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-foreground text-background flex items-center justify-center">
-            <ShieldCheck className="h-4 w-4" />
-          </div>
+        <div className="px-5 py-5 border-b border-border flex items-center gap-2.5">
+          <img src="/logo-icon.png" alt="Medipost AI" className="h-8 w-8" />
           <div>
             <p className="text-sm font-semibold leading-tight">Medipost</p>
             <p className="text-[11px] text-muted-foreground leading-tight">Admin Portal</p>

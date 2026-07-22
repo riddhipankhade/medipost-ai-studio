@@ -52,6 +52,11 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-sky: var(--brand-sky);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -68,52 +73,64 @@
 }
 
 :root {
-  /* Calm, clinical, trust-first palette. Teal is the only accent — reserved
-     for primary actions, active states and key data points. Everything else
-     is neutral gray-blue so the product reads as a medical tool, not a hype
-     startup landing page. */
+  /* Design system extracted from the Medipost AI logo: a deep teal cross/
+     arrow mark blending into a mid-teal bar-chart, with a bright cyan "AI"
+     highlight. Those three inks are the fixed brand primitives below — they
+     never change between themes. Every semantic token (primary, ring,
+     sidebar, charts, info) derives from them, so retuning the brand only
+     ever means editing this block. Success/warning/destructive stay
+     universally-recognizable green/amber/red, tuned only enough to sit
+     comfortably next to a cooler teal neutral scale. */
   --radius: 0.875rem;
-  --background: oklch(0.99 0.003 240);
-  --foreground: oklch(0.24 0.025 235);
-  --surface: oklch(0.975 0.006 235);
+
+  /* Fixed brand primitives (from the logo — constant across light/dark) */
+  --brand-navy: oklch(0.36 0.11 222);
+  --brand-blue: oklch(0.52 0.105 222);
+  --brand-sky: oklch(0.79 0.135 206);
+
+  --background: oklch(0.99 0.004 222);
+  --foreground: oklch(0.23 0.03 222);
+  --surface: oklch(0.975 0.007 222);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.24 0.025 235);
+  --card-foreground: oklch(0.23 0.03 222);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.24 0.025 235);
-  --primary: oklch(0.58 0.1 199);
+  --popover-foreground: oklch(0.23 0.03 222);
+  --primary: var(--brand-blue);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.965 0.004 240);
-  --secondary-foreground: oklch(0.34 0.03 235);
-  --muted: oklch(0.965 0.004 240);
-  --muted-foreground: oklch(0.52 0.02 235);
-  --accent: oklch(0.955 0.006 235);
-  --accent-foreground: oklch(0.3 0.03 235);
+  --secondary: oklch(0.965 0.007 222);
+  --secondary-foreground: oklch(0.34 0.035 222);
+  --muted: oklch(0.965 0.007 222);
+  --muted-foreground: oklch(0.52 0.02 222);
+  --accent: oklch(0.95 0.025 206);
+  --accent-foreground: oklch(0.3 0.06 212);
   --destructive: oklch(0.577 0.21 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
-  --success: oklch(0.62 0.12 155);
+  --success: oklch(0.54 0.14 148);
   --success-foreground: oklch(1 0 0);
-  --warning: oklch(0.75 0.14 75);
-  --warning-foreground: oklch(0.28 0.05 75);
-  --border: oklch(0.91 0.007 235);
-  --input: oklch(0.91 0.007 235);
-  --ring: oklch(0.58 0.1 199);
-  --chart-1: oklch(0.58 0.1 199);
-  --chart-2: oklch(0.65 0.12 220);
-  --chart-3: oklch(0.7 0.11 170);
-  --chart-4: oklch(0.75 0.1 250);
-  --chart-5: oklch(0.6 0.03 235);
+  --warning: oklch(0.79 0.15 68);
+  --warning-foreground: oklch(0.27 0.05 68);
+  --info: oklch(0.52 0.13 205);
+  --info-foreground: oklch(1 0 0);
+  --border: oklch(0.91 0.009 222);
+  --input: oklch(0.91 0.009 222);
+  --ring: var(--primary);
+  --chart-1: var(--brand-blue);
+  --chart-2: var(--brand-sky);
+  --chart-3: var(--brand-navy);
+  --chart-4: oklch(0.79 0.15 68);
+  --chart-5: oklch(0.6 0.03 222);
   --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.32 0.025 235);
-  --sidebar-primary: oklch(0.58 0.1 199);
+  --sidebar-foreground: oklch(0.28 0.03 222);
+  --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.955 0.02 199);
-  --sidebar-accent-foreground: oklch(0.3 0.05 199);
-  --sidebar-border: oklch(0.93 0.006 235);
-  --sidebar-ring: oklch(0.58 0.1 199);
-  --teal: oklch(0.58 0.1 199);
-  --teal-foreground: oklch(1 0 0);
-  --brand-gradient: linear-gradient(135deg, oklch(0.58 0.1 199), oklch(0.62 0.09 215));
-  --shadow-color: 220 20% 45%;
+  --sidebar-accent: oklch(0.95 0.03 212);
+  --sidebar-accent-foreground: oklch(0.3 0.06 212);
+  --sidebar-border: oklch(0.93 0.008 222);
+  --sidebar-ring: var(--primary);
+  --teal: var(--primary);
+  --teal-foreground: var(--primary-foreground);
+  --brand-gradient: linear-gradient(135deg, var(--brand-navy), var(--primary) 55%, var(--brand-sky));
+  --shadow-color: 210 20% 45%;
   --shadow-xs: 0 1px 2px hsl(var(--shadow-color) / 0.05);
   --shadow-sm: 0 1px 3px hsl(var(--shadow-color) / 0.06), 0 1px 2px hsl(var(--shadow-color) / 0.04);
   --shadow-md: 0 4px 10px -2px hsl(var(--shadow-color) / 0.07), 0 2px 6px -2px hsl(var(--shadow-color) / 0.05);
@@ -122,47 +139,49 @@
 }
 
 .dark {
-  --background: oklch(0.19 0.015 235);
-  --foreground: oklch(0.94 0.006 235);
-  --surface: oklch(0.22 0.015 235);
-  --card: oklch(0.23 0.016 235);
-  --card-foreground: oklch(0.94 0.006 235);
-  --popover: oklch(0.23 0.016 235);
-  --popover-foreground: oklch(0.94 0.006 235);
-  --primary: oklch(0.7 0.1 199);
-  --primary-foreground: oklch(0.16 0.02 235);
-  --secondary: oklch(0.27 0.016 235);
-  --secondary-foreground: oklch(0.94 0.006 235);
-  --muted: oklch(0.27 0.016 235);
-  --muted-foreground: oklch(0.66 0.015 235);
-  --accent: oklch(0.29 0.02 210);
-  --accent-foreground: oklch(0.94 0.006 235);
+  --background: oklch(0.19 0.018 222);
+  --foreground: oklch(0.94 0.008 222);
+  --surface: oklch(0.22 0.018 222);
+  --card: oklch(0.23 0.02 222);
+  --card-foreground: oklch(0.94 0.008 222);
+  --popover: oklch(0.23 0.02 222);
+  --popover-foreground: oklch(0.94 0.008 222);
+  --primary: oklch(0.68 0.12 212);
+  --primary-foreground: oklch(0.17 0.03 222);
+  --secondary: oklch(0.27 0.018 222);
+  --secondary-foreground: oklch(0.94 0.008 222);
+  --muted: oklch(0.27 0.018 222);
+  --muted-foreground: oklch(0.66 0.016 222);
+  --accent: oklch(0.29 0.03 212);
+  --accent-foreground: oklch(0.94 0.008 222);
   --destructive: oklch(0.7 0.18 22.216);
   --destructive-foreground: oklch(0.984 0.003 247.858);
-  --success: oklch(0.68 0.12 155);
-  --success-foreground: oklch(0.16 0.03 155);
-  --warning: oklch(0.78 0.13 75);
-  --warning-foreground: oklch(0.22 0.05 75);
+  --success: oklch(0.66 0.14 148);
+  --success-foreground: oklch(0.15 0.03 148);
+  --warning: oklch(0.8 0.14 68);
+  --warning-foreground: oklch(0.22 0.05 68);
+  --info: oklch(0.7 0.13 205);
+  --info-foreground: oklch(0.16 0.03 205);
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.7 0.1 199);
-  --chart-1: oklch(0.7 0.1 199);
-  --chart-2: oklch(0.72 0.11 220);
-  --chart-3: oklch(0.75 0.1 170);
-  --chart-4: oklch(0.78 0.09 250);
-  --chart-5: oklch(0.7 0.02 235);
-  --sidebar: oklch(0.21 0.015 235);
-  --sidebar-foreground: oklch(0.9 0.006 235);
-  --sidebar-primary: oklch(0.7 0.1 199);
-  --sidebar-primary-foreground: oklch(0.16 0.02 235);
-  --sidebar-accent: oklch(0.28 0.024 205);
-  --sidebar-accent-foreground: oklch(0.94 0.006 235);
+  --ring: var(--primary);
+  --chart-1: var(--primary);
+  --chart-2: oklch(0.78 0.135 206);
+  --chart-3: oklch(0.55 0.13 222);
+  --chart-4: oklch(0.8 0.14 68);
+  --chart-5: oklch(0.7 0.02 222);
+  --sidebar: oklch(0.21 0.018 222);
+  --sidebar-foreground: oklch(0.9 0.008 222);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: oklch(0.17 0.03 222);
+  --sidebar-accent: oklch(0.3 0.035 212);
+  --sidebar-accent-foreground: oklch(0.94 0.008 222);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.7 0.1 199);
-  --teal: oklch(0.7 0.1 199);
-  --teal-foreground: oklch(0.16 0.02 235);
-  --brand-gradient: linear-gradient(135deg, oklch(0.7 0.1 199), oklch(0.74 0.09 215));
-  --shadow-color: 220 40% 2%;
+  --sidebar-ring: var(--primary);
+  --teal: var(--primary);
+  --teal-foreground: var(--primary-foreground);
+  --brand-gradient: linear-gradient(135deg, var(--brand-navy), var(--primary) 60%, oklch(0.78 0.135 206));
+  --shadow-color: 210 40% 2%;
 }
 
 @layer base {
@@ -207,10 +226,10 @@
   }
 
   /* Faint tile of medical line icons (cross, ECG, tooth, pill, heart, DNA,
-     stethoscope, flask) in the brand teal/green. Revealed near the cursor by
-     AmbientCursor via a mask — invisible on its own. */
+     stethoscope, flask) in the brand navy/sky-blue. Revealed near the cursor
+     by AmbientCursor via a mask — invisible on its own. */
   .bg-medical-pattern {
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='360' height='360' fill='none' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><g stroke='%230d94a8' transform='translate(28,24) scale(1.15)'><path d='M9 3h6v6h6v6h-6v6H9v-6H3V9h6z'/></g><g stroke='%232fae7e' transform='translate(140,52) scale(1.2) rotate(-8 12 12)'><path d='M2 12h4l2-6 4 12 3-8 1.5 2H22'/></g><g stroke='%230d94a8' transform='translate(262,20) scale(1.1) rotate(10 12 12)'><path d='M12 3C9 3 7 5 7 8c0 2.5 1 3.5 1 6 0 2 .6 7 2 7 1.2 0 1-4 2-4s.8 4 2 4c1.4 0 2-5 2-7 0-2.5 1-3.5 1-6 0-3-2-5-5-5z'/></g><g stroke='%232fae7e' transform='translate(52,142) scale(1.15) rotate(40 12 12)'><rect x='3.5' y='8.5' width='17' height='7' rx='3.5'/><path d='M12 8.5v7'/></g><g stroke='%230d94a8' transform='translate(178,150) scale(1.1)'><path d='M5 3v5a5 5 0 0 0 10 0V3'/><path d='M10 13v3a4 4 0 0 0 8 0v-2'/><circle cx='18' cy='11' r='2'/></g><g stroke='%232fae7e' transform='translate(288,138) scale(1.15) rotate(-12 12 12)'><path d='M12 20.5S3.5 15 3.5 9.2C3.5 6.3 5.7 4.5 8 4.5c1.7 0 3.2 1 4 2.4.8-1.4 2.3-2.4 4-2.4 2.3 0 4.5 1.8 4.5 4.7 0 5.8-8.5 11.3-8.5 11.3z'/></g><g stroke='%232fae7e' transform='translate(30,268) scale(1.15) rotate(6 12 12)'><path d='M8 3c0 4 8 4 8 8s-8 4-8 8'/><path d='M16 3c0 4-8 4-8 8s8 4 8 8'/><path d='M9.5 7.5h5M9.5 16.5h5'/></g><g stroke='%230d94a8' transform='translate(152,262) scale(1.15) rotate(-6 12 12)'><path d='M10 3v6L5 18a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3'/><path d='M8.5 3h7M8 15h8'/></g><g stroke='%232fae7e' transform='translate(272,270) scale(1.1) rotate(14 12 12)'><path d='M9 3h6v6h6v6h-6v6H9v-6H3V9h6z'/></g></svg>");
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='360' height='360' fill='none' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><g stroke='%23007594' transform='translate(28,24) scale(1.15)'><path d='M9 3h6v6h6v6h-6v6H9v-6H3V9h6z'/></g><g stroke='%2302d2e5' transform='translate(140,52) scale(1.2) rotate(-8 12 12)'><path d='M2 12h4l2-6 4 12 3-8 1.5 2H22'/></g><g stroke='%23007594' transform='translate(262,20) scale(1.1) rotate(10 12 12)'><path d='M12 3C9 3 7 5 7 8c0 2.5 1 3.5 1 6 0 2 .6 7 2 7 1.2 0 1-4 2-4s.8 4 2 4c1.4 0 2-5 2-7 0-2.5 1-3.5 1-6 0-3-2-5-5-5z'/></g><g stroke='%2302d2e5' transform='translate(52,142) scale(1.15) rotate(40 12 12)'><rect x='3.5' y='8.5' width='17' height='7' rx='3.5'/><path d='M12 8.5v7'/></g><g stroke='%23007594' transform='translate(178,150) scale(1.1)'><path d='M5 3v5a5 5 0 0 0 10 0V3'/><path d='M10 13v3a4 4 0 0 0 8 0v-2'/><circle cx='18' cy='11' r='2'/></g><g stroke='%2302d2e5' transform='translate(288,138) scale(1.15) rotate(-12 12 12)'><path d='M12 20.5S3.5 15 3.5 9.2C3.5 6.3 5.7 4.5 8 4.5c1.7 0 3.2 1 4 2.4.8-1.4 2.3-2.4 4-2.4 2.3 0 4.5 1.8 4.5 4.7 0 5.8-8.5 11.3-8.5 11.3z'/></g><g stroke='%2302d2e5' transform='translate(30,268) scale(1.15) rotate(6 12 12)'><path d='M8 3c0 4 8 4 8 8s-8 4-8 8'/><path d='M16 3c0 4-8 4-8 8s8 4 8 8'/><path d='M9.5 7.5h5M9.5 16.5h5'/></g><g stroke='%23007594' transform='translate(152,262) scale(1.15) rotate(-6 12 12)'><path d='M10 3v6L5 18a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3'/><path d='M8.5 3h7M8 15h8'/></g><g stroke='%2302d2e5' transform='translate(272,270) scale(1.1) rotate(14 12 12)'><path d='M9 3h6v6h6v6h-6v6H9v-6H3V9h6z'/></g></svg>");
     background-size: 280px 280px;
     opacity: 0.55;
   }

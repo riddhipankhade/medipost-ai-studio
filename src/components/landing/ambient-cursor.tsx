@@ -93,7 +93,7 @@ export function AmbientCursor() {
           className="h-[380px] w-[380px] rounded-full blur-[70px]"
           style={{
             background:
-              "radial-gradient(closest-side, oklch(0.58 0.1 199 / 0.2), oklch(0.66 0.13 165 / 0.1) 55%, transparent 72%)",
+              "radial-gradient(closest-side, color-mix(in oklch, var(--color-primary) 20%, transparent), color-mix(in oklch, var(--color-brand-sky) 10%, transparent) 55%, transparent 72%)",
           }}
         />
       </div>
