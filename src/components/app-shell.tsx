@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { LayoutDashboard, Sparkles, History, CreditCard, LogOut, Palette, Settings, Menu } from "lucide-react";
 import { motion } from "framer-motion";
@@ -90,6 +90,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!loading && !session) {
@@ -100,6 +101,12 @@ export function AppShell() {
   // navigating from the sheet should close it
   useEffect(() => {
     setMobileNavOpen(false);
+  }, [pathname]);
+
+  // <main> is part of the persistent shell and only the <Outlet/> content
+  // swaps on navigation, so its scroll position carries over between pages.
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0);
   }, [pathname]);
 
   if (loading || !session) return null;
@@ -125,7 +132,7 @@ export function AppShell() {
         <SidebarNav pathname={pathname} animated />
         <UserFooter initials={initials} displayName={displayName} planName={planName} onSignOut={handleSignOut} />
       </aside>
-      <main className="flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden">
+      <main ref={mainRef} className="flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden">
         <header className="md:hidden sticky top-0 z-20 flex items-center justify-between border-b border-border/70 bg-background/90 backdrop-blur-md px-4 py-3">
           <Brand to="/dashboard" />
           <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
