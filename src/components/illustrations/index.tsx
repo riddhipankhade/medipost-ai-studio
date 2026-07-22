@@ -234,14 +234,36 @@ const TOPIC_KEYWORDS: [RegExp, IllustrationKey][] = [
   [/warning|emergency|danger|red flag/i, "warning-triangle"],
 ];
 
+/**
+ * Strips common medical specialty suffixes so that "neurology" and "neurologist"
+ * both reduce to "neurolog" and fuzzy-match each other.
+ */
+function stemSpecialty(s: string): string {
+  const l = s.toLowerCase().trim();
+  if (l.endsWith("ologist")) return l.slice(0, -7); // neurologist  → neurolog
+  if (l.endsWith("ology"))   return l.slice(0, -5); // neurology    → neurolog ✓
+  if (l.endsWith("ician"))   return l.slice(0, -5); // pediatrician → pediat
+  if (l.endsWith("ics"))     return l.slice(0, -3); // orthopedics  → orthoped
+  if (l.endsWith("ist"))     return l.slice(0, -3); // therapist    → therap
+  if (l.endsWith("ry"))      return l.slice(0, -2); // surgery      → surge
+  return l;
+}
+
 /** Resolves the most relevant illustration for a given specialty/topic/category, with graceful fallback. */
 export function illustrationFor(specialty: string, topic: string, category?: string): IllustrationKey {
   if (category && CATEGORY_ILLUSTRATION_OVERRIDE[category]) return CATEGORY_ILLUSTRATION_OVERRIDE[category]!;
   for (const [pattern, key] of TOPIC_KEYWORDS) {
     if (pattern.test(topic)) return key;
   }
-  const bySpecialty = SPECIALTY_ILLUSTRATIONS[specialty] ?? SPECIALTY_ILLUSTRATIONS.Default;
-  return bySpecialty[0];
+  // Direct lookup first (fast path)
+  if (SPECIALTY_ILLUSTRATIONS[specialty]) return SPECIALTY_ILLUSTRATIONS[specialty][0];
+  // Fuzzy match: stem both sides so "neurology" matches "Neurologist"
+  const needle = stemSpecialty(specialty);
+  const match = Object.keys(SPECIALTY_ILLUSTRATIONS).find((key) => {
+    const stem = stemSpecialty(key);
+    return stem.includes(needle) || needle.includes(stem);
+  });
+  return (match ? SPECIALTY_ILLUSTRATIONS[match] : SPECIALTY_ILLUSTRATIONS.Default)[0];
 }
 
 export function IllustrationFor({ specialty, topic, category, ...props }: IllustrationProps & { specialty: string; topic: string; category?: string }) {
