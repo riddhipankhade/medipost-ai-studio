@@ -72,7 +72,7 @@ const PLANS = [
     period:      "/month",
     description: "For active doctors building their personal brand.",
     icon:        Crown,
-    popular:     true,
+    popular:     false,
     free:        false,
     gens:        "60 posts / month",
     features: [
@@ -325,7 +325,7 @@ function SubscriptionPage() {
       </div>
 
       {/* Plan cards */}
-      <div className="grid md:grid-cols-3 gap-5 items-start">
+      <div className="grid md:grid-cols-3 gap-5 items-stretch">
         {PLANS.map((plan) => {
           const Icon      = plan.icon;
           const isCurrent = currentPlanName === plan.key;
@@ -333,26 +333,14 @@ function SubscriptionPage() {
           const pricing   = getDiscountedPrice(plan);
 
           return (
-            <div key={plan.key} className="relative">
-              {plan.popular && (
-                <div className="absolute -inset-1.5 rounded-[1.5rem] bg-gradient-to-r from-primary/50 via-primary/20 to-primary/50 blur-xl opacity-60 animate-card-glow -z-10" />
-              )}
-              {plan.popular && (
-                <Badge className="absolute -top-3 left-6 z-10 overflow-hidden border-transparent bg-primary text-primary-foreground shadow-[0_2px_12px_-2px_color-mix(in_oklch,var(--color-primary)_60%,transparent)]">
-                  Most popular
-                  <span
-                    aria-hidden
-                    className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer-sweep bg-gradient-to-r from-transparent via-white/60 to-transparent"
-                  />
-                </Badge>
-              )}
+            <div key={plan.key} className="relative flex flex-col">
               {isCurrent && (
                 <Badge className="absolute -top-3 right-6 z-10 border-transparent bg-success/10 text-success">
                   Current plan
                 </Badge>
               )}
 
-              <SpotlightCard active={plan.popular} className="p-7 transition-transform duration-200 hover:-translate-y-1.5">
+              <SpotlightCard active={false} className="p-7 transition-transform duration-200 hover:-translate-y-1.5 flex flex-col h-full">
                 <div
                   className={cn(
                     "h-10 w-10 rounded-xl grid place-items-center mb-4",
@@ -391,7 +379,7 @@ function SubscriptionPage() {
                 <p className="text-sm text-primary mt-1.5 font-medium">{plan.gens}</p>
                 <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{plan.description}</p>
 
-                <ul className="space-y-2.5 text-sm mt-6">
+                <ul className="space-y-2.5 text-sm mt-6 flex-1">
                   {plan.features.map((f) => (
                     <li key={f} className="flex gap-2.5">
                       <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />

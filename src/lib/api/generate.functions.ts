@@ -93,49 +93,66 @@ async function callGeminiText(
   throw new Error("AI service is overloaded right now. Please try again in a moment.");
 }
 
-async function callPollinationsImage(
+async function callCloudflareImage(
   prompt: string,
-): Promise<{ dataUrl: string; imageUrl: string }> {
-  const encoded  = encodeURIComponent(prompt);
-  const seed     = Date.now();
-  const imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1080&height=1080&model=flux&nologo=true&seed=${seed}`;
+): Promise<{ dataUrl: string }> {
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken  = process.env.CLOUDFLARE_API_TOKEN;
+
+  if (!accountId || !apiToken) {
+    throw new Error(
+      "Image generation is not configured. " +
+      "Add CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN to your .env file.",
+    );
+  }
+
+  const endpoint =
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     let res: Response;
     try {
-      res = await fetch(imageUrl, { signal: AbortSignal.timeout(25_000) });
+      res = await fetch(endpoint, {
+        method:  "POST",
+        headers: {
+          Authorization:  `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body:   JSON.stringify({ prompt, num_steps: 4 }),
+        signal: AbortSignal.timeout(60_000),
+      });
     } catch (networkErr: any) {
-      console.warn(`[Pollinations] Network error on attempt ${attempt}:`, networkErr?.message);
+      console.warn(`[Cloudflare AI] Network error on attempt ${attempt}:`, networkErr?.message);
       if (attempt < 2) {
         await new Promise((r) => setTimeout(r, 2000));
         continue;
       }
       throw new Error(
         "Image generation service is temporarily unreachable. " +
-        "Please wait a moment and try again."
+        "Please wait a moment and try again.",
       );
     }
 
     if (res.ok) {
       const buffer   = await res.arrayBuffer();
       const b64      = Buffer.from(buffer).toString("base64");
-      const mimeType = res.headers.get("content-type") ?? "image/jpeg";
-      return {
-        dataUrl:  `data:${mimeType};base64,${b64}`,
-        imageUrl,
-      };
+      const mimeType = res.headers.get("content-type") ?? "image/png";
+      return { dataUrl: `data:${mimeType};base64,${b64}` };
     }
 
     const isRetryable = res.status === 429 || res.status >= 500;
     if (attempt < 2 && isRetryable) {
-      console.warn(`[Pollinations] Attempt ${attempt} got ${res.status}. Retrying in 2000ms…`);
+      console.warn(`[Cloudflare AI] Attempt ${attempt} got ${res.status}. Retrying in 2000ms…`);
       await new Promise((r) => setTimeout(r, 2000));
       continue;
     }
 
+    const errBody = await res.text().catch(() => "");
     if (res.status === 429)
-      throw new Error("Image generation is rate-limited. Please wait 30 seconds and try again.");
-    throw new Error(`Image generation failed (${res.status}). Please try again.`);
+      throw new Error("Image generation is rate-limited. Please try again shortly.");
+    if (res.status === 401 || res.status === 403)
+      throw new Error("Cloudflare API token is invalid. Check CLOUDFLARE_API_TOKEN in your .env.");
+    throw new Error(`Image generation failed (${res.status}): ${errBody.slice(0, 200)}`);
   }
 
   throw new Error("Image generation failed after 2 attempts. Please try again in a moment.");
@@ -896,57 +913,10 @@ export const generateImage = createServerFn({ method: "POST" })
         .filter(Boolean)
         .join(" ");
 
-      let dataUrl: string;
-      let imageUrl: string;
-      try {
-        ({ dataUrl, imageUrl } = await callPollinationsImage(fullPrompt));
-      } catch (imgErr: any) {
-        throw imgErr;
-      }
+      const { dataUrl } = await callCloudflareImage(fullPrompt);
 
-      if (data.contentId) {
-        let storedUrl = imageUrl;
-        if (data.slideIndex !== undefined) {
-          const { data: row } = await supabase
-            .from("content_generations")
-            .select("generated_image_url")
-            .eq("id", data.contentId)
-            .eq("user_id", user.id)
-            .maybeSingle();
-          let urls: (string | null)[] = [];
-          const existing = row?.generated_image_url;
-          if (existing?.startsWith("[")) {
-            try { urls = JSON.parse(existing); } catch { urls = []; }
-          }
-          const count = Math.max(data.slideCount ?? 0, data.slideIndex + 1, urls.length);
-          while (urls.length < count) urls.push(null);
-          urls[data.slideIndex] = imageUrl;
-          storedUrl = JSON.stringify(urls);
-        }
-        const { error: updateError } = await supabase
-          .from("content_generations")
-          .update({ generated_image_url: storedUrl })
-          .eq("id", data.contentId)
-          .eq("user_id", user.id);
-        if (updateError) console.error("[generateImage] DB update failed:", updateError.message);
-      } else {
-        const { error: saveError } = await supabase
-          .from("content_generations")
-          .insert({
-            user_id:             user.id,
-            workflow_kind:       "single",
-            content_category:    "educational",
-            specialty:           "",
-            tone:                "Professional",
-            topic:               data.prompt.slice(0, 200),
-            generated_text:      "",
-            generated_image_url: imageUrl,
-            hashtags:            [],
-            status:              "completed",
-            ai_model:            "pollinations-flux",
-          });
-        if (saveError) console.error("[generateImage] DB save failed:", saveError.message);
-      }
+      // Cloudflare returns ephemeral binary — no persistent public URL.
+      // We skip DB image-URL storage; users regenerate the visual on next visit.
 
       return { dataUrl };
     } catch (error: any) {

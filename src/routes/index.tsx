@@ -13,7 +13,6 @@ import { GeneratedPostPreview } from "@/components/landing/generated-post-previe
 import { AnimatedNumber } from "@/components/landing/animated-number";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { Sparkles, Check, Palette, History, Zap, Crown, Building2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { SpotlightCard } from "@/components/landing/spotlight-card";
 
 export const Route = createFileRoute("/")({
@@ -96,13 +95,6 @@ function Landing() {
             <p className="text-muted-foreground mt-3 leading-relaxed">
               Pick a format on the left — the preview updates instantly on the right.
             </p>
-            <div className="flex flex-wrap items-center gap-2 mt-5">
-              {["English", "Hindi", "Marathi", "Tamil", "Telugu", "Kannada", "Bengali", "Gujarati", "Punjabi", "Malayalam"].map((l) => (
-                <span key={l} className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-3 py-1.5 text-xs font-medium">
-                  <Check className="h-3 w-3 text-primary" /> {l}
-                </span>
-              ))}
-            </div>
           </Reveal>
           <Reveal direction="scale" delay={0.05}>
             <ContentStudioShowcase />
@@ -196,26 +188,35 @@ function Landing() {
             <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Simple, doctor-friendly pricing</h2>
             <p className="text-muted-foreground mt-3 leading-relaxed">Every new account starts free. Upgrade when your practice grows.</p>
           </Reveal>
-          <RevealGroup className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 items-start">
+          <RevealGroup className="grid md:grid-cols-3 gap-5 items-stretch">
             <RevealItem direction="scale">
               <Plan
-                name="Free Trial"
-                icon={Sparkles}
+                name="Starter"
+                icon={Zap}
                 price={0}
-                gens="10 generations / month"
+                gens="10 posts / month"
                 badge="Included free"
                 cta="Get started free"
-                features={["Auto-applied on signup", "No card required", "All content types"]}
+                features={["Basic AI post generation", "Limited templates (awareness posts, tips)", "Standard tone / style", "Medipost branding watermark"]}
               />
             </RevealItem>
             <RevealItem direction="scale">
-              <Plan name="Starter" icon={Zap} price={499} gens="50 generations / month" features={["All content types", "Copy & save", "Email support"]} />
+              <Plan
+                name="Growth"
+                icon={Crown}
+                price={499}
+                gens="60 posts / month"
+                features={["All templates unlocked", "Platform-specific optimization (LinkedIn, Instagram)", "Custom tone (professional, friendly, authoritative)", "Basic content calendar suggestions", "No watermark"]}
+              />
             </RevealItem>
             <RevealItem direction="scale">
-              <Plan name="Pro" icon={Crown} price={1999} gens="300 generations / month" badge="Most popular" highlight features={["Everything in Starter", "Priority generation", "Content history & search", "Brand tone presets"]} />
-            </RevealItem>
-            <RevealItem direction="scale">
-              <Plan name="Clinic" icon={Building2} price={6999} gens="Unlimited generations" features={["Everything in Pro", "Up to 10 doctor seats", "Team library", "Dedicated success manager"]} />
+              <Plan
+                name="Pro Clinic"
+                icon={Building2}
+                price={999}
+                gens="200 posts / month"
+                features={["Everything in Growth", "Multi-brand / clinic support", "Bulk post generation", "Advanced content calendar (weekly/monthly)", "Priority AI quality (better outputs)", "Priority support"]}
+              />
             </RevealItem>
           </RevealGroup>
         </div>
@@ -228,7 +229,7 @@ function Landing() {
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Ready to delight your patients?</h2>
           <p className="text-muted-foreground mt-3 leading-relaxed">Join 1,200+ doctors creating with Medipost AI.</p>
           <div className="mt-8 flex justify-center gap-3">
-            <Button size="lg" asChild className="gap-2 shadow-[0_0_0_1px_var(--color-primary)_inset,0_10px_30px_-10px_color-mix(in_oklch,var(--color-primary)_50%,transparent)]">
+            <Button size="lg" asChild className="gap-2 shadow-[0_0_0_1px_var(--color-primary)_inset,0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.5)]">
               <Link to="/register"><Sparkles className="h-4 w-4" /> Start free</Link>
             </Button>
             <Button size="lg" variant="outline" asChild><Link to="/login">Sign in</Link></Button>
@@ -312,7 +313,6 @@ function Plan({
   price,
   gens,
   features,
-  highlight,
   badge,
   cta,
 }: {
@@ -321,38 +321,18 @@ function Plan({
   price: number;
   gens: string;
   features: string[];
-  highlight?: boolean;
   badge?: string;
   cta?: string;
 }) {
   return (
-    <div className="relative">
-      {highlight && (
-        <div className="absolute -inset-1.5 rounded-[1.5rem] bg-gradient-to-r from-primary/50 via-primary/20 to-primary/50 blur-xl opacity-60 animate-card-glow -z-10" />
-      )}
+    <div className="relative h-full flex flex-col">
       {badge && (
-        <Badge
-          className={cn(
-            "absolute -top-3 left-6 z-10 overflow-hidden border-transparent",
-            highlight ? "bg-primary text-primary-foreground shadow-[0_2px_12px_-2px_color-mix(in_oklch,var(--color-primary)_60%,transparent)]" : "bg-success/10 text-success border-success/20",
-          )}
-        >
+        <Badge className="absolute -top-3 left-6 z-10 border-transparent bg-success/10 text-success border-success/20">
           {badge}
-          {highlight && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer-sweep bg-gradient-to-r from-transparent via-white/60 to-transparent"
-            />
-          )}
         </Badge>
       )}
-      <SpotlightCard active={highlight} className="p-7 hover:-translate-y-1.5">
-        <div
-          className={cn(
-            "h-10 w-10 rounded-xl grid place-items-center mb-4",
-            highlight ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary",
-          )}
-        >
+      <SpotlightCard active={false} className="p-7 hover:-translate-y-1.5 flex flex-col h-full">
+        <div className="h-10 w-10 rounded-xl grid place-items-center mb-4 bg-primary/10 text-primary">
           <Icon className="h-5 w-5" strokeWidth={1.9} />
         </div>
         <p className="text-sm font-medium text-muted-foreground">{name}</p>
@@ -363,7 +343,7 @@ function Plan({
           {price > 0 && <span className="text-sm text-muted-foreground">/month</span>}
         </div>
         <p className="text-sm text-primary mt-1.5 font-medium">{gens}</p>
-        <ul className="space-y-2.5 text-sm mt-6">
+        <ul className="space-y-2.5 text-sm mt-6 flex-1">
           {features.map((f) => (
             <li key={f} className="flex gap-2.5">
               <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
@@ -371,14 +351,7 @@ function Plan({
             </li>
           ))}
         </ul>
-        <Button
-          asChild
-          className={cn(
-            "w-full mt-7 transition-transform duration-200",
-            highlight && "shadow-[0_10px_30px_-10px_color-mix(in_oklch,var(--color-primary)_60%,transparent)] hover:shadow-[0_14px_36px_-8px_color-mix(in_oklch,var(--color-primary)_70%,transparent)]",
-          )}
-          variant={highlight ? "default" : "outline"}
-        >
+        <Button asChild className="w-full mt-7 transition-transform duration-200" variant="outline">
           <Link to="/register">{cta ?? `Choose ${name}`}</Link>
         </Button>
       </SpotlightCard>
