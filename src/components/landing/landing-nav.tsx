@@ -37,11 +37,11 @@ export function LandingNav() {
         animate={{ height: scrolled ? 60 : 72 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
       >
-        <div className="justify-self-start">
+        <div className="col-start-1 justify-self-start">
           <Brand />
         </div>
         <nav
-          className="hidden md:flex items-center gap-1 text-sm text-muted-foreground justify-self-center"
+          className="col-start-2 hidden md:flex items-center gap-1 text-sm text-muted-foreground justify-self-center"
           onMouseLeave={() => setHovered(null)}
         >
           {links.map((link, i) => (
@@ -62,7 +62,7 @@ export function LandingNav() {
             </a>
           ))}
         </nav>
-        <div className="flex items-center gap-2 justify-self-end">
+        <div className="col-start-3 flex items-center gap-2 justify-self-end">
           <div className="hidden md:flex items-center gap-2">
             <Button variant="outline" size="sm" asChild>
               <a href={`mailto:${ENQUIRY_EMAIL}`}>Enquire</a>
