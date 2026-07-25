@@ -262,6 +262,7 @@ function PostDetailDialog({
         phone:        brand.phone,
         colors: resolveTemplateColors(templateCustom, slideBrand, p?.visual?.colors ?? []),
         imageUrl: directImageUrl ?? null,
+        imageOffsetX: templateCustom.imageOffsetX, imageOffsetY: templateCustom.imageOffsetY, imageZoom: templateCustom.imageZoom,
       }
     : null;
 

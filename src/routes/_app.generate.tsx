@@ -107,11 +107,13 @@ import {
   resolveTheme,
   resolveFestiveColors,
   resolveTemplateColors,
+  DEFAULT_TEMPLATE_IMAGE_OFFSET,
   type SingleCustomization,
   type CarouselCustomization,
   type FestiveCustomization,
   type TemplateCustomization,
 } from "@/lib/post-customization";
+import { Slider } from "@/components/ui/slider";
 import FestiveCard from "@/components/FestiveCard";
 import StoryCard from "@/components/StoryCard";
 import { ShareButtons } from "@/components/ShareButtons";
@@ -1321,6 +1323,49 @@ function MiniColor({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
+/** Reposition/zoom the generated or uploaded photo within the frame's photo window — for
+ *  when the subject lands off-center or gets cropped by a frame's fixed shape. Sliders drive
+ *  the same objectPosition/transform the preview already renders with, so the effect is
+ *  visible live and identical to what downloads. */
+function PhotoAdjustPanel({
+  offsetX, offsetY, zoom, onOffsetXChange, onOffsetYChange, onZoomChange, hasCustom, onReset,
+}: {
+  offsetX: number; offsetY: number; zoom: number;
+  onOffsetXChange: (v: number) => void; onOffsetYChange: (v: number) => void; onZoomChange: (v: number) => void;
+  hasCustom: boolean; onReset: () => void;
+}) {
+  return (
+    <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Adjust photo</Label>
+        {hasCustom && (
+          <button type="button" onClick={onReset} className="text-[11px] text-[color:var(--teal)] hover:underline">
+            Reset
+          </button>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <span>Horizontal position</span><span>{Math.round(offsetX)}%</span>
+        </div>
+        <Slider value={[offsetX]} min={0} max={100} step={1} onValueChange={([v]) => onOffsetXChange(v)} />
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <span>Vertical position</span><span>{Math.round(offsetY)}%</span>
+        </div>
+        <Slider value={[offsetY]} min={0} max={100} step={1} onValueChange={([v]) => onOffsetYChange(v)} />
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <span>Zoom</span><span>{zoom.toFixed(2)}x</span>
+        </div>
+        <Slider value={[zoom]} min={1} max={2.5} step={0.05} onValueChange={([v]) => onZoomChange(v)} />
+      </div>
+    </div>
+  );
+}
+
 function StoryPreview({ post, specialty, rowId, initialImageUrl }: { post: StoryPost; specialty: string; rowId?: string | null; initialImageUrl?: string | null }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId, initialImageUrl);
@@ -1663,10 +1708,21 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
   const hasManualColors = primaryPick !== null || secondaryPick !== null;
   const resetManualColors = () => { setPrimaryPick(null); setSecondaryPick(null); };
 
+  const [imageOffsetX, setImageOffsetX] = useState(() => initialCustomization?.imageOffsetX ?? DEFAULT_TEMPLATE_IMAGE_OFFSET.x);
+  const [imageOffsetY, setImageOffsetY] = useState(() => initialCustomization?.imageOffsetY ?? DEFAULT_TEMPLATE_IMAGE_OFFSET.y);
+  const [imageZoom, setImageZoom] = useState(() => initialCustomization?.imageZoom ?? DEFAULT_TEMPLATE_IMAGE_OFFSET.zoom);
+  const hasCustomPhotoAdjust = imageOffsetX !== DEFAULT_TEMPLATE_IMAGE_OFFSET.x || imageOffsetY !== DEFAULT_TEMPLATE_IMAGE_OFFSET.y || imageZoom !== DEFAULT_TEMPLATE_IMAGE_OFFSET.zoom;
+  const resetPhotoAdjust = () => {
+    setImageOffsetX(DEFAULT_TEMPLATE_IMAGE_OFFSET.x);
+    setImageOffsetY(DEFAULT_TEMPLATE_IMAGE_OFFSET.y);
+    setImageZoom(DEFAULT_TEMPLATE_IMAGE_OFFSET.zoom);
+  };
+
   const customization: TemplateCustomization = useMemo(() => ({
     v: 1, engine: "v1", kind: "template",
     frameId, useBrandColors, primaryColor: primaryPick, secondaryColor: secondaryPick,
-  }), [frameId, useBrandColors, primaryPick, secondaryPick]);
+    imageOffsetX, imageOffsetY, imageZoom,
+  }), [frameId, useBrandColors, primaryPick, secondaryPick, imageOffsetX, imageOffsetY, imageZoom]);
   usePersistCustomization(rowId, customization, !!initialCustomization);
 
   const entry = getTemplateFrame(frameId);
@@ -1680,6 +1736,7 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
     phone: brand.phone,
     colors,
     imageUrl: ai.url,
+    imageOffsetX, imageOffsetY, imageZoom,
   };
 
   async function captureTemplatePng(): Promise<string | null> {
@@ -1739,6 +1796,14 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
             <Frame {...frameProps} />
           </div>
         </div>
+
+        {ai.url && (
+          <PhotoAdjustPanel
+            offsetX={imageOffsetX} offsetY={imageOffsetY} zoom={imageZoom}
+            onOffsetXChange={setImageOffsetX} onOffsetYChange={setImageOffsetY} onZoomChange={setImageZoom}
+            hasCustom={hasCustomPhotoAdjust} onReset={resetPhotoAdjust}
+          />
+        )}
 
         <div className="mx-auto w-full max-w-md space-y-2">
           <Label className="text-xs uppercase tracking-wide text-muted-foreground">Design</Label>

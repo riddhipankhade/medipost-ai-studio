@@ -72,6 +72,12 @@ export const TemplateCustomizationSchema = z.object({
   ...Envelope, kind: z.literal("template"),
   frameId: TemplateFrameIdSchema, useBrandColors: z.boolean(),
   primaryColor: HexColor.nullable(), secondaryColor: HexColor.nullable(),
+  // Photo reposition/zoom within the frame's fixed photo window — lets the
+  // user recover a subject that the default "50% 12%" crop cut off. Optional
+  // so older persisted rows (saved before this field existed) still parse.
+  imageOffsetX: z.number().min(0).max(100).optional(),
+  imageOffsetY: z.number().min(0).max(100).optional(),
+  imageZoom: z.number().min(1).max(2.5).optional(),
 });
 export const StoryCustomizationSchema    = z.object({ ...Envelope, kind: z.literal("story") });
 export const ReelCustomizationSchema     = z.object({ ...Envelope, kind: z.literal("reel") });
@@ -195,10 +201,13 @@ export function defaultFestiveCustomization(): FestiveCustomization {
   };
 }
 
+export const DEFAULT_TEMPLATE_IMAGE_OFFSET = { x: 50, y: 12, zoom: 1 } as const;
+
 export function defaultTemplateCustomization(): TemplateCustomization {
   return {
     v: CUSTOMIZATION_VERSION, engine: RENDER_ENGINE, kind: "template",
     frameId: "clinic-classic", useBrandColors: true, primaryColor: null, secondaryColor: null,
+    imageOffsetX: DEFAULT_TEMPLATE_IMAGE_OFFSET.x, imageOffsetY: DEFAULT_TEMPLATE_IMAGE_OFFSET.y, imageZoom: DEFAULT_TEMPLATE_IMAGE_OFFSET.zoom,
   };
 }
 

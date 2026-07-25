@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Phone, ImageIcon } from "lucide-react";
 
 /**
@@ -33,6 +34,10 @@ export type TemplateFrameProps = {
   imageUrl?: string | null;
   imageLoading?: boolean;
   loadingOverlay?: React.ReactNode;
+  /** Photo reposition/zoom within the frame's photo window (0–100, 0–100, 1–2.5). Defaults reproduce the original fixed "50% 12%" / 1x crop. */
+  imageOffsetX?: number;
+  imageOffsetY?: number;
+  imageZoom?: number;
   colors: { primary: string; secondary: string };
   /** Gallery mode: show "Your Logo" / "Business Name" / "Mobile Number" slot chips */
   placeholders?: boolean;
@@ -167,9 +172,77 @@ function ContactBar({
   );
 }
 
+// object-fit:cover only leaves room to pan on the axis where the box's aspect
+// ratio doesn't match the photo's — the other axis is flush with zero slack,
+// so its slider silently does nothing (which axis is dead varies per frame
+// shape). Forcing the photo to always render slightly LARGER than strict
+// "cover" (in real pixels, via background-size) guarantees slack — and so a
+// visible effect for both position sliders — on every frame, for any photo.
+const PAN_MARGIN = 1.15;
+
+function usePhotoBoxSize() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, size] as const;
+}
+
 /** Fills its box with the AI photo, or a quiet slot marker until one is generated. */
-function PhotoFill({ imageUrl }: { imageUrl?: string | null }) {
-  if (imageUrl) return <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: "50% 12%" }} />;
+function PhotoFill({ imageUrl, offsetX = 50, offsetY = 12, zoom = 1 }: { imageUrl?: string | null; offsetX?: number; offsetY?: number; zoom?: number }) {
+  const [boxRef, box] = usePhotoBoxSize();
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+
+  // Reset whenever the photo itself changes, so a stale aspect ratio from the
+  // previous image never briefly gets applied to the new one.
+  useEffect(() => { setNatural(null); }, [imageUrl]);
+
+  if (imageUrl) {
+    // Only apply the pan margin once the user has actually moved a slider —
+    // keeps untouched/older posts pixel-identical to the original plain-cover
+    // render, and only pays the (very slight) extra zoom-in when it's needed.
+    const isAdjusted = offsetX !== 50 || offsetY !== 12 || zoom !== 1;
+    // Fallback for the first paint (and for any browser where the natural-size
+    // measurement below never resolves): plain cover + object-position, with
+    // zoom layered on via transform so it ALWAYS works even in this fallback —
+    // it must never depend on the async measurement succeeding.
+    let imgStyle: React.CSSProperties = {
+      position: "absolute", inset: 0, width: "100%", height: "100%",
+      objectFit: "cover", objectPosition: `${offsetX}% ${offsetY}%`,
+      transform: zoom !== 1 ? `scale(${zoom})` : undefined,
+      transformOrigin: `${offsetX}% ${offsetY}%`,
+    };
+    if (natural && box.w && box.h) {
+      const coverScale = Math.max(box.w / natural.w, box.h / natural.h);
+      const scale = coverScale * (isAdjusted ? PAN_MARGIN : 1) * zoom;
+      const renderedW = natural.w * scale;
+      const renderedH = natural.h * scale;
+      imgStyle = {
+        position: "absolute", maxWidth: "none", maxHeight: "none",
+        width: renderedW, height: renderedH,
+        left: (box.w - renderedW) * (offsetX / 100),
+        top: (box.h - renderedH) * (offsetY / 100),
+      };
+    }
+    return (
+      <div ref={boxRef} className="absolute inset-0 overflow-hidden">
+        <img
+          key={imageUrl}
+          src={imageUrl}
+          alt=""
+          onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+          style={imgStyle}
+        />
+      </div>
+    );
+  }
   return (
     <div
       className="absolute inset-0 grid place-items-center"
@@ -207,7 +280,7 @@ function ClinicClassic(p: TemplateFrameProps) {
       <div className="absolute rounded-full" style={{ right: -70, top: -70, height: 220, width: 220, background: `${primary}14` }} />
       <div className="absolute rounded-full" style={{ right: 40, top: 120, height: 70, width: 70, background: `${primary}0f` }} />
       <div className="absolute overflow-hidden" style={{ left: 0, top: 0, width: "54%", bottom: BAR_H }}>
-        <PhotoFill imageUrl={p.imageUrl} />
+        <PhotoFill imageUrl={p.imageUrl} offsetX={p.imageOffsetX} offsetY={p.imageOffsetY} zoom={p.imageZoom} />
       </div>
       <div className="absolute flex flex-col justify-center" style={{ left: "54%", right: 0, top: 0, bottom: BAR_H, padding: "24px 22px", gap: 14 }}>
         <div
@@ -241,7 +314,7 @@ function PhotoPanel(p: TemplateFrameProps) {
     <FrameShell>
       {p.imageLoading && p.loadingOverlay}
       <div className="absolute overflow-hidden" style={{ inset: 0, bottom: BAR_H }}>
-        <PhotoFill imageUrl={p.imageUrl} />
+        <PhotoFill imageUrl={p.imageUrl} offsetX={p.imageOffsetX} offsetY={p.imageOffsetY} zoom={p.imageZoom} />
       </div>
       <div
         className="absolute flex flex-col justify-center text-white"
@@ -282,7 +355,7 @@ function HexAccent(p: TemplateFrameProps) {
       ))}
       <div className="absolute" style={{ right: 12, top: "50%", transform: "translateY(-56%)", height: 276, width: 244, clipPath: HEX_CLIP, background: "rgba(255,255,255,0.85)" }} />
       <div className="absolute overflow-hidden" style={{ right: 18, top: "50%", transform: "translateY(-56%)", height: 260, width: 232, clipPath: HEX_CLIP }}>
-        <PhotoFill imageUrl={p.imageUrl} />
+        <PhotoFill imageUrl={p.imageUrl} offsetX={p.imageOffsetX} offsetY={p.imageOffsetY} zoom={p.imageZoom} />
       </div>
       <div className="absolute flex flex-col justify-center text-white" style={{ left: 26, width: "47%", top: 0, bottom: BAR_H, gap: 13, overflow: "hidden" }}>
         <p className="font-extrabold" style={{ fontSize: fitSize(27, p.headline, 32), lineHeight: 1.27, wordBreak: "break-word" }}>{p.headline}</p>
@@ -322,7 +395,7 @@ function CurveCard(p: TemplateFrameProps) {
         className="absolute overflow-hidden"
         style={{ right: 22, bottom: BAR_H + 20, width: 288, height: 224, borderRadius: 28, boxShadow: "0 8px 22px rgba(0,0,0,0.16)", border: "5px solid #ffffff" }}
       >
-        <PhotoFill imageUrl={p.imageUrl} />
+        <PhotoFill imageUrl={p.imageUrl} offsetX={p.imageOffsetX} offsetY={p.imageOffsetY} zoom={p.imageZoom} />
       </div>
       {p.cta && (
         <span className="absolute rounded-full font-bold text-white" style={{ left: 28, bottom: BAR_H + 26, background: secondary, padding: "9px 20px", fontSize: 14 }}>
@@ -345,7 +418,7 @@ function BoldAsk(p: TemplateFrameProps) {
     <FrameShell>
       {p.imageLoading && p.loadingOverlay}
       <div className="absolute overflow-hidden" style={{ left: 0, top: 0, width: "52%", bottom: BAR_H }}>
-        <PhotoFill imageUrl={p.imageUrl} />
+        <PhotoFill imageUrl={p.imageUrl} offsetX={p.imageOffsetX} offsetY={p.imageOffsetY} zoom={p.imageZoom} />
       </div>
       <div
         className="absolute flex flex-col justify-center items-end text-right"
@@ -375,7 +448,7 @@ function FullPhoto(p: TemplateFrameProps) {
     <FrameShell>
       {p.imageLoading && p.loadingOverlay}
       <div className="absolute overflow-hidden" style={{ inset: 0, bottom: BAR_H }}>
-        <PhotoFill imageUrl={p.imageUrl} />
+        <PhotoFill imageUrl={p.imageUrl} offsetX={p.imageOffsetX} offsetY={p.imageOffsetY} zoom={p.imageZoom} />
         <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(8,14,24,0.5) 0%, rgba(8,14,24,0.08) 42%, rgba(8,14,24,0.78) 100%)" }} />
       </div>
       <div className="absolute flex flex-col justify-end text-white" style={{ left: 0, right: 0, top: 0, bottom: BAR_H, padding: "26px 26px 22px", gap: 12 }}>
@@ -413,7 +486,7 @@ function TopBanner(p: TemplateFrameProps) {
         className="absolute overflow-hidden"
         style={{ left: 24, right: 24, top: 192, bottom: BAR_H + 18, borderRadius: 24, border: "5px solid #ffffff", boxShadow: "0 10px 26px rgba(0,0,0,0.16)" }}
       >
-        <PhotoFill imageUrl={p.imageUrl} />
+        <PhotoFill imageUrl={p.imageUrl} offsetX={p.imageOffsetX} offsetY={p.imageOffsetY} zoom={p.imageZoom} />
       </div>
       {p.cta && (
         <span
@@ -446,7 +519,7 @@ function TiltCard(p: TemplateFrameProps) {
         className="absolute overflow-hidden"
         style={{ right: 30, top: 34, width: 300, height: 250, borderRadius: 22, transform: "rotate(5deg)", border: "6px solid #ffffff", boxShadow: "0 12px 28px rgba(0,0,0,0.2)" }}
       >
-        <PhotoFill imageUrl={p.imageUrl} />
+        <PhotoFill imageUrl={p.imageUrl} offsetX={p.imageOffsetX} offsetY={p.imageOffsetY} zoom={p.imageZoom} />
       </div>
       <div className="absolute flex flex-col justify-end text-white" style={{ left: 26, width: "56%", bottom: BAR_H + 20, gap: 11 }}>
         <p className="font-extrabold" style={{ fontSize: fitSize(26, p.headline, 32), lineHeight: 1.27, wordBreak: "break-word" }}>{p.headline}</p>
@@ -485,7 +558,7 @@ function ArchWindow(p: TemplateFrameProps) {
           className="overflow-hidden relative"
           style={{ width: 330, flex: 1, minHeight: 0, borderRadius: "165px 165px 24px 24px", border: `6px solid ${primary}`, boxShadow: "0 10px 24px rgba(0,0,0,0.15)" }}
         >
-          <PhotoFill imageUrl={p.imageUrl} />
+          <PhotoFill imageUrl={p.imageUrl} offsetX={p.imageOffsetX} offsetY={p.imageOffsetY} zoom={p.imageZoom} />
         </div>
         {p.cta && (
           <span className="rounded-full font-bold text-white" style={{ background: primary, padding: "8px 22px", fontSize: 13.5, marginTop: 3 }}>
@@ -513,7 +586,7 @@ function RibbonBanner(p: TemplateFrameProps) {
         className="absolute overflow-hidden"
         style={{ left: 0, right: 0, top: 0, height: "52%", clipPath: "polygon(0 0, 100% 0, 100% 84%, 50% 100%, 0 84%)" }}
       >
-        <PhotoFill imageUrl={p.imageUrl} />
+        <PhotoFill imageUrl={p.imageUrl} offsetX={p.imageOffsetX} offsetY={p.imageOffsetY} zoom={p.imageZoom} />
       </div>
       <div className="absolute flex flex-col items-center justify-center text-center text-white" style={{ left: 26, right: 26, top: "52%", bottom: BAR_H, gap: 10 }}>
         <p className="font-extrabold" style={{ fontSize: fitSize(25, p.headline, 36), lineHeight: 1.27, wordBreak: "break-word" }}>{p.headline}</p>
