@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabase";
 
 export type SubscriptionWithPlan = {
-  plan: string;                  // 'free' | 'pro'
+  plan: string;
   plan_expires_at: string | null;
   generations_used: number;
   status: "active" | "trialing" | "canceled" | "past_due";
@@ -16,6 +16,9 @@ export type SubscriptionWithPlan = {
     ai_generations_limit: number; // -1 = unlimited
   };
 };
+
+// Paid plan keys — update here if new plans are added
+const PAID_PLANS = ["growth", "pro_clinic", "pro"] as const;
 
 export function useSubscription(userId: string | undefined) {
   return useQuery({
@@ -49,12 +52,12 @@ export function useSubscription(userId: string | undefined) {
   });
 }
 
-/** Returns true if the user currently has an active Pro subscription */
+/** Returns true if the user currently has an active paid subscription */
 export function useIsPro(userId: string | undefined): boolean {
   const { data } = useSubscription(userId);
   if (!data) return false;
   return (
-    data.plan === "pro" &&
+    (PAID_PLANS as readonly string[]).includes(data.plan) &&
     !!data.plan_expires_at &&
     new Date(data.plan_expires_at) > new Date()
   );

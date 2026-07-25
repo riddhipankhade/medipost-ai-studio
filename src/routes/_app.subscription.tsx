@@ -45,58 +45,61 @@ function loadBoltScript(): Promise<void> {
   });
 }
 
+const PAID_PLANS = ["growth", "pro_clinic", "pro"];
+
 const PLANS = [
   {
     key:         "starter",
     name:        "Starter",
-    price:       499,
+    price:       0,
     period:      "/month",
-    description: "Perfect for solo practitioners getting started.",
+    description: "For doctors exploring AI-powered content creation.",
     icon:        Zap,
     popular:     false,
-    gens:        "50 posts / month",
+    free:        true,
+    gens:        "10 posts / month",
     features: [
-      "All post types (Single, Carousel, Story, Reel, Campaign)",
-      "Hashtag generation",
-      "Brand kit",
-      "Content history",
+      "Basic AI post generation",
+      "Limited templates (awareness posts, tips)",
+      "Standard tone / style",
+      "Medipost branding watermark",
     ],
   },
   {
-    key:         "pro",
-    name:        "Pro",
-    price:       1999,
+    key:         "growth",
+    name:        "Growth",
+    price:       499,
     period:      "/month",
-    description: "For busy clinics who post consistently.",
+    description: "For active doctors building their personal brand.",
     icon:        Crown,
     popular:     true,
-    gens:        "300 posts / month",
+    free:        false,
+    gens:        "60 posts / month",
     features: [
-      "All post types",
-      "AI Visual generation (Flux)",
-      "Hashtag generation",
-      "Brand kit",
-      "Content history",
-      "Priority generation",
+      "All templates unlocked",
+      "Platform-specific optimization (LinkedIn, Instagram)",
+      "Custom tone (professional, friendly, authoritative)",
+      "Basic content calendar suggestions",
+      "No watermark",
     ],
   },
   {
-    key:         "clinic",
-    name:        "Clinic",
-    price:       6999,
+    key:         "pro_clinic",
+    name:        "Pro Clinic",
+    price:       999,
     period:      "/month",
-    description: "For multi-doctor practices and hospitals.",
+    description: "For multi-doctor clinics and hospital marketing teams.",
     icon:        Building2,
     popular:     false,
-    gens:        "Unlimited posts",
+    free:        false,
+    gens:        "200 posts / month",
     features: [
-      "All post types",
-      "AI Visual generation (Flux)",
-      "Hashtag generation",
-      "Brand kit",
-      "Content history",
-      "Priority generation",
-      "Dedicated support",
+      "Everything in Growth",
+      "Multi-brand / clinic support",
+      "Bulk post generation",
+      "Advanced content calendar (weekly/monthly)",
+      "Priority AI quality (better outputs)",
+      "Priority support",
     ],
   },
 ];
@@ -108,6 +111,7 @@ type AppliedVoucher = {
 };
 
 function formatPrice(amount: number) {
+  if (amount === 0) return "Free";
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
@@ -116,7 +120,6 @@ function SubscriptionPage() {
   const [payingPlan, setPaying] = useState<string | null>(null);
   const [userId, setUserId]     = useState<string | undefined>(undefined);
 
-  // Voucher state
   const [voucherInput,    setVoucherInput]   = useState("");
   const [applyingVoucher, setApplyingVoucher] = useState(false);
   const [appliedVoucher,  setAppliedVoucher]  = useState<AppliedVoucher | null>(null);
@@ -127,11 +130,13 @@ function SubscriptionPage() {
 
   const { data: sub, isLoading } = useSubscription(userId);
 
-  const isPro = sub?.plan === "pro"
-    && !!sub?.plan_expires_at
-    && new Date(sub.plan_expires_at) > new Date();
+  const isPaid = sub
+    ? PAID_PLANS.includes(sub.plan) &&
+      !!sub.plan_expires_at &&
+      new Date(sub.plan_expires_at) > new Date()
+    : false;
 
-  const currentPlanName = isPro ? (sub?.plans as any)?.name : "free";
+  const currentPlanName = isPaid ? sub?.plan : "starter";
 
   async function handleApplyVoucher() {
     if (!voucherInput.trim()) return;
@@ -154,7 +159,7 @@ function SubscriptionPage() {
   }
 
   function getDiscountedPrice(plan: typeof PLANS[0]): { original: number; final: number; discounted: boolean } {
-    if (appliedVoucher && appliedVoucher.applicablePlans.includes(plan.key)) {
+    if (!plan.free && appliedVoucher && appliedVoucher.applicablePlans.includes(plan.key)) {
       const discount = plan.price * (appliedVoucher.discountPercentage / 100);
       return { original: plan.price, final: Math.max(1, plan.price - discount), discounted: true };
     }
@@ -190,9 +195,8 @@ function SubscriptionPage() {
           surl:        `${window.location.origin}/subscription`,
           furl:        `${window.location.origin}/subscription`,
           udf1: "", udf2: "", udf3: "", udf4: "", udf5: "",
-          // ── Autopay: register Standing Instruction mandate on first payment ──
-          si:         params.si,          // "1" = register autopay mandate
-          si_details: params.si_details,  // billing schedule (amount, cycle, count)
+          si:         params.si,
+          si_details: params.si_details,
         },
         {
           responseHandler: async (bolt) => {
@@ -213,13 +217,12 @@ function SubscriptionPage() {
                       email:       r.email,
                       mihpayid:    r.mihpayid ?? "",
                       hash:        r.hash,
-                      // ── Autopay: SI mandate ID returned by PayU after registration ──
                       subId:       r.sub_id ?? r.subId ?? "",
                     },
                   });
                   toast.success(
                     "Plan activated! Welcome to " +
-                    planKey.charAt(0).toUpperCase() + planKey.slice(1) + "."
+                    planKey.charAt(0).toUpperCase() + planKey.slice(1).replace("_", " ") + "."
                   );
                   setAppliedVoucher(null);
                   queryClient.invalidateQueries({ queryKey: ["subscription", userId] });
@@ -259,28 +262,28 @@ function SubscriptionPage() {
       {/* Current plan banner */}
       {!isLoading && sub && (
         <div className={`mb-6 rounded-xl border p-4 flex items-center justify-between ${
-          isPro ? "bg-primary/5 border-primary/30" : "bg-muted/40 border-border"
+          isPaid ? "bg-primary/5 border-primary/30" : "bg-muted/40 border-border"
         }`}>
           <div>
             <p className="font-semibold text-sm">
-              {isPro
-                ? `You're on ${(sub?.plans as any)?.display_name ?? "Pro"}`
-                : "You're on the Free plan"}
+              {isPaid
+                ? `You're on ${(sub?.plans as any)?.display_name ?? sub?.plan}`
+                : "You're on the Free (Starter) plan"}
             </p>
-            {isPro && sub?.plan_expires_at && (
+            {isPaid && sub?.plan_expires_at && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 Active until {new Date(sub.plan_expires_at).toLocaleDateString("en-IN", {
                   day: "numeric", month: "long", year: "numeric",
                 })}
               </p>
             )}
-            {!isPro && (
+            {!isPaid && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 {sub?.generations_used ?? 0} / 10 posts used this month
               </p>
             )}
           </div>
-          {isPro && <Badge className="bg-primary text-primary-foreground">Active</Badge>}
+          {isPaid && <Badge className="bg-primary text-primary-foreground">Active</Badge>}
         </div>
       )}
 
@@ -361,7 +364,9 @@ function SubscriptionPage() {
                 <p className="text-sm font-medium text-muted-foreground">{plan.name}</p>
 
                 <div className="flex items-baseline gap-2 mt-2">
-                  {pricing.discounted ? (
+                  {plan.free ? (
+                    <span className="text-3xl font-semibold tracking-tight">Free</span>
+                  ) : pricing.discounted ? (
                     <>
                       <span className="text-3xl font-semibold tracking-tight text-primary">
                         {formatPrice(Math.round(pricing.final))}
@@ -380,7 +385,7 @@ function SubscriptionPage() {
                     </>
                   )}
                 </div>
-                {pricing.discounted && (
+                {!plan.free && pricing.discounted && (
                   <span className="text-xs text-muted-foreground">{plan.period}</span>
                 )}
                 <p className="text-sm text-primary mt-1.5 font-medium">{plan.gens}</p>
@@ -395,9 +400,9 @@ function SubscriptionPage() {
                   ))}
                 </ul>
 
-                {isCurrent ? (
+                {isCurrent || plan.free ? (
                   <Button variant="outline" className="w-full mt-7" disabled>
-                    Current Plan
+                    {plan.free && !isCurrent ? "Free Plan" : "Current Plan"}
                   </Button>
                 ) : (
                   <Button
@@ -424,7 +429,7 @@ function SubscriptionPage() {
       </div>
 
       <p className="text-center text-sm text-muted-foreground mt-8">
-        All plans include a <strong>free tier</strong> with 10 posts/month.
+        All new accounts start on the free Starter plan with 10 posts/month.
         Paid plans activate immediately after payment.
       </p>
     </div>

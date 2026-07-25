@@ -35,16 +35,14 @@ function getSupabaseAdmin() {
 }
 
 // ── Server-side plan catalog — client can never override these prices ─────────
+// Starter is free — no payment entry needed.
 const PLAN_CATALOG: Record<string, { amount: string; productinfo: string }> = {
-  starter: { amount: "499.00",  productinfo: "Medipost Starter Plan" },
-  pro:     { amount: "1999.00", productinfo: "Medipost Pro Plan" },
-  clinic:  { amount: "6999.00", productinfo: "Medipost Clinic Plan" },
+  growth:     { amount: "499.00",  productinfo: "Medipost Growth Plan"     },
+  pro_clinic: { amount: "999.00",  productinfo: "Medipost Pro Clinic Plan" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. createPayUHash — generates txnid + SHA-512 hash for checkout.
-//    Now also returns si / si_details so bolt.launch() can register a Standing
-//    Instruction (autopay mandate) on the very first payment.
 // ─────────────────────────────────────────────────────────────────────────────
 export const createPayUHash = createServerFn({ method: "POST" })
   .validator(z.object({
@@ -90,16 +88,13 @@ export const createPayUHash = createServerFn({ method: "POST" })
       }
     }
 
-    // Hash formula unchanged — SI params do not affect it for Bolt
     const hashString = `${key}|${txnid}|${finalAmount}|${plan.productinfo}|${firstname}|${email}|||||||||||${salt}`;
     const hash = crypto.createHash("sha512").update(hashString).digest("hex");
 
-    // si_details tells PayU to register a recurring mandate during this payment.
-    // Pass si + si_details directly into bolt.launch() alongside the other params.
     const si_details = JSON.stringify({
       billingAmount:   finalAmount,
       billingInterval: 1,
-      paymentCount:    0,          // 0 = unlimited renewals
+      paymentCount:    0,
       billingCycle:    "MONTHLY",
       billingCurrency: "INR",
       remarks:         plan.productinfo,
@@ -108,14 +103,13 @@ export const createPayUHash = createServerFn({ method: "POST" })
     return {
       key, txnid, amount: finalAmount, productinfo: plan.productinfo,
       firstname, email, phone, hash,
-      si:         "1",   // ← enables Standing Instruction registration
-      si_details,        // ← billing schedule
+      si:         "1",
+      si_details,
     };
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. verifyPayUPayment — verifies response hash + activates subscription.
-//    Now stores the SI sub_id returned by PayU so the cron can auto-debit.
 // ─────────────────────────────────────────────────────────────────────────────
 const VerifySchema = z.object({
   planKey:      z.string(),
@@ -128,7 +122,7 @@ const VerifySchema = z.object({
   email:        z.string(),
   mihpayid:     z.string().optional().default(""),
   hash:         z.string(),
-  subId:        z.string().optional(), // ← NEW: PayU SI subscription ID from bolt response
+  subId:        z.string().optional(),
 });
 
 export const verifyPayUPayment = createServerFn({ method: "POST" })
@@ -141,7 +135,6 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
     const salt = process.env.PAYU_SALT!;
     const key  = process.env.PAYU_MERCHANT_KEY!;
 
-    // Verify PayU reverse hash
     const reverseHashString = `${salt}|${data.status}|||||||||||${data.email}|${data.firstname}|${data.productinfo}|${data.amount}|${data.txnid}|${key}`;
     const expectedHash = crypto.createHash("sha512").update(reverseHashString).digest("hex");
 
@@ -161,7 +154,6 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // Fire the next debit 1 day before expiry to avoid any access gap
     const nextBillingDate = new Date();
     nextBillingDate.setDate(nextBillingDate.getDate() + 29);
 
@@ -171,14 +163,13 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
         {
           user_id:              user.id,
           plan_id:              planRow.id,
-          plan:                 "pro",
+          plan:                 data.planKey,   // ← uses actual plan key, not hardcoded "pro"
           status:               "active",
           plan_expires_at:      expiresAt.toISOString(),
           current_period_start: new Date().toISOString(),
           current_period_end:   expiresAt.toISOString(),
           payu_txn_id:          data.txnid,
           payu_payment_id:      data.mihpayid,
-          // Autopay fields (columns added via ALTER TABLE)
           payu_subid:           data.subId ?? null,
           auto_renew:           !!data.subId,
           next_billing_date:    data.subId ? nextBillingDate.toISOString() : null,
@@ -189,7 +180,6 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
 
     if (upsertError) throw new Error(`Subscription update failed: ${upsertError.message}`);
 
-    // Increment voucher used_count on successful payment
     if (data.voucherCode) {
       const { data: v } = await supabase
         .from("vouchers")
@@ -214,17 +204,12 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. debitUserSI — triggers PayU SI auto-debit for one user.
-//    Called by the daily cron job — NOT a server function, never called from client.
-//
-//    ⚠️  Confirm the command name "si_create_auto_debit" with PayU support
-//    for your merchant account before going live — it can vary by account type.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function debitUserSI(
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = getSupabaseAdmin();
 
-  // Fetch subscription and join plans table to get the plan name (matches PLAN_CATALOG key)
   const { data: sub } = await supabase
     .from("subscriptions")
     .select("payu_subid, plan_info:plans(name)")
@@ -238,11 +223,11 @@ export async function debitUserSI(
   const planInfo = planKey ? PLAN_CATALOG[planKey] : undefined;
   if (!planInfo)  return { success: false, error: `Unknown plan: ${planKey}` };
 
-  const key    = process.env.PAYU_MERCHANT_KEY!;
-  const salt   = process.env.PAYU_SALT!;
+  const key     = process.env.PAYU_MERCHANT_KEY!;
+  const salt    = process.env.PAYU_SALT!;
   const command = "si_create_auto_debit";
-  const txnid  = `si_${userId.replace(/-/g, "").slice(0, 10)}_${Date.now()}`;
-  const appUrl = process.env.VITE_APP_URL ?? process.env.APP_URL ?? "";
+  const txnid   = `si_${userId.replace(/-/g, "").slice(0, 10)}_${Date.now()}`;
+  const appUrl  = process.env.VITE_APP_URL ?? process.env.APP_URL ?? "";
 
   const var1 = JSON.stringify({
     merchantKey:    key,
@@ -253,7 +238,6 @@ export async function debitUserSI(
     notifyUrl:      `${appUrl}/api/payu-webhook`,
   });
 
-  // Hash formula for SI debit: sha512(key|command|var1|salt)
   const hashString = `${key}|${command}|${var1}|${salt}`;
   const hash = crypto.createHash("sha512").update(hashString).digest("hex");
 
@@ -266,7 +250,6 @@ export async function debitUserSI(
 
     const result = await res.json() as Record<string, unknown>;
 
-    // PayU returns status "0" on failure
     if (String(result.status) === "0") {
       return { success: false, error: String(result.msg ?? "Debit initiation failed") };
     }
@@ -278,8 +261,7 @@ export async function debitUserSI(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. activateSubscriptionFromWebhook — called by /api/payu-webhook when PayU
-//    confirms a successful SI debit. Extends the subscription another 30 days.
+// 4. activateSubscriptionFromWebhook — called by /api/payu-webhook on SI debit.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function activateSubscriptionFromWebhook(params: {
   txnid:       string;
@@ -296,16 +278,14 @@ export async function activateSubscriptionFromWebhook(params: {
   const salt = process.env.PAYU_SALT!;
   const key  = process.env.PAYU_MERCHANT_KEY!;
 
-  // Verify webhook hash using the same reverse formula
   const reverseHash = `${salt}|${status}|||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`;
   const expected    = crypto.createHash("sha512").update(reverseHash).digest("hex");
 
   if (expected !== hash) throw new Error("Webhook hash mismatch — ignoring.");
-  if (status !== "success") return; // failed/cancelled debit — do nothing, keep current subscription active
+  if (status !== "success") return;
 
   const supabase = getSupabaseAdmin();
 
-  // Resolve user by email via admin API
   const { data: { users } } = await supabase.auth.admin.listUsers();
   const user = users.find((u) => u.email === email);
   if (!user) throw new Error(`No user found for email: ${email}`);
