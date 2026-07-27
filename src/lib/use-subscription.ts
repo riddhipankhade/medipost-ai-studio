@@ -62,3 +62,11 @@ export function useIsPro(userId: string | undefined): boolean {
     new Date(data.plan_expires_at) > new Date()
   );
 }
+
+/** Returns true when creatives should carry the Medipost watermark — free/Starter
+ *  plan, expired plan, or no subscription row at all. Defaults to "show watermark"
+ *  while the subscription query is loading so a paid check never briefly renders
+ *  clean (the safe direction to be wrong in). */
+export function useShowWatermark(userId: string | undefined): boolean {
+  return !useIsPro(userId);
+}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Phone, ImageIcon } from "lucide-react";
+import { Watermark } from "@/components/Watermark";
 
 /**
  * Template-post frames: fixed poster-style designs (like printed clinic flyers)
@@ -109,6 +110,7 @@ function FrameShell({ children, style }: { children: React.ReactNode; style?: Re
       style={{ fontFamily: FONT, background: "#ffffff", ...style }}
     >
       {children}
+      <Watermark />
     </div>
   );
 }

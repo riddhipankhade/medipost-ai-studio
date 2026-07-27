@@ -1,6 +1,7 @@
 import { forwardRef } from "react";
 import { BrandContactBar } from "@/components/brand-frame";
 import { ContextualBackground } from "@/components/carousel-layouts";
+import { Watermark } from "@/components/Watermark";
 import type { BrandKit } from "@/lib/brand-kit";
 
 /**
@@ -76,6 +77,7 @@ const StoryCard = forwardRef<
           />
           <div className="rounded-full bg-white text-sm font-semibold py-2.5 text-center shadow" style={{ color: c1 }}>{cta}</div>
         </div>
+        <Watermark />
       </div>
     </div>
   );

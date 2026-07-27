@@ -116,6 +116,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import FestiveCard from "@/components/FestiveCard";
 import StoryCard from "@/components/StoryCard";
+import { Watermark } from "@/components/Watermark";
 import { ShareButtons } from "@/components/ShareButtons";
 import {
   readStudioSessionPointer,
@@ -1230,6 +1231,7 @@ export function SlideCanvas(p: SlideCanvasProps) {
           </div>
         </>
       )}
+      <Watermark />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 import { BrandContactBar } from "@/components/brand-frame";
+import { Watermark } from "@/components/Watermark";
 
 /** Optional per-card color overrides (studio pickers). Falls back to brand kit → AI palette → defaults. */
 export type FestiveCardColors = {
@@ -93,6 +94,7 @@ const FestiveCard = forwardRef<
           className={brand.doctorName || brand.clinicName ? "mt-3" : "mt-6"}
         />
       </div>
+      <Watermark />
     </div>
   );
 });
