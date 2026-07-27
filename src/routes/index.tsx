@@ -197,7 +197,7 @@ function Landing() {
                 gens="10 posts / month"
                 badge="Included free"
                 cta="Get started free"
-                features={["Basic AI post generation", "Limited templates (awareness posts, tips)", "Standard tone / style", "Medipost branding watermark"]}
+                features={["AI post generation — every format except Template Studio", "10 Indian languages (Hindi, Tamil, Bengali & more)", "Standard tone only", "General Public audience only", "Medipost branding watermark"]}
               />
             </RevealItem>
             <RevealItem direction="scale">
@@ -206,7 +206,7 @@ function Landing() {
                 icon={Crown}
                 price={499}
                 gens="60 posts / month"
-                features={["All templates unlocked", "Platform-specific optimization (LinkedIn, Instagram)", "Custom tone (professional, friendly, authoritative)", "Basic content calendar suggestions", "No watermark"]}
+                features={["Template Studio unlocked", "Platform-specific optimization (LinkedIn, Instagram)", "All tones & audience targeting unlocked", "10 Indian languages (Hindi, Tamil, Bengali & more)", "No watermark"]}
               />
             </RevealItem>
             <RevealItem direction="scale">
@@ -215,7 +215,7 @@ function Landing() {
                 icon={Building2}
                 price={999}
                 gens="200 posts / month"
-                features={["Everything in Growth", "Multi-brand / clinic support", "Bulk post generation", "Advanced content calendar (weekly/monthly)", "Priority AI quality (better outputs)", "Priority support"]}
+                features={["Everything in Growth", "Multi-brand / clinic support", "Bulk post generation", "Priority AI quality (better outputs)", "Priority support"]}
               />
             </RevealItem>
           </RevealGroup>

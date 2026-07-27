@@ -15,6 +15,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   Sparkles,
   Copy,
   Loader2,
@@ -34,6 +42,7 @@ import {
   Send,
   Bookmark,
   MoreHorizontal,
+  Crown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SpecialtySelect } from "@/components/specialty-select";
@@ -117,6 +126,8 @@ import { Slider } from "@/components/ui/slider";
 import FestiveCard from "@/components/FestiveCard";
 import StoryCard from "@/components/StoryCard";
 import { Watermark } from "@/components/Watermark";
+import { useAuth } from "@/lib/auth-context";
+import { useIsPro } from "@/lib/use-subscription";
 import { ShareButtons } from "@/components/ShareButtons";
 import {
   readStudioSessionPointer,
@@ -178,8 +189,8 @@ const DEFAULT_BRIEF_FORM: Omit<GenerateInput, "kind"> = {
   category: "educational",
   specialty: "Dentist",
   topic: "Daily oral hygiene habits",
-  tone: "Friendly",
-  audience: "Patients",
+  tone: "Standard",
+  audience: "General Public",
   festival: "Diwali",
   customInstructions: "",
   festiveStyle: "Warm & Friendly",
@@ -190,6 +201,10 @@ const DEFAULT_BRIEF_FORM: Omit<GenerateInput, "kind"> = {
 function GeneratePage() {
   const callGenerate = useServerFn(generateContent);
   const [brand] = useBrandKit();
+  const { user } = useAuth();
+  const isPro = useIsPro(user?.id);
+  // Set to open the "Upgrade to Growth" dialog with this explanation; null closes it.
+  const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null);
 
   const [outOfCredits, setOutOfCredits] = useState(false);
   const [supabaseBrand, setSupabaseBrand] = useState({
@@ -216,6 +231,15 @@ function GeneratePage() {
     if (typeof window === "undefined" || !userId) return;
     window.localStorage.setItem(briefStorageKey(userId), JSON.stringify({ kind, category, form }));
   }, [userId, kind, category, form]);
+
+  // Starter/free plan is locked to Standard tone + General Public audience —
+  // clamp back if a persisted brief (from before a downgrade, or a prior
+  // paid session) resumes with something else.
+  useEffect(() => {
+    if (isPro) return;
+    if (form.tone === "Standard" && form.audience === "General Public") return;
+    setForm((f) => ({ ...f, tone: "Standard", audience: "General Public" }));
+  }, [isPro, form.tone, form.audience]);
 
   useEffect(() => {
     let cancelled = false;
@@ -373,6 +397,14 @@ function GeneratePage() {
   }
 
   async function run() {
+    if (kind === "template" && !isPro) {
+      setUpgradePrompt("Template Studio's ready-made promo designs are a Growth feature.");
+      return;
+    }
+    if (!isPro && (form.tone !== "Standard" || form.audience !== "General Public")) {
+      setUpgradePrompt("Custom tones and audience targeting are a Growth feature.");
+      return;
+    }
     if (!form.topic.trim()) {
       toast.error("Please enter a topic");
       return;
@@ -452,7 +484,7 @@ function GeneratePage() {
               }`}
             >
               {w.badge && (
-                <Badge variant="warning" className="absolute right-3 top-3 py-0 text-[10px]">
+                <Badge variant={w.badge === "Growth" ? "solid" : "warning"} className="absolute right-3 top-3 py-0 text-[10px]">
                   {w.badge}
                 </Badge>
               )}
@@ -591,32 +623,80 @@ function GeneratePage() {
 
             <Field label="Tone">
               <div className="flex flex-wrap gap-2">
-                {tones.map((t) => (
-                  <button
-                    key={t} type="button" onClick={() => update("tone", t)}
-                    className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                      form.tone === t ? "bg-[color:var(--teal)] text-white border-[color:var(--teal)]" : "bg-background border-border hover:bg-accent"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
+                {tones.map((t) => {
+                  const toneLocked = !isPro && t !== "Standard";
+                  return (
+                    <button
+                      key={t} type="button"
+                      onClick={() => {
+                        if (toneLocked) {
+                          setUpgradePrompt("Professional, Educational, Friendly & Motivational tones are a Growth feature.");
+                          return;
+                        }
+                        update("tone", t);
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                        form.tone === t ? "bg-[color:var(--teal)] text-white border-[color:var(--teal)]" : "bg-background border-border hover:bg-accent"
+                      } ${toneLocked ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
               </div>
+              {!isPro && (
+                <p className="text-[11px] text-muted-foreground pt-1.5">
+                  Starter plan writes in Standard tone only. Upgrade to Growth for Professional, Educational, Friendly & Motivational tones.
+                </p>
+              )}
             </Field>
 
             <Field label="Target Audience">
               <Select value={form.audience} onValueChange={(v) => update("audience", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {audiences.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                  {audiences.map((a) => {
+                    const audienceLocked = !isPro && a !== "General Public";
+                    return (
+                      <SelectItem
+                        key={a} value={a}
+                        className={audienceLocked ? "opacity-50" : ""}
+                        onSelect={(e) => {
+                          if (audienceLocked) {
+                            e.preventDefault();
+                            setUpgradePrompt("Targeting Patients, Existing Patients, Parents & Healthcare Professionals is a Growth feature.");
+                          }
+                        }}
+                      >
+                        {a}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              {!isPro && (
+                <p className="text-[11px] text-muted-foreground pt-1">
+                  Starter plan targets General Public only. Upgrade to Growth to target patients, parents, healthcare professionals & more.
+                </p>
+              )}
             </Field>
 
-            <Button onClick={run} disabled={loading} size="lg" className="w-full gap-2">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {loading ? "Generating…" : `Generate ${activeWorkflow.title}`}
-            </Button>
+            {kind === "template" && !isPro ? (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Template Studio is a Growth feature — browse the designs, then upgrade to create with them.
+                </p>
+                <Button size="lg" className="w-full gap-2" onClick={() => window.location.href = "/subscription"}>
+                  <Sparkles className="h-4 w-4" />
+                  Upgrade to Growth to create
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={run} disabled={loading} size="lg" className="w-full gap-2">
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {loading ? "Generating…" : `Generate ${activeWorkflow.title}`}
+              </Button>
+            )}
           </CardContent>
         </Card>
 
@@ -662,6 +742,22 @@ function GeneratePage() {
           )}
         </div>
       </div>
+
+      <Dialog open={!!upgradePrompt} onOpenChange={(open) => !open && setUpgradePrompt(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Crown className="h-5 w-5 text-[color:var(--teal)]" />
+              Upgrade to Growth
+            </DialogTitle>
+            <DialogDescription>{upgradePrompt}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:flex-col sm:justify-stretch sm:space-x-0 gap-2">
+            <Button onClick={() => window.location.href = "/subscription"} className="w-full">Upgrade to Growth — ₹499/mo</Button>
+            <Button variant="outline" onClick={() => setUpgradePrompt(null)} className="w-full">Maybe later</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

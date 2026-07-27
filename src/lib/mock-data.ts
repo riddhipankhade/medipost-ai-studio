@@ -85,7 +85,7 @@ export const contentTypes = [
   "Greeting / Festival Post",
   "Reel Script",
 ] as const;
-export const tones = ["Professional", "Educational", "Friendly", "Motivational"];
+export const tones = ["Standard", "Professional", "Educational", "Friendly", "Motivational"];
 export const audiences = [
   "Patients",
   "General Public",
@@ -177,7 +177,7 @@ export const workflows: {
   { kind: "reel", title: "Reel Script", tagline: "Hook · Points · CTA", icon: "film" },
   { kind: "campaign", title: "Awareness Campaign", tagline: "Weekly content plan", icon: "calendar" },
   { kind: "festive", title: "Festive Wishes", tagline: "Greetings for any occasion", icon: "sparkles" },
-  { kind: "template", title: "Template Post", tagline: "Ready-made promo designs", icon: "layout", badge: "Beta" },
+  { kind: "template", title: "Template Post", tagline: "Ready-made promo designs", icon: "layout", badge: "Growth" },
 ];
 
 export function generateMockContent(opts: {
