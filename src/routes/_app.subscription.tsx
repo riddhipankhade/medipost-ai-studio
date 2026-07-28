@@ -73,7 +73,7 @@ const PLANS = [
     period:      "/month",
     description: "For active doctors building their personal brand.",
     icon:        Crown,
-    popular:     false,
+    popular:     true,
     free:        false,
     gens:        "60 posts / month",
     features: [
@@ -334,13 +334,24 @@ function SubscriptionPage() {
 
           return (
             <div key={plan.key} className="relative flex flex-col">
+              {plan.popular && !isCurrent && (
+                <Badge className="absolute -top-3 left-6 z-10 border-transparent bg-primary text-primary-foreground">
+                  Most popular
+                </Badge>
+              )}
               {isCurrent && (
                 <Badge className="absolute -top-3 right-6 z-10 border-transparent bg-success/10 text-success">
                   Current plan
                 </Badge>
               )}
 
-              <SpotlightCard active={false} className="p-7 transition-transform duration-200 hover:-translate-y-1.5 flex flex-col h-full">
+              <SpotlightCard
+                active={plan.popular}
+                className={cn(
+                  "p-7 transition-transform duration-200 hover:-translate-y-1.5 flex flex-col h-full",
+                  plan.popular && "ring-1 ring-primary/40",
+                )}
+              >
                 <div
                   className={cn(
                     "h-10 w-10 rounded-xl grid place-items-center mb-4",

@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Brand } from "@/components/brand";
 import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
 import { MeshGlow } from "@/components/landing/mesh-glow";
@@ -206,6 +207,7 @@ function Landing() {
                 icon={Crown}
                 price={499}
                 gens="60 posts / month"
+                popular
                 features={["Template Studio unlocked", "Platform-specific optimization (LinkedIn, Instagram)", "All tones & audience targeting unlocked", "10 Indian languages (Hindi, Tamil, Bengali & more)", "No watermark"]}
               />
             </RevealItem>
@@ -315,6 +317,7 @@ function Plan({
   features,
   badge,
   cta,
+  popular,
 }: {
   name: string;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
@@ -323,16 +326,31 @@ function Plan({
   features: string[];
   badge?: string;
   cta?: string;
+  popular?: boolean;
 }) {
   return (
     <div className="relative h-full flex flex-col">
-      {badge && (
-        <Badge className="absolute -top-3 left-6 z-10 border-transparent bg-success/10 text-success border-success/20">
-          {badge}
+      {popular ? (
+        <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 border-transparent bg-primary text-primary-foreground">
+          Most popular
         </Badge>
+      ) : (
+        badge && (
+          <Badge className="absolute -top-3 left-6 z-10 border-transparent bg-success/10 text-success border-success/20">
+            {badge}
+          </Badge>
+        )
       )}
-      <SpotlightCard active={false} className="p-7 hover:-translate-y-1.5 flex flex-col h-full">
-        <div className="h-10 w-10 rounded-xl grid place-items-center mb-4 bg-primary/10 text-primary">
+      <SpotlightCard
+        active={popular}
+        className={cn("p-7 hover:-translate-y-1.5 flex flex-col h-full", popular && "ring-1 ring-primary/40")}
+      >
+        <div
+          className={cn(
+            "h-10 w-10 rounded-xl grid place-items-center mb-4",
+            popular ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary",
+          )}
+        >
           <Icon className="h-5 w-5" strokeWidth={1.9} />
         </div>
         <p className="text-sm font-medium text-muted-foreground">{name}</p>
@@ -351,7 +369,11 @@ function Plan({
             </li>
           ))}
         </ul>
-        <Button asChild className="w-full mt-7 transition-transform duration-200" variant="outline">
+        <Button
+          asChild
+          className="w-full mt-7 transition-transform duration-200"
+          variant={popular ? "default" : "outline"}
+        >
           <Link to="/register">{cta ?? `Choose ${name}`}</Link>
         </Button>
       </SpotlightCard>
