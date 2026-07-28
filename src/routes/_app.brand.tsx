@@ -24,6 +24,7 @@ type Draft = {
   clinic_name:      string;
   doctor_name:      string;
   specialty:        string;
+  countryCode:      string;
   phone:            string;
   website:          string;
   address:          string;
@@ -38,6 +39,7 @@ const DEFAULT: Draft = {
   clinic_name:      "",
   doctor_name:      "",
   specialty:        "",
+  countryCode:      "+91",
   phone:            "",
   website:          "",
   address:          "",
@@ -48,6 +50,45 @@ const DEFAULT: Draft = {
   clinic_photo_url: "",
 };
 
+const COUNTRY_CODES = [
+  { code: "+91",  label: "🇮🇳 +91"  },
+  { code: "+1",   label: "🇺🇸 +1"   },
+  { code: "+44",  label: "🇬🇧 +44"  },
+  { code: "+971", label: "🇦🇪 +971" },
+  { code: "+61",  label: "🇦🇺 +61"  },
+  { code: "+65",  label: "🇸🇬 +65"  },
+  { code: "+60",  label: "🇲🇾 +60"  },
+  { code: "+92",  label: "🇵🇰 +92"  },
+];
+
+// Valid digit lengths per country code
+const PHONE_LENGTHS: Record<string, number[]> = {
+  "+91":  [10],
+  "+1":   [10],
+  "+44":  [10],
+  "+971": [9],
+  "+61":  [9],
+  "+65":  [8],
+  "+60":  [9, 10],
+  "+92":  [10],
+};
+
+function getMaxLength(countryCode: string): number {
+  const lengths = PHONE_LENGTHS[countryCode] ?? [10];
+  return Math.max(...lengths);
+}
+
+function isValidPhone(countryCode: string, phone: string): boolean {
+  if (!phone) return true; // empty is allowed
+  const lengths = PHONE_LENGTHS[countryCode] ?? [10];
+  return lengths.includes(phone.length);
+}
+
+function phoneHint(countryCode: string): string {
+  const lengths = PHONE_LENGTHS[countryCode] ?? [10];
+  return lengths.join(" or ") + "-digit number";
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((res, rej) => {
@@ -56,6 +97,13 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = rej;
     reader.readAsDataURL(file);
   });
+}
+
+function parsePhone(raw: string): { countryCode: string; phone: string } {
+  if (!raw) return { countryCode: "+91", phone: "" };
+  const match = raw.match(/^(\+\d{1,4})(.*)/);
+  if (match) return { countryCode: match[1], phone: match[2].replace(/\D/g, "") };
+  return { countryCode: "+91", phone: raw.replace(/\D/g, "") };
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -91,11 +139,13 @@ function BrandKitPage() {
       if (data) {
         const row = data as unknown as BrandKitRow;
         const colors = (row.brand_colors ?? {}) as Record<string, string>;
+        const { countryCode, phone } = parsePhone(row.phone ?? "");
         setDraft({
           clinic_name:      row.clinic_name      ?? "",
           doctor_name:      row.doctor_name      ?? "",
           specialty:        row.specialty         ?? "",
-          phone:            row.phone             ?? "",
+          countryCode,
+          phone,
           website:          row.website           ?? "",
           address:          row.address           ?? "",
           primaryColor:     colors.primary         ?? DEFAULT.primaryColor,
@@ -113,9 +163,18 @@ function BrandKitPage() {
 
   // ── Save to Supabase ────────────────────────────────────────────────────
   async function onSave() {
+    if (draft.phone && !isValidPhone(draft.countryCode, draft.phone)) {
+      const hint = phoneHint(draft.countryCode);
+      toast.error(`Contact number must be a ${hint} for ${draft.countryCode}.`);
+      return;
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { toast.error("Not signed in."); return; }
     setSaving(true);
+
+    const fullPhone = draft.phone ? `${draft.countryCode}${draft.phone}` : "";
+
     const { error } = await supabase
       .from("brand_kits")
       .upsert(
@@ -124,7 +183,7 @@ function BrandKitPage() {
           clinic_name:      draft.clinic_name,
           doctor_name:      draft.doctor_name,
           specialty:        draft.specialty,
-          phone:            draft.phone,
+          phone:            fullPhone,
           website:          draft.website,
           address:          draft.address,
           logo_url:         draft.logo_url      || null,
@@ -143,16 +202,13 @@ function BrandKitPage() {
     if (error) {
       toast.error("Save failed: " + error.message);
     } else {
-      // Immediately sync localStorage so every useBrandKit hook (generate page,
-      // history page, etc.) sees the new photo/details without waiting for the
-      // next hydrateFromDb cycle or a full page refresh.
       resetHydrationCache();
       writeBrandKit(user.id, {
         ...readBrandKit(user.id),
         clinicName:     draft.clinic_name,
         doctorName:     draft.doctor_name,
         specialty:      draft.specialty,
-        phone:          draft.phone,
+        phone:          fullPhone,
         website:        draft.website,
         address:        draft.address,
         primaryColor:   draft.primaryColor,
@@ -226,7 +282,34 @@ function BrandKitPage() {
                 <SpecialtySelect value={draft.specialty} onChange={(v) => up("specialty", v)} placeholder="Select specialty" />
               </Field>
               <Field label="Contact Number">
-                <Input value={draft.phone} onChange={(e) => up("phone", e.target.value)} />
+                <div className="flex gap-2">
+                  <select
+                    value={draft.countryCode}
+                    onChange={(e) => up("countryCode", e.target.value)}
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm shrink-0"
+                  >
+                    {COUNTRY_CODES.map((c) => (
+                      <option key={c.code} value={c.code}>{c.label}</option>
+                    ))}
+                  </select>
+                  <Input
+                    value={draft.phone}
+                    onChange={(e) => {
+                      const max = getMaxLength(draft.countryCode);
+                      const val = e.target.value.replace(/\D/g, "").slice(0, max);
+                      up("phone", val);
+                    }}
+                    placeholder={phoneHint(draft.countryCode)}
+                    inputMode="numeric"
+                    maxLength={getMaxLength(draft.countryCode)}
+                    className={draft.phone.length > 0 && !isValidPhone(draft.countryCode, draft.phone) ? "border-destructive" : ""}
+                  />
+                </div>
+                {draft.phone.length > 0 && !isValidPhone(draft.countryCode, draft.phone) && (
+                  <p className="text-xs text-destructive mt-1">
+                    {draft.phone.length}/{phoneHint(draft.countryCode)}
+                  </p>
+                )}
               </Field>
               <Field label="Website">
                 <Input value={draft.website} onChange={(e) => up("website", e.target.value)} placeholder="example.clinic" />
@@ -292,7 +375,9 @@ function BrandKitPage() {
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="rounded-md bg-white/15 px-2 py-1.5 truncate">📞 {draft.phone || "—"}</div>
+                    <div className="rounded-md bg-white/15 px-2 py-1.5 truncate">
+                      📞 {draft.phone ? `${draft.countryCode} ${draft.phone}` : "—"}
+                    </div>
                     <div className="rounded-md bg-white/15 px-2 py-1.5 truncate">🌐 {draft.website || "—"}</div>
                   </div>
 
