@@ -125,7 +125,8 @@ import {
 import { Slider } from "@/components/ui/slider";
 import FestiveCard from "@/components/FestiveCard";
 import StoryCard from "@/components/StoryCard";
-import { Watermark } from "@/components/Watermark";
+import { Watermark, RemoveWatermarkRow } from "@/components/Watermark";
+import { isExportableNode } from "@/lib/export-filter";
 import { useAuth } from "@/lib/auth-context";
 import { useIsPro } from "@/lib/use-subscription";
 import { ShareButtons } from "@/components/ShareButtons";
@@ -981,7 +982,7 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
   async function captureSinglePostPng(): Promise<string | null> {
     if (!captureRef.current) return null;
     const { toPng } = await import("html-to-image");
-    return toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+    return toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: isExportableNode });
   }
 
   async function downloadPost() {
@@ -1025,6 +1026,7 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
                 Download post
               </Button>
             </CreativeActions>
+            <RemoveWatermarkRow className="mt-2" />
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
               <div ref={captureRef}>
                 <SlideCanvas {...canvasProps} imageUrl={ai.url} />
@@ -1103,7 +1105,7 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
     const node = thumbCaptureRefs.current[i];
     if (!node) return null;
     const { toPng } = await import("html-to-image");
-    return toPng(node, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+    return toPng(node, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: isExportableNode });
   }
 
   async function downloadSlides(indices: number[]) {
@@ -1228,6 +1230,7 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
                 Download all
               </Button>
             </CreativeActions>
+            <RemoveWatermarkRow className="mt-2" />
 
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
               {post.slides.map((s, i) => {
@@ -1473,7 +1476,7 @@ function StoryPreview({ post, specialty, rowId, initialImageUrl }: { post: Story
   async function captureStoryPng(): Promise<string | null> {
     if (!storyRef.current) return null;
     const { toPng } = await import("html-to-image");
-    return toPng(storyRef.current, { canvasWidth: 1080, canvasHeight: 1920, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+    return toPng(storyRef.current, { canvasWidth: 1080, canvasHeight: 1920, pixelRatio: 1, cacheBust: true, filter: isExportableNode });
   }
 
   async function downloadStory() {
@@ -1512,13 +1515,16 @@ function StoryPreview({ post, specialty, rowId, initialImageUrl }: { post: Story
           imageLoading={ai.loading}
           loadingOverlay={<ImageLoadingOverlay />}
         />
-        <div className="flex flex-wrap justify-center gap-2">
-          <AiImageButton loading={ai.loading} hasImage={!!ai.url}
-            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
-          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" disabled={downloading || ai.loading} onClick={downloadStory}>
-            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
-            Download story
-          </Button>
+        <div className="space-y-2">
+          <div className="flex flex-wrap justify-center gap-2">
+            <AiImageButton loading={ai.loading} hasImage={!!ai.url}
+              onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
+            <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" disabled={downloading || ai.loading} onClick={downloadStory}>
+              {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+              Download story
+            </Button>
+          </div>
+          <RemoveWatermarkRow />
         </div>
         <SectionBlock title="Headline" body={post.headline} />
         <SectionBlock title="Short Message" body={post.message} />
@@ -1676,12 +1682,15 @@ function FestivePreview({ post, specialty, rowId, initialImageUrl, initialCustom
             colorOverrides={cardColors}
           />
         </div>
-        <div className="flex flex-wrap justify-center gap-2">
-          <AiImageButton loading={ai.loading} hasImage={!!ai.url} label={ai.url ? "Regenerate visual" : "Generate festive visual"}
-            onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
-          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" onClick={download} disabled={ai.loading}>
-            <ImageDown className="h-3.5 w-3.5" /> Download post
-          </Button>
+        <div className="space-y-2">
+          <div className="flex flex-wrap justify-center gap-2">
+            <AiImageButton loading={ai.loading} hasImage={!!ai.url} label={ai.url ? "Regenerate visual" : "Generate festive visual"}
+              onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)} />
+            <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" onClick={download} disabled={ai.loading}>
+              <ImageDown className="h-3.5 w-3.5" /> Download post
+            </Button>
+          </div>
+          <RemoveWatermarkRow />
         </div>
 
         <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-3 space-y-2">
@@ -1840,7 +1849,7 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
   async function captureTemplatePng(): Promise<string | null> {
     if (!captureRef.current) return null;
     const { toPng } = await import("html-to-image");
-    return toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: (n) => n.nodeName !== "SCRIPT" });
+    return toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: isExportableNode });
   }
 
   async function downloadPost() {
@@ -1887,6 +1896,7 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
               Download post
             </Button>
           </CreativeActions>
+          <RemoveWatermarkRow className="mt-2" />
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onUploadPhoto} />
         </div>
         <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: CREATIVE_DESIGN_WIDTH }}>

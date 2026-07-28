@@ -18,6 +18,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Search, Copy, Loader2, Star, ImageDown, Eye } from "lucide-react";
+import { isExportableNode } from "@/lib/export-filter";
+import { RemoveWatermarkRow } from "@/components/Watermark";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import StoryCard from "@/components/StoryCard";
@@ -171,7 +173,7 @@ function useCardDownload(doctorName: string) {
         pixelRatio: 2,
         cacheBust: true,
         backgroundColor: "#ffffff",
-        filter: (node) => node.nodeName !== "SCRIPT",
+        filter: isExportableNode,
       });
       const slug = doctorName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
       const link = document.createElement("a");
@@ -484,6 +486,7 @@ function PostDetailDialog({
             </Button>
           )}
         </div>
+        <RemoveWatermarkRow />
 
         {/* Share buttons */}
         <div className="border-t border-border pt-3">

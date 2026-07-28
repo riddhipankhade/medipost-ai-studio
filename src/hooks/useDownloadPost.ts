@@ -1,4 +1,5 @@
 import { useRef, useCallback } from "react";
+import { isExportableNode } from "@/lib/export-filter";
 
 /**
  * Hook that provides a ref to attach to your PostCard and a download function
@@ -31,8 +32,7 @@ export function useDownloadPost(doctorName: string) {
         pixelRatio: 2,          // 2× retina quality
         cacheBust: true,        // bust cached cross-origin images
         backgroundColor: "#ffffff",
-        // Filter out any script/link nodes that confuse the serialiser
-        filter: (node) => node.nodeName !== "SCRIPT",
+        filter: isExportableNode,
       });
 
       const link = document.createElement("a");
@@ -56,7 +56,7 @@ export function useDownloadPost(doctorName: string) {
         pixelRatio: 2,
         cacheBust: true,
         backgroundColor: "#ffffff",
-        filter: (node) => node.nodeName !== "SCRIPT",
+        filter: isExportableNode,
       });
     } catch {
       return null;
