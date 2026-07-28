@@ -89,9 +89,9 @@ interface FanCard {
 }
 
 const fanCards: FanCard[] = [
-  { image: "/showcase/carousel-slide-1.png", label: "Carousel", sway: "-9deg", delay: "0s" },
+  { image: "/showcase/medipost-slide-1-of-3.png", label: "Carousel", sway: "-9deg", delay: "0s" },
   { image: "/showcase/medipost-post.png", label: "Post", sway: "0deg", delay: "-2.7s" },
-  { image: "/showcase/medipost-riddhi-pankhade-1783481372872.png", label: "Festive", sway: "9deg", delay: "-5.4s" },
+  { image: "/showcase/medipost-dr-raj-sharma-1785228026413.png", label: "Festive", sway: "9deg", delay: "-5.4s" },
 ];
 
 /** Fanned deck of real creatives in different formats, each swaying on its own axis. Purely decorative. */

@@ -41,8 +41,8 @@ const contentTypes: ContentType[] = [
         <div className="flex justify-center items-center max-w-md mx-auto">
           <div className="relative z-10 w-[54%] -rotate-2 rounded-xl border border-border shadow-lg overflow-hidden">
             <img
-              src="/showcase/carousel-slide-1.png"
-              alt="Generated carousel slide 1 of 2 — 'Is Your Baby Sniffling Again?' infant respiratory health tips over a mother-and-baby photo, with clinic branding"
+              src="/showcase/medipost-slide-1-of-3.png"
+              alt="Generated carousel slide 1 of 3 — 'Can You Really Shrink Pores?' skincare myth-busting hook over a photo of people scrolling their phones, with clinic branding"
               loading="lazy"
               decoding="async"
               className="block w-full h-auto"
@@ -50,8 +50,8 @@ const contentTypes: ContentType[] = [
           </div>
           <div className="relative w-[54%] ml-[-8%] rotate-2 rounded-xl border border-border shadow-md overflow-hidden">
             <img
-              src="/showcase/carousel-slide-2.png"
-              alt="Generated carousel slide 2 of 2 — 'Handwashing: Your Baby's Shield' hygiene tips with a call-to-action banner and clinic contact details"
+              src="/showcase/medipost-slide-2-of-3.png"
+              alt="Generated carousel slide 2 of 3 — 'Myth: Pores Shrink Permanently' myth-vs-fact skincare slide with clinic branding"
               loading="lazy"
               decoding="async"
               className="block w-full h-auto"
@@ -166,7 +166,7 @@ const contentTypes: ContentType[] = [
     blurb: "Warm, on-brand greetings for festivals and holidays your patients celebrate.",
     preview: (
       <GeneratedPostPreview
-        image="/showcase/medipost-riddhi-pankhade-1783481372872.png"
+        image="/showcase/medipost-dr-raj-sharma-1785228026413.png"
         imageAlt="Generated festive greeting card — Happy Christmas wishes over a decorated tree, signed by the clinic"
         hashtags="#Diwali #FestiveWishes #FromOurClinic"
       />
