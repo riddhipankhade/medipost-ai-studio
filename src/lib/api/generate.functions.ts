@@ -36,21 +36,59 @@ function getSupabaseClient(supabaseUrl: string, supabaseAnonKey: string) {
   });
 }
 
+// ─── Plan-based AI quality config ────────────────────────────────────────────
+const PLAN_AI_CONFIG = {
+  starter: {
+    model:           "gemini-2.5-flash",
+    temperature:     0.85,
+    topK:            40,
+    topP:            0.95,
+    maxOutputTokens: 8192,
+    imageSteps:      4,
+  },
+  growth: {
+    model:           "gemini-2.5-flash",
+    temperature:     0.9,
+    topK:            64,
+    topP:            0.95,
+    maxOutputTokens: 16384,
+    imageSteps:      6,
+  },
+  pro_clinic: {
+    model:           "gemini-2.5-pro",
+    temperature:     1.0,
+    topK:            64,
+    topP:            0.95,
+    maxOutputTokens: 32768,
+    imageSteps:      8,
+  },
+} as const;
+
+type PlanAiConfig = (typeof PLAN_AI_CONFIG)[keyof typeof PLAN_AI_CONFIG];
+
+function getPlanConfig(plan: string | null | undefined): PlanAiConfig {
+  if (plan === "growth")    return PLAN_AI_CONFIG.growth;
+  if (plan === "pro_clinic" || plan === "pro") return PLAN_AI_CONFIG.pro_clinic;
+  return PLAN_AI_CONFIG.starter;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function callGeminiText(
   system:     string,
   userPrompt: string,
   apiKey:     string,
+  cfg:        PlanAiConfig,
 ): Promise<string> {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${apiKey}`;
 
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: "user", parts: [{ text: userPrompt }] }],
     generationConfig: {
-      temperature:      0.85,
-      topK:             40,
-      topP:             0.95,
-      maxOutputTokens:  8192,
+      temperature:      cfg.temperature,
+      topK:             cfg.topK,
+      topP:             cfg.topP,
+      maxOutputTokens:  cfg.maxOutputTokens,
       responseMimeType: "application/json",
     },
     safetySettings: [
@@ -133,7 +171,8 @@ function cfHttpsRequest(
 }
 
 async function callCloudflareImage(
-  prompt: string,
+  prompt:   string,
+  numSteps: number = 4,
 ): Promise<{ dataUrl: string }> {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const apiToken  = process.env.CLOUDFLARE_API_TOKEN;
@@ -145,7 +184,7 @@ async function callCloudflareImage(
     );
   }
 
-  const bodyStr = JSON.stringify({ prompt, num_steps: 4 });
+  const bodyStr = JSON.stringify({ prompt, num_steps: numSteps });
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     let res: { ok: boolean; status: number; text: string };
@@ -815,6 +854,14 @@ export const generateContent = createServerFn({ method: "POST" })
         throw new Error(`Credit processing failed: ${creditError.message}`);
       }
 
+      // Fetch plan to determine AI quality tier
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("plan")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const aiConfig = getPlanConfig(sub?.plan);
+
       const { data: brandKit } = await supabase
         .from("brand_kits")
         .select("clinic_name, doctor_name, brand_colors, website, phone")
@@ -841,7 +888,7 @@ export const generateContent = createServerFn({ method: "POST" })
 
       let rawText: string;
       try {
-        rawText = await callGeminiText(system, userPrompt, geminiApiKey);
+        rawText = await callGeminiText(system, userPrompt, geminiApiKey, aiConfig);
       } catch (geminiErr: any) {
         try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
         throw geminiErr;
@@ -872,7 +919,7 @@ export const generateContent = createServerFn({ method: "POST" })
           generated_text:   JSON.stringify(result),
           hashtags,
           status:           "completed",
-          ai_model:         "gemini-2.5-flash",
+          ai_model:         aiConfig.model,
           customization,
         })
         .select("id")
@@ -930,6 +977,14 @@ export const generateImage = createServerFn({ method: "POST" })
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) throw new Error("Unauthorized. Please sign in to generate images.");
 
+      // Fetch plan to determine image quality tier
+      const { data: imgSub } = await supabase
+        .from("subscriptions")
+        .select("plan")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const imgConfig = getPlanConfig(imgSub?.plan);
+
       const directive = data.visualStyle ? (STYLE_DIRECTIVES[data.visualStyle] ?? "") : "";
       const isFestive = data.visualStyle?.startsWith("Festive") ?? false;
       const fullPrompt = [
@@ -942,7 +997,7 @@ export const generateImage = createServerFn({ method: "POST" })
         .filter(Boolean)
         .join(" ");
 
-      const { dataUrl } = await callCloudflareImage(fullPrompt);
+      const { dataUrl } = await callCloudflareImage(fullPrompt, imgConfig.imageSteps);
 
       // Cloudflare returns ephemeral binary — no persistent public URL.
       // We skip DB image-URL storage; users regenerate the visual on next visit.
