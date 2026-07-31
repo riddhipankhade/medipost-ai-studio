@@ -9,12 +9,12 @@ import { useAuth } from "@/lib/auth-context";
 import { useSubscription } from "@/lib/use-subscription";
 
 const nav = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/generate", label: "Content Studio", icon: Sparkles },
-  { to: "/brand", label: "Brand Kit", icon: Palette },
-  { to: "/history", label: "Content History", icon: History },
-  { to: "/subscription", label: "Subscription", icon: CreditCard },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tourId: "nav-dashboard" },
+  { to: "/generate", label: "Content Studio", icon: Sparkles, tourId: "nav-generate" },
+  { to: "/brand", label: "Brand Kit", icon: Palette, tourId: "nav-brand" },
+  { to: "/history", label: "Content History", icon: History, tourId: "nav-history" },
+  { to: "/subscription", label: "Subscription", icon: CreditCard, tourId: "nav-subscription" },
+  { to: "/settings", label: "Settings", icon: Settings, tourId: "nav-settings" },
 ] as const;
 
 /* The animated active-pill only runs in the desktop sidebar: the mobile sheet
@@ -30,6 +30,7 @@ function SidebarNav({ pathname, animated }: { pathname: string; animated: boolea
           <Link
             key={item.to}
             to={item.to}
+            data-tour={item.tourId}
             className="relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             {active && animated && (

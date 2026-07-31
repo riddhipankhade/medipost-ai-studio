@@ -9,6 +9,7 @@ export type Profile = {
   full_name: string | null;
   role: "user" | "admin";
   is_active: boolean;
+  onboarding_completed: boolean;
 };
 
 type AuthContextValue = {
@@ -17,6 +18,8 @@ type AuthContextValue = {
   profile: Profile | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  completeOnboarding: () => Promise<void>;
+  resetOnboarding: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -59,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     supabase
       .from("profiles")
-      .select("id, email, full_name, role, is_active")
+      .select("id, email, full_name, role, is_active, onboarding_completed")
       .eq("id", session.user.id)
       .single()
       .then(({ data, error }) => {
@@ -68,6 +71,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       });
   }, [session?.user?.id]);
+
+  // Optimistic local update first so the tour/UI reacts immediately, then
+  // persist — mirrors the pattern in the Settings save handler.
+  async function completeOnboarding() {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    setProfile((p) => (p ? { ...p, onboarding_completed: true } : p));
+    const { error } = await supabase
+      .from("profiles")
+      .update({ onboarding_completed: true })
+      .eq("id", userId);
+    if (error) console.error("[auth] failed to persist onboarding completion:", error.message);
+  }
+
+  async function resetOnboarding() {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    setProfile((p) => (p ? { ...p, onboarding_completed: false } : p));
+    const { error } = await supabase
+      .from("profiles")
+      .update({ onboarding_completed: false })
+      .eq("id", userId);
+    if (error) console.error("[auth] failed to reset onboarding:", error.message);
+  }
 
   async function signOut() {
     // Studio's active-workspace pointer is a raw localStorage key, not part
@@ -82,7 +109,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, profile, loading, signOut }}
+      value={{
+        session,
+        user: session?.user ?? null,
+        profile,
+        loading,
+        signOut,
+        completeOnboarding,
+        resetOnboarding,
+      }}
     >
       {children}
     </AuthContext.Provider>

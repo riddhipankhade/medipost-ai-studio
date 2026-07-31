@@ -8,6 +8,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Stagger, StaggerItem, FadeIn } from "@/components/motion";
 import { Sparkles, FileText, History, ArrowRight, CreditCard, Gauge } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
+import { ProductTour } from "@/components/onboarding/product-tour";
+import { dashboardTourSteps } from "@/lib/onboarding-tour";
 
 export const Route = createFileRoute("/_app/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — Medipost AI" }] }),
@@ -44,11 +47,25 @@ type RecentItem = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 function Dashboard() {
+  const { profile, completeOnboarding } = useAuth();
   const [name,    setName]    = useState<string>("");
   const [credits, setCredits] = useState<Credits | null>(null);
   const [sub,     setSub]     = useState<SubRow | null>(null);
   const [recent,  setRecent]  = useState<RecentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showTour, setShowTour] = useState(false);
+
+  useEffect(() => {
+    if (!profile || profile.onboarding_completed) return;
+    // Mobile visitors skip the tour entirely (it's sidebar-heavy and built for
+    // a desktop layout) rather than showing a partial version — onboarding is
+    // marked complete outright so it also won't fire later on a bigger screen.
+    if (window.innerWidth < 768) {
+      completeOnboarding();
+    } else {
+      setShowTour(true);
+    }
+  }, [profile, completeOnboarding]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,6 +141,16 @@ function Dashboard() {
 
   return (
     <div className="space-y-10">
+      {showTour && (
+        <ProductTour
+          steps={dashboardTourSteps}
+          onFinish={() => {
+            setShowTour(false);
+            completeOnboarding();
+          }}
+        />
+      )}
+
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -135,7 +162,7 @@ function Dashboard() {
             Let's create something your patients will love today.
           </p>
         </div>
-        <Button asChild size="lg" className="gap-2">
+        <Button asChild size="lg" className="gap-2" data-tour="new-generation">
           <Link to="/generate">
             <Sparkles className="h-4 w-4" /> New Generation
           </Link>
@@ -146,7 +173,7 @@ function Dashboard() {
       <Stagger className="grid gap-5 md:grid-cols-3">
         {/* Plan */}
         <StaggerItem>
-          <Card className="h-full hover:shadow-md transition-shadow duration-200">
+          <Card className="h-full hover:shadow-md transition-shadow duration-200" data-tour="plan-card">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
@@ -174,7 +201,7 @@ function Dashboard() {
 
         {/* Credits */}
         <StaggerItem>
-          <Card className="h-full hover:shadow-md transition-shadow duration-200">
+          <Card className="h-full hover:shadow-md transition-shadow duration-200" data-tour="credits-card">
             <CardContent className="p-6">
               <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary grid place-items-center">
                 <Gauge className="h-5 w-5" strokeWidth={1.9} />
@@ -223,7 +250,7 @@ function Dashboard() {
       </Stagger>
 
       {/* Quick actions */}
-      <section>
+      <section data-tour="quick-actions">
         <h2 className="text-lg font-semibold mb-4">Quick actions</h2>
         <Stagger className="grid gap-4 md:grid-cols-3">
           <StaggerItem>
