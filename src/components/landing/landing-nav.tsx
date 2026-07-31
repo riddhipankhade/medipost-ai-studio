@@ -67,8 +67,7 @@ export function LandingNav() {
             <Button variant="outline" size="sm" asChild>
               <a href={`mailto:${ENQUIRY_EMAIL}`}>Enquire</a>
             </Button>
-            <Button variant="ghost" size="sm" asChild><Link to="/login">Sign in</Link></Button>
-            <Button size="sm" asChild><Link to="/register">Get started</Link></Button>
+            <Button size="sm" asChild><Link to="/login">Sign in</Link></Button>
           </div>
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
@@ -100,11 +99,8 @@ export function LandingNav() {
                     Enquire
                   </a>
                 </Button>
-                <Button variant="ghost" asChild onClick={() => setMobileOpen(false)}>
-                  <Link to="/login">Sign in</Link>
-                </Button>
                 <Button asChild onClick={() => setMobileOpen(false)}>
-                  <Link to="/register">Get started</Link>
+                  <Link to="/login">Sign in</Link>
                 </Button>
               </div>
             </SheetContent>
