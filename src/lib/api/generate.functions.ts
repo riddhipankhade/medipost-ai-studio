@@ -999,8 +999,45 @@ export const generateImage = createServerFn({ method: "POST" })
 
       const { dataUrl } = await callCloudflareImage(fullPrompt, imgConfig.imageSteps);
 
-      // Cloudflare returns ephemeral binary — no persistent public URL.
-      // We skip DB image-URL storage; users regenerate the visual on next visit.
+      // Persist the generated visual onto its content row so it survives
+      // navigation/remount (Content History, tab switches, etc.) — mirrors
+      // how brand-kit logos/photos are stored as base64 directly in the DB.
+      if (data.contentId) {
+        if (data.slideIndex !== undefined) {
+          const { data: existing } = await supabase
+            .from("content_generations")
+            .select("generated_image_url")
+            .eq("id", data.contentId)
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          const slideCount = data.slideCount ?? data.slideIndex + 1;
+          let slides: (string | null)[] = [];
+          const raw = existing?.generated_image_url;
+          if (raw?.startsWith("[")) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) slides = parsed;
+            } catch { /* fall through to a fresh array */ }
+          }
+          slides = Array.from({ length: slideCount }, (_, i) => slides[i] ?? null);
+          slides[data.slideIndex] = dataUrl;
+
+          const { error } = await supabase
+            .from("content_generations")
+            .update({ generated_image_url: JSON.stringify(slides) })
+            .eq("id", data.contentId)
+            .eq("user_id", user.id);
+          if (error) console.error("[generateImage] Failed to persist slide image:", error.message);
+        } else {
+          const { error } = await supabase
+            .from("content_generations")
+            .update({ generated_image_url: dataUrl })
+            .eq("id", data.contentId)
+            .eq("user_id", user.id);
+          if (error) console.error("[generateImage] Failed to persist image:", error.message);
+        }
+      }
 
       return { dataUrl };
     } catch (error: any) {
