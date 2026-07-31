@@ -73,6 +73,8 @@ jobs:
             archive
 
       - name: Export IPA
+        env:
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
         run: |
           cat > $RUNNER_TEMP/ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -80,11 +82,16 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>teamID</key>
-            <string>${{ secrets.IOS_TEAM_ID }}</string>
-            <key>uploadBitcode</key>
-            <false/>
+            <string>$IOS_TEAM_ID</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.medipost.ai</key>
+              <string>Medipost AI AppStore</string>
+            </dict>
             <key>uploadSymbols</key>
             <true/>
           </dict>
