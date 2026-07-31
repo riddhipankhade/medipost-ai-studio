@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Medipost AI</string>
+    <string name="title_activity_main">Medipost AI</string>
+    <string name="package_name">com.medipost.ai</string>
+    <string name="custom_url_scheme">com.medipost.ai</string>
+</resources>
