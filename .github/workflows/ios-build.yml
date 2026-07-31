@@ -34,8 +34,7 @@ jobs:
 
       - name: Install CocoaPods dependencies
         run: |
-          cd ios/App
-          pod install
+          cd ios/App && pod install || (ls -la && ls -la ios/ && exit 1)
 
       - name: Build for iOS Simulator
         run: |
