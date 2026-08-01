@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Crown, Lock } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useShowWatermark } from "@/lib/use-subscription";
+import { useShowWatermark, useGrowthTrialEligible } from "@/lib/use-subscription";
+import { growthHeadline, growthButtonLabel, GROWTH_TRIAL_SUPPORTING_TEXT } from "@/lib/growth-trial-copy";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -49,7 +50,8 @@ export function Watermark({ style }: { style?: React.CSSProperties }) {
  */
 export function RemoveWatermarkRow({ className = "" }: { className?: string }) {
   const { user } = useAuth();
-  const show = useShowWatermark(user?.id);
+  const show     = useShowWatermark(user?.id);
+  const eligible = useGrowthTrialEligible(user?.id);
   const [open, setOpen] = useState(false);
   if (!show) return null;
   return (
@@ -60,7 +62,7 @@ export function RemoveWatermarkRow({ className = "" }: { className?: string }) {
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
         <Lock className="h-3 w-3" />
-        Remove watermark — Upgrade to Growth
+        Remove watermark — {growthHeadline(eligible)}
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -71,12 +73,14 @@ export function RemoveWatermarkRow({ className = "" }: { className?: string }) {
               Remove the Medipost watermark
             </DialogTitle>
             <DialogDescription>
-              Starter/free-plan creatives carry a small Medipost badge. Upgrade to Growth to export clean, watermark-free posts.
+              {eligible
+                ? GROWTH_TRIAL_SUPPORTING_TEXT
+                : "Starter/free-plan creatives carry a small Medipost badge. Upgrade to Growth to export clean, watermark-free posts."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:flex-col sm:justify-stretch sm:space-x-0 gap-2">
             <Button onClick={() => (window.location.href = "/subscription")} className="w-full">
-              Upgrade to Growth — ₹499/mo
+              {growthHeadline(eligible)}
             </Button>
             <Button variant="outline" onClick={() => setOpen(false)} className="w-full">
               Maybe later

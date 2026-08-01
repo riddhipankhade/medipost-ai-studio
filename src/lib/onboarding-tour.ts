@@ -21,7 +21,7 @@ export const dashboardTourSteps: TourStep[] = [
   {
     target: '[data-tour="plan-card"]',
     title: "Your plan",
-    description: "See your active plan and renewal date at a glance — upgrade anytime from Subscription.",
+    description: "See your active plan and renewal date at a glance — try Growth for 7 days at ₹1 anytime from Subscription.",
   },
   {
     target: '[data-tour="quick-actions"]',

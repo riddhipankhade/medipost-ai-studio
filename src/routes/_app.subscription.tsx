@@ -5,13 +5,28 @@ import { Check, Zap, Crown, Building2, Loader2, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { SpotlightCard } from "@/components/landing/spotlight-card";
 import { cn } from "@/lib/utils";
-import { createPayUHash, verifyPayUPayment } from "@/lib/api/payment.functions";
+import { createPayUHash, verifyPayUPayment, cancelSubscription } from "@/lib/api/payment.functions";
 import { validateVoucher } from "@/lib/api/voucher.functions";
 import { useSubscription } from "@/lib/use-subscription";
+import { growthButtonLabel, GROWTH_TRIAL_SUPPORTING_TEXT } from "@/lib/growth-trial-copy";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "numeric", month: "long", year: "numeric",
+  });
+}
 
 export const Route = createFileRoute("/_app/subscription")({
   component: SubscriptionPage,
@@ -124,6 +139,9 @@ function SubscriptionPage() {
   const [applyingVoucher, setApplyingVoucher] = useState(false);
   const [appliedVoucher,  setAppliedVoucher]  = useState<AppliedVoucher | null>(null);
 
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelling,       setCancelling]       = useState(false);
+
   useState(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id));
   });
@@ -136,7 +154,27 @@ function SubscriptionPage() {
       new Date(sub.plan_expires_at) > new Date()
     : false;
 
-  const currentPlanName = isPaid ? sub?.plan : "starter";
+  const isCancelled       = !!sub?.canceled_at;
+  const canCancel         = isPaid && !!sub?.auto_renew && !isCancelled;
+  const currentPlanName   = isPaid ? sub?.plan : "starter";
+
+  async function handleCancelSubscription() {
+    setCancelling(true);
+    try {
+      await cancelSubscription();
+      toast.success(
+        sub?.plan_expires_at
+          ? `Auto-renewal cancelled. You'll keep Growth access until ${formatDate(sub.plan_expires_at)}, then move to the Free plan — no more charges.`
+          : "Auto-renewal cancelled — no more charges."
+      );
+      setCancelDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["subscription", userId] });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not cancel subscription. Please try again.");
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   async function handleApplyVoucher() {
     if (!voucherInput.trim()) return;
@@ -166,14 +204,14 @@ function SubscriptionPage() {
     return { original: plan.price, final: plan.price, discounted: false };
   }
 
-  async function handleUpgrade(planKey: string) {
+  async function handleUpgrade(planKey: string, startTrial = false) {
     setPaying(planKey);
     try {
-      const voucherCode = appliedVoucher?.applicablePlans.includes(planKey)
+      const voucherCode = !startTrial && appliedVoucher?.applicablePlans.includes(planKey)
         ? appliedVoucher.code
         : undefined;
 
-      const params = await createPayUHash({ data: { planKey, voucherCode } });
+      const params = await createPayUHash({ data: { planKey, voucherCode, startTrial } });
       await loadBoltScript();
       if (!window.bolt) throw new Error("PayU Bolt SDK not available. Please try again.");
 
@@ -209,6 +247,7 @@ function SubscriptionPage() {
                     data: {
                       planKey,
                       voucherCode,
+                      startTrial,
                       txnid:       r.txnid,
                       status:      r.status,
                       amount:      r.amount,
@@ -221,8 +260,10 @@ function SubscriptionPage() {
                     },
                   });
                   toast.success(
-                    "Plan activated! Welcome to " +
-                    planKey.charAt(0).toUpperCase() + planKey.slice(1).replace("_", " ") + "."
+                    startTrial
+                      ? "Trial started! You'll be charged ₹499 automatically after 7 days."
+                      : "Plan activated! Welcome to " +
+                        planKey.charAt(0).toUpperCase() + planKey.slice(1).replace("_", " ") + "."
                   );
                   setAppliedVoucher(null);
                   queryClient.invalidateQueries({ queryKey: ["subscription", userId] });
@@ -261,7 +302,7 @@ function SubscriptionPage() {
 
       {/* Current plan banner */}
       {!isLoading && sub && (
-        <div className={`mb-6 rounded-xl border p-4 flex items-center justify-between ${
+        <div className={`mb-6 rounded-xl border p-4 flex items-center justify-between gap-4 flex-wrap ${
           isPaid ? "bg-primary/5 border-primary/30" : "bg-muted/40 border-border"
         }`}>
           <div>
@@ -272,9 +313,13 @@ function SubscriptionPage() {
             </p>
             {isPaid && sub?.plan_expires_at && (
               <p className="text-xs text-muted-foreground mt-0.5">
-                Active until {new Date(sub.plan_expires_at).toLocaleDateString("en-IN", {
-                  day: "numeric", month: "long", year: "numeric",
-                })}
+                {isCancelled
+                  ? `Cancelled — access until ${formatDate(sub.plan_expires_at)}, then moves to the Free plan. No further charges.`
+                  : sub?.status === "trialing"
+                  ? `Trial ends ${formatDate(sub.plan_expires_at)} — then ₹499/month auto-charges`
+                  : sub?.next_billing_date
+                  ? `Next billing date: ${formatDate(sub.next_billing_date)} · ₹499/month`
+                  : `Active until ${formatDate(sub.plan_expires_at)}`}
               </p>
             )}
             {!isPaid && (
@@ -283,9 +328,61 @@ function SubscriptionPage() {
               </p>
             )}
           </div>
-          {isPaid && <Badge className="bg-primary text-primary-foreground">Active</Badge>}
+          <div className="flex items-center gap-2">
+            {isPaid && (
+              <Badge className={isCancelled ? "bg-muted-foreground/20 text-foreground" : "bg-primary text-primary-foreground"}>
+                {isCancelled ? "Cancelling" : sub?.status === "trialing" ? "Trial" : "Active"}
+              </Badge>
+            )}
+            {canCancel && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => setCancelDialogOpen(true)}
+              >
+                Cancel Subscription
+              </Button>
+            )}
+          </div>
         </div>
       )}
+
+      <Dialog open={cancelDialogOpen} onOpenChange={(open) => !cancelling && setCancelDialogOpen(open)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Cancel your {(sub?.plans as any)?.display_name ?? sub?.plan} subscription?</DialogTitle>
+            <DialogDescription className="space-y-2">
+              <span className="block">
+                {sub?.plan_expires_at
+                  ? `You'll keep full access until ${formatDate(sub.plan_expires_at)}${
+                      sub?.next_billing_date ? " (your next billing date)" : ""
+                    }. After that, you'll move to the Free plan and won't be charged ₹499 again.`
+                  : "You'll keep access until the end of your current billing period, then move to the Free plan with no further charges."}
+              </span>
+              <span className="block">This only stops future billing — it does not cancel access early.</span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:flex-col sm:justify-stretch sm:space-x-0 gap-2">
+            <Button
+              variant="destructive"
+              onClick={handleCancelSubscription}
+              disabled={cancelling}
+              className="w-full"
+            >
+              {cancelling ? <><Loader2 className="h-4 w-4 animate-spin" /> Cancelling...</> : "Cancel Subscription"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setCancelDialogOpen(false)}
+              disabled={cancelling}
+              className="w-full"
+            >
+              Keep my subscription
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Voucher input */}
       <div className="mb-8 rounded-xl border bg-card p-4">
@@ -331,6 +428,8 @@ function SubscriptionPage() {
           const isCurrent = currentPlanName === plan.key;
           const isPaying  = payingPlan === plan.key;
           const pricing   = getDiscountedPrice(plan);
+          const trialEligible =
+            plan.key === "growth" && !isCurrent && !isLoading && !sub?.trial_used_at;
 
           return (
             <div key={plan.key} className="relative flex flex-col">
@@ -387,6 +486,11 @@ function SubscriptionPage() {
                 {!plan.free && pricing.discounted && (
                   <span className="text-xs text-muted-foreground">{plan.period}</span>
                 )}
+                {trialEligible && (
+                  <p className="text-xs font-medium text-primary mt-1 leading-relaxed">
+                    {GROWTH_TRIAL_SUPPORTING_TEXT}
+                  </p>
+                )}
                 <p className="text-sm text-primary mt-1.5 font-medium">{plan.gens}</p>
                 <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{plan.description}</p>
 
@@ -411,11 +515,13 @@ function SubscriptionPage() {
                         "shadow-[0_10px_30px_-10px_color-mix(in_oklch,var(--color-primary)_60%,transparent)] hover:shadow-[0_14px_36px_-8px_color-mix(in_oklch,var(--color-primary)_70%,transparent)]",
                     )}
                     variant={plan.popular ? "default" : "outline"}
-                    onClick={() => handleUpgrade(plan.key)}
+                    onClick={() => handleUpgrade(plan.key, trialEligible)}
                     disabled={!!payingPlan || isLoading}
                   >
                     {isPaying ? (
                       <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
+                    ) : plan.key === "growth" ? (
+                      growthButtonLabel(trialEligible)
                     ) : (
                       `Upgrade to ${plan.name} — ${formatPrice(Math.round(pricing.final))}`
                     )}
@@ -429,7 +535,8 @@ function SubscriptionPage() {
 
       <p className="text-center text-sm text-muted-foreground mt-8">
         All new accounts start on the free Starter plan with 10 posts/month.
-        Paid plans activate immediately after payment.
+        Paid plans activate immediately after payment. The Growth trial is ₹1 for 7 days,
+        available once per account — ₹499/month auto-charges automatically when the trial ends.
       </p>
     </div>
   );

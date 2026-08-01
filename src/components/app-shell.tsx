@@ -6,7 +6,7 @@ import { Brand } from "@/components/brand";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth-context";
-import { useSubscription } from "@/lib/use-subscription";
+import { useSubscription, useIsPro } from "@/lib/use-subscription";
 
 const nav = [
   { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
@@ -88,6 +88,7 @@ function UserFooter({ initials, displayName, planName, onSignOut }: {
 export function AppShell() {
   const { session, user, profile, loading, signOut } = useAuth();
   const { data: sub } = useSubscription(user?.id);
+  const isPro = useIsPro(user?.id);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -118,7 +119,12 @@ export function AppShell() {
     ? nameForDisplay.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "DR";
   const displayName = nameForDisplay || profile?.email || user?.email || "Doctor";
-  const planName = sub?.plans?.display_name ?? "Free";
+  // The live `plans` row a brand-new/downgraded user's plan_id actually points
+  // to is named "Free Trial" (not "Free"/"Starter") — trusting its display_name
+  // directly here would show "Free Trial" to every non-paying user, forever, on
+  // every page. Only trust the joined name for confirmed paid plans; otherwise
+  // use the same "Starter" label the Subscription page already shows.
+  const planName = isPro ? (sub?.plans?.display_name ?? "Free") : "Starter";
 
   async function handleSignOut() {
     await signOut();

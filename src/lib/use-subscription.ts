@@ -8,6 +8,10 @@ export type SubscriptionWithPlan = {
   status: "active" | "trialing" | "canceled" | "past_due";
   current_period_end: string;
   billing_cycle: "monthly" | "yearly";
+  trial_used_at: string | null;
+  auto_renew: boolean;
+  next_billing_date: string | null;
+  canceled_at: string | null;
   plans: {
     name: string;
     display_name: string;
@@ -35,6 +39,10 @@ export function useSubscription(userId: string | undefined) {
           status,
           current_period_end,
           billing_cycle,
+          trial_used_at,
+          auto_renew,
+          next_billing_date,
+          canceled_at,
           plans (
             name,
             display_name,
@@ -69,4 +77,16 @@ export function useIsPro(userId: string | undefined): boolean {
  *  clean (the safe direction to be wrong in). */
 export function useShowWatermark(userId: string | undefined): boolean {
   return !useIsPro(userId);
+}
+
+/** Returns true when the user is still eligible for the ₹1 / 7-day Growth trial —
+ *  i.e. they've never redeemed it (subscriptions.trial_used_at is null). Defaults
+ *  to false while loading or logged out, so trial-only CTAs never flash on for a
+ *  user who might already have used it (mirrors useShowWatermark's default-safe
+ *  pattern). This only reflects eligibility for copy/CTA purposes — the actual
+ *  once-per-user gate is re-enforced server-side in payment.functions.ts. */
+export function useGrowthTrialEligible(userId: string | undefined): boolean {
+  const { data, isLoading } = useSubscription(userId);
+  if (!userId || isLoading) return false;
+  return !data?.trial_used_at;
 }

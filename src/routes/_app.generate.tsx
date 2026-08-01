@@ -128,7 +128,8 @@ import StoryCard from "@/components/StoryCard";
 import { Watermark, RemoveWatermarkRow } from "@/components/Watermark";
 import { isExportableNode } from "@/lib/export-filter";
 import { useAuth } from "@/lib/auth-context";
-import { useIsPro } from "@/lib/use-subscription";
+import { useIsPro, useGrowthTrialEligible } from "@/lib/use-subscription";
+import { growthHeadline, growthButtonLabel } from "@/lib/growth-trial-copy";
 import { ShareButtons } from "@/components/ShareButtons";
 import {
   readStudioSessionPointer,
@@ -204,6 +205,7 @@ function GeneratePage() {
   const [brand] = useBrandKit();
   const { user } = useAuth();
   const isPro = useIsPro(user?.id);
+  const trialEligible = useGrowthTrialEligible(user?.id);
   // Set to open the "Upgrade to Growth" dialog with this explanation; null closes it.
   const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null);
 
@@ -647,7 +649,8 @@ function GeneratePage() {
               </div>
               {!isPro && (
                 <p className="text-[11px] text-muted-foreground pt-1.5">
-                  Starter plan writes in Standard tone only. Upgrade to Growth for Professional, Educational, Friendly & Motivational tones.
+                  Starter plan writes in Standard tone only.{" "}
+                  {trialEligible ? "Try Growth for ₹1" : "Upgrade to Growth"} for Professional, Educational, Friendly & Motivational tones.
                 </p>
               )}
             </Field>
@@ -677,7 +680,8 @@ function GeneratePage() {
               </Select>
               {!isPro && (
                 <p className="text-[11px] text-muted-foreground pt-1">
-                  Starter plan targets General Public only. Upgrade to Growth to target patients, parents, healthcare professionals & more.
+                  Starter plan targets General Public only.{" "}
+                  {trialEligible ? "Try Growth for ₹1" : "Upgrade to Growth"} to target patients, parents, healthcare professionals & more.
                 </p>
               )}
             </Field>
@@ -685,11 +689,12 @@ function GeneratePage() {
             {kind === "template" && !isPro ? (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  Template Studio is a Growth feature — browse the designs, then upgrade to create with them.
+                  Template Studio is a Growth feature — browse the designs, then{" "}
+                  {trialEligible ? "start your ₹1 trial" : "upgrade"} to create with them.
                 </p>
                 <Button size="lg" className="w-full gap-2" onClick={() => window.location.href = "/subscription"}>
                   <Sparkles className="h-4 w-4" />
-                  Upgrade to Growth to create
+                  {growthButtonLabel(trialEligible)}
                 </Button>
               </div>
             ) : (
@@ -709,7 +714,7 @@ function GeneratePage() {
               <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
                 <p className="text-sm font-medium">You've run out of AI generations for this period.</p>
                 <Button size="sm" variant="destructive" onClick={() => window.location.href = "/subscription"}>
-                  Upgrade Plan
+                  {growthButtonLabel(trialEligible)}
                 </Button>
               </CardContent>
             </Card>
@@ -749,12 +754,12 @@ function GeneratePage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Crown className="h-5 w-5 text-[color:var(--teal)]" />
-              Upgrade to Growth
+              {growthHeadline(trialEligible)}
             </DialogTitle>
             <DialogDescription>{upgradePrompt}</DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:flex-col sm:justify-stretch sm:space-x-0 gap-2">
-            <Button onClick={() => window.location.href = "/subscription"} className="w-full">Upgrade to Growth — ₹499/mo</Button>
+            <Button onClick={() => window.location.href = "/subscription"} className="w-full">{growthHeadline(trialEligible)}</Button>
             <Button variant="outline" onClick={() => setUpgradePrompt(null)} className="w-full">Maybe later</Button>
           </DialogFooter>
         </DialogContent>

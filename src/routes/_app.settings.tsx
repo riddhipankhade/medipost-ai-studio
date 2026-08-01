@@ -228,7 +228,11 @@ function Settings() {
                 Each generation uses one credit from your monthly allowance, shown on the
                 Dashboard and reset on your billing cycle. You can see your plan, usage, and
                 renewal date under <strong>Subscription</strong>, and upgrade anytime for a
-                higher monthly limit or extra features.
+                higher monthly limit or extra features. If you haven't already, Growth offers
+                a 7-day trial for ₹1 — it auto-renews at ₹499/month. Use the{" "}
+                <strong>Cancel Subscription</strong> button on the Subscription page anytime
+                before your next billing date to stop auto-renewal — you'll keep access until
+                the current period ends, then move to the Free plan automatically.
               </AccordionContent>
             </AccordionItem>
 

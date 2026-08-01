@@ -9,6 +9,8 @@ import { Stagger, StaggerItem, FadeIn } from "@/components/motion";
 import { Sparkles, FileText, History, ArrowRight, CreditCard, Gauge } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import { useIsPro, useGrowthTrialEligible } from "@/lib/use-subscription";
+import { GrowthTrialBanner } from "@/components/growth-trial-banner";
 import { ProductTour } from "@/components/onboarding/product-tour";
 import { dashboardTourSteps } from "@/lib/onboarding-tour";
 
@@ -29,6 +31,8 @@ type SubRow = {
   status:             string;
   billing_cycle:      string;
   current_period_end: string | null;
+  plan_expires_at:    string | null;
+  canceled_at:        string | null;
   plan: {
     display_name:  string;
     price_monthly: number;
@@ -47,7 +51,9 @@ type RecentItem = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 function Dashboard() {
-  const { profile, completeOnboarding } = useAuth();
+  const { user, profile, completeOnboarding } = useAuth();
+  const isPro         = useIsPro(user?.id);
+  const trialEligible = useGrowthTrialEligible(user?.id);
   const [name,    setName]    = useState<string>("");
   const [credits, setCredits] = useState<Credits | null>(null);
   const [sub,     setSub]     = useState<SubRow | null>(null);
@@ -87,9 +93,8 @@ function Dashboard() {
 
         supabase
           .from("subscriptions")
-          .select("status, billing_cycle, current_period_end, plan:plan_id(display_name, price_monthly)")
+          .select("status, billing_cycle, current_period_end, plan_expires_at, canceled_at, plan:plan_id(display_name, price_monthly)")
           .eq("user_id", user.id)
-          .eq("status", "active")
           .order("created_at", { ascending: false })
           .limit(1)
           .single(),
@@ -129,10 +134,26 @@ function Dashboard() {
   const remaining = credits?.credits_remaining    ?? 0;
   const usedPct   = total > 0 ? Math.round((used / total) * 100) : 0;
 
-  const planName  = sub?.plan?.display_name ?? "—";
+  // canceled_at survives downgrade (kept for audit/churn history — see
+  // downgradeToFreePlan), so it alone isn't enough to mean "currently
+  // cancelling." Require a still-future plan_expires_at too, same guard the
+  // Subscription page uses via isPaid, or a downgraded Free user would show
+  // a stale "Cancelling" badge forever.
+  const isCancelling =
+    !!sub?.canceled_at && !!sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
+
+  // Same reasoning as app-shell.tsx: the free-tier plan_id resolves to a plans
+  // row named "Free Trial" in the live DB, not "Free"/"Starter" — only trust
+  // the joined display_name for confirmed paid users.
+  const planName  = isPro ? (sub?.plan?.display_name ?? "—") : "Starter";
   const price     = sub?.plan?.price_monthly;
   const renewDate = sub?.current_period_end
     ? new Date(sub.current_period_end).toLocaleDateString("en-IN", {
+        day: "numeric", month: "short", year: "numeric",
+      })
+    : null;
+  const cancelsDate = sub?.plan_expires_at
+    ? new Date(sub.plan_expires_at).toLocaleDateString("en-IN", {
         day: "numeric", month: "short", year: "numeric",
       })
     : null;
@@ -180,8 +201,8 @@ function Dashboard() {
                   <CreditCard className="h-5 w-5" strokeWidth={1.9} />
                 </div>
                 {!loading && (
-                  <Badge variant="success" className="capitalize">
-                    {sub?.status ?? "—"}
+                  <Badge variant={isCancelling ? "warning" : "success"} className="capitalize">
+                    {isCancelling ? "Cancelling" : sub?.status ?? "—"}
                   </Badge>
                 )}
               </div>
@@ -192,8 +213,10 @@ function Dashboard() {
                 <span className="text-2xl font-semibold tracking-tight">{planName}</span>
               )}
               <p className="text-xs text-muted-foreground mt-2">
-                {renewDate ? `Renews ${renewDate}` : "—"}
-                {price ? ` · ₹${price.toLocaleString("en-IN")}/mo` : ""}
+                {isCancelling
+                  ? cancelsDate ? `Cancels ${cancelsDate} — no further charges` : "Cancels at period end"
+                  : renewDate ? `Renews ${renewDate}` : "—"}
+                {!isCancelling && price ? ` · ₹${price.toLocaleString("en-IN")}/mo` : ""}
               </p>
             </CardContent>
           </Card>
@@ -248,6 +271,8 @@ function Dashboard() {
           </Card>
         </StaggerItem>
       </Stagger>
+
+      {!loading && !isPro && <GrowthTrialBanner eligible={trialEligible} />}
 
       {/* Quick actions */}
       <section data-tour="quick-actions">
