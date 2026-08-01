@@ -2,7 +2,6 @@ import type { ComponentType } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { Brand } from "@/components/brand";
 import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
 import { MeshGlow } from "@/components/landing/mesh-glow";
@@ -198,7 +197,7 @@ function Landing() {
                 gens="10 posts / month"
                 badge="Included free"
                 cta="Get started free"
-                features={["AI post generation — every format except Template Studio", "10 Indian languages (Hindi, Tamil, Bengali & more)", "Standard tone only", "General Public audience only", "Medipost branding watermark"]}
+                features={["Basic AI post generation", "Limited templates (awareness posts, tips)", "Standard tone / style", "Medipost branding watermark"]}
               />
             </RevealItem>
             <RevealItem direction="scale">
@@ -207,8 +206,7 @@ function Landing() {
                 icon={Crown}
                 price={499}
                 gens="60 posts / month"
-                popular
-                features={["Template Studio unlocked", "Platform-specific optimization (LinkedIn, Instagram)", "All tones & audience targeting unlocked", "10 Indian languages (Hindi, Tamil, Bengali & more)", "No watermark"]}
+                features={["All templates unlocked", "Platform-specific optimization (LinkedIn, Instagram)", "Custom tone (professional, friendly, authoritative)", "Basic content calendar suggestions", "No watermark"]}
               />
             </RevealItem>
             <RevealItem direction="scale">
@@ -217,7 +215,7 @@ function Landing() {
                 icon={Building2}
                 price={999}
                 gens="200 posts / month"
-                features={["Everything in Growth", "Multi-brand / clinic support", "Bulk post generation", "Priority AI quality (better outputs)", "Priority support"]}
+                features={["Everything in Growth", "Multi-brand / clinic support", "Bulk post generation", "Advanced content calendar (weekly/monthly)", "Priority AI quality (better outputs)", "Priority support"]}
               />
             </RevealItem>
           </RevealGroup>
@@ -243,6 +241,11 @@ function Landing() {
         <div className="max-w-6xl mx-auto px-6 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
           <Brand />
           <p>© 2026 Medipost AI · Built for healthcare professionals</p>
+          <div className="flex gap-4 text-xs">
+            <Link to="/privacy-policy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
+            <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>
+            <Link to="/refund-policy" className="hover:text-foreground transition-colors">Refund Policy</Link>
+          </div>
         </div>
       </footer>
     </div>
@@ -317,7 +320,6 @@ function Plan({
   features,
   badge,
   cta,
-  popular,
 }: {
   name: string;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
@@ -326,31 +328,16 @@ function Plan({
   features: string[];
   badge?: string;
   cta?: string;
-  popular?: boolean;
 }) {
   return (
     <div className="relative h-full flex flex-col">
-      {popular ? (
-        <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 border-transparent bg-primary text-primary-foreground">
-          Most popular
+      {badge && (
+        <Badge className="absolute -top-3 left-6 z-10 border-transparent bg-success/10 text-success border-success/20">
+          {badge}
         </Badge>
-      ) : (
-        badge && (
-          <Badge className="absolute -top-3 left-6 z-10 border-transparent bg-success/10 text-success border-success/20">
-            {badge}
-          </Badge>
-        )
       )}
-      <SpotlightCard
-        active={popular}
-        className={cn("p-7 hover:-translate-y-1.5 flex flex-col h-full", popular && "ring-1 ring-primary/40")}
-      >
-        <div
-          className={cn(
-            "h-10 w-10 rounded-xl grid place-items-center mb-4",
-            popular ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary",
-          )}
-        >
+      <SpotlightCard active={false} className="p-7 hover:-translate-y-1.5 flex flex-col h-full">
+        <div className="h-10 w-10 rounded-xl grid place-items-center mb-4 bg-primary/10 text-primary">
           <Icon className="h-5 w-5" strokeWidth={1.9} />
         </div>
         <p className="text-sm font-medium text-muted-foreground">{name}</p>
@@ -369,11 +356,7 @@ function Plan({
             </li>
           ))}
         </ul>
-        <Button
-          asChild
-          className="w-full mt-7 transition-transform duration-200"
-          variant={popular ? "default" : "outline"}
-        >
+        <Button asChild className="w-full mt-7 transition-transform duration-200" variant="outline">
           <Link to="/register">{cta ?? `Choose ${name}`}</Link>
         </Button>
       </SpotlightCard>
