@@ -149,7 +149,7 @@ function RefundPolicy() {
             "The Service is provided and consumed electronically and in real time.",
             "AI-generated content may vary in quality and may not be unique; this variability is inherent to AI services and is not grounds for a refund.",
             "You are responsible for reviewing all generated content before use.",
-            "No physical goods are shipped, and standard "return of goods" concepts do not apply.",
+            "No physical goods are shipped, and standard 'return of goods' concepts do not apply.",
           ]} />
         </Section>
 

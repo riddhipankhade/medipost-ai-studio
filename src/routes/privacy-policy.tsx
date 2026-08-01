@@ -149,7 +149,7 @@ function PrivacyPolicy() {
           <Ul items={[
             "Access the personal data we hold about you",
             "Correct inaccurate or incomplete data",
-            "Delete your data ("right to erasure")",
+            "Delete your data ('right to erasure')",
             "Restrict or object to certain processing",
             "Data portability — receive your data in a portable format",
             "Withdraw consent at any time",
