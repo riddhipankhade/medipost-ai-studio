@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Brand } from "@/components/brand";
 import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
 import { MeshGlow } from "@/components/landing/mesh-glow";
@@ -14,6 +15,7 @@ import { AnimatedNumber } from "@/components/landing/animated-number";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { Sparkles, Check, Palette, History, Zap, Crown, Building2 } from "lucide-react";
 import { SpotlightCard } from "@/components/landing/spotlight-card";
+import { ShineSweep, GlowHalo } from "@/components/landing/shine-sweep";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -49,9 +51,25 @@ function Landing() {
             Medipost AI helps doctors, dentists, and clinics generate Instagram posts, patient education and blog articles in seconds — without sounding robotic.
           </p>
           <div className="mt-9 flex flex-wrap justify-center gap-3">
-            <Button size="lg" asChild className="gap-2"><Link to="/register"><Sparkles className="h-4 w-4" /> Start free</Link></Button>
+            <div className="relative">
+              <GlowHalo />
+              <Button
+                size="lg"
+                asChild
+                className="relative overflow-hidden gap-2 shadow-[0_0_0_1px_var(--color-primary)_inset,0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.5)]"
+              >
+                <Link to="/register">
+                  <ShineSweep />
+                  <Crown className="h-4 w-4" /> Try Growth for ₹1
+                </Link>
+              </Button>
+            </div>
+            <Button size="lg" variant="outline" asChild className="gap-2"><Link to="/register"><Sparkles className="h-4 w-4" /> Start free</Link></Button>
           </div>
-          <p className="mt-5 text-sm text-muted-foreground">No credit card required · 10 free generations</p>
+          <p className="mt-5 text-sm text-muted-foreground">
+            Free to sign up · Then try Growth for 7 days at just ₹1 · Already have an account?{" "}
+            <Link to="/login" className="text-primary font-medium">Sign in</Link>
+          </p>
         </Reveal>
 
         <Reveal direction="scale" delay={0.1} className="max-w-4xl mx-auto px-6 pb-28 md:pb-36">
@@ -186,7 +204,7 @@ function Landing() {
         <div className="max-w-6xl mx-auto px-6">
           <Reveal className="text-center max-w-2xl mx-auto mb-14">
             <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Simple, doctor-friendly pricing</h2>
-            <p className="text-muted-foreground mt-3 leading-relaxed">Every new account starts free. Upgrade when your practice grows.</p>
+            <p className="text-muted-foreground mt-3 leading-relaxed">Every new account starts free. Try Growth for 7 days at ₹1, then ₹499/month.</p>
           </Reveal>
           <RevealGroup className="grid md:grid-cols-3 gap-5 items-stretch">
             <RevealItem direction="scale">
@@ -206,6 +224,9 @@ function Landing() {
                 icon={Crown}
                 price={499}
                 gens="60 posts / month"
+                popular
+                cta="Start 7-Day Trial – ₹1"
+                trialNote="Try 7 days for ₹1, then ₹499/month. Auto-renews — cancel anytime before renewal."
                 features={["All templates unlocked", "Platform-specific optimization (LinkedIn, Instagram)", "Custom tone (professional, friendly, authoritative)", "Basic content calendar suggestions", "No watermark"]}
               />
             </RevealItem>
@@ -229,11 +250,14 @@ function Landing() {
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Ready to delight your patients?</h2>
           <p className="text-muted-foreground mt-3 leading-relaxed">Join 1,200+ doctors creating with Medipost AI.</p>
           <div className="mt-8 flex justify-center gap-3">
-            <Button size="lg" asChild className="gap-2 shadow-[0_0_0_1px_var(--color-primary)_inset,0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.5)]">
-              <Link to="/register"><Sparkles className="h-4 w-4" /> Start free</Link>
+            <Button size="lg" asChild className="relative overflow-hidden gap-2 shadow-[0_0_0_1px_var(--color-primary)_inset,0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.5)]">
+              <Link to="/register"><ShineSweep /><Sparkles className="h-4 w-4" /> Start free</Link>
             </Button>
             <Button size="lg" variant="outline" asChild><Link to="/login">Sign in</Link></Button>
           </div>
+          <p className="mt-4 text-sm text-muted-foreground">
+            New here? Sign up free, then try Growth for 7 days at just ₹1 — ₹499/month after, cancel anytime before renewal.
+          </p>
         </div>
       </Reveal>
 
@@ -320,6 +344,8 @@ function Plan({
   features,
   badge,
   cta,
+  trialNote,
+  popular,
 }: {
   name: string;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
@@ -328,16 +354,38 @@ function Plan({
   features: string[];
   badge?: string;
   cta?: string;
+  trialNote?: string;
+  popular?: boolean;
 }) {
   return (
-    <div className="relative h-full flex flex-col">
-      {badge && (
-        <Badge className="absolute -top-3 left-6 z-10 border-transparent bg-success/10 text-success border-success/20">
-          {badge}
-        </Badge>
+    <div
+      className={cn(
+        "relative h-full flex flex-col transition-transform duration-300 ease-out",
+        popular ? "md:scale-105 z-10 animate-float-card" : "md:scale-90 hover:md:scale-100",
       )}
-      <SpotlightCard active={false} className="p-7 hover:-translate-y-1.5 flex flex-col h-full">
-        <div className="h-10 w-10 rounded-xl grid place-items-center mb-4 bg-primary/10 text-primary">
+    >
+      {popular && <GlowHalo inset="-inset-3" className="rounded-[28px]" />}
+      {popular ? (
+        <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 border-transparent bg-primary text-primary-foreground shadow-[0_0_16px_-2px_var(--color-primary)]">
+          Most popular
+        </Badge>
+      ) : (
+        badge && (
+          <Badge className="absolute -top-3 left-6 z-10 border-transparent bg-success/10 text-success border-success/20">
+            {badge}
+          </Badge>
+        )
+      )}
+      <SpotlightCard
+        active={popular}
+        className={cn("p-7 hover:-translate-y-1.5 flex flex-col h-full", popular && "ring-1 ring-primary/40")}
+      >
+        <div
+          className={cn(
+            "h-10 w-10 rounded-xl grid place-items-center mb-4",
+            popular ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary",
+          )}
+        >
           <Icon className="h-5 w-5" strokeWidth={1.9} />
         </div>
         <p className="text-sm font-medium text-muted-foreground">{name}</p>
@@ -347,6 +395,9 @@ function Plan({
           </span>
           {price > 0 && <span className="text-sm text-muted-foreground">/month</span>}
         </div>
+        {trialNote && (
+          <p className="text-xs font-medium text-primary mt-1 leading-relaxed">{trialNote}</p>
+        )}
         <p className="text-sm text-primary mt-1.5 font-medium">{gens}</p>
         <ul className="space-y-2.5 text-sm mt-6 flex-1">
           {features.map((f) => (
@@ -356,8 +407,15 @@ function Plan({
             </li>
           ))}
         </ul>
-        <Button asChild className="w-full mt-7 transition-transform duration-200" variant="outline">
-          <Link to="/register">{cta ?? `Choose ${name}`}</Link>
+        <Button
+          asChild
+          className={cn("w-full mt-7 transition-transform duration-200", popular && "relative overflow-hidden shadow-[0_10px_30px_-10px_oklch(0.58_0.1_199/0.5)]")}
+          variant={popular ? "default" : "outline"}
+        >
+          <Link to="/register">
+            {popular && <ShineSweep />}
+            {cta ?? `Choose ${name}`}
+          </Link>
         </Button>
       </SpotlightCard>
     </div>

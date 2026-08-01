@@ -270,6 +270,11 @@
   50% { opacity: 0.75; transform: scale(1.015); }
 }
 
+@keyframes float-card {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
 @keyframes shimmer-sweep {
   0% { transform: translateX(-150%); }
   60% { transform: translateX(150%); }
@@ -292,12 +297,17 @@
   animation: card-glow 3.5s ease-in-out infinite;
 }
 
+.animate-float-card {
+  animation: float-card 5s ease-in-out infinite;
+}
+
 .animate-shimmer-sweep {
   animation: shimmer-sweep 3.5s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-float-slow,
+  .animate-float-card,
   .animate-card-sway,
   .animate-mesh-drift,
   .animate-card-glow,
