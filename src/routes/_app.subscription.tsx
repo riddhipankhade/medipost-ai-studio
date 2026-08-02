@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { SpotlightCard } from "@/components/landing/spotlight-card";
+import { ShineSweep, GlowHalo } from "@/components/landing/shine-sweep";
 import { cn } from "@/lib/utils";
 import { createPayUHash, verifyPayUPayment, cancelSubscription } from "@/lib/api/payment.functions";
 import { validateVoucher } from "@/lib/api/voucher.functions";
@@ -432,9 +433,13 @@ function SubscriptionPage() {
             plan.key === "growth" && !isCurrent && !isLoading && !sub?.trial_used_at;
 
           return (
-            <div key={plan.key} className="relative flex flex-col">
+            <div
+              key={plan.key}
+              className={cn("relative flex flex-col", plan.popular && "z-10")}
+            >
+              {plan.popular && <GlowHalo inset="-inset-3" className="rounded-[28px]" />}
               {plan.popular && !isCurrent && (
-                <Badge className="absolute -top-3 left-6 z-10 border-transparent bg-primary text-primary-foreground">
+                <Badge className="absolute -top-3 left-6 z-10 border-transparent bg-primary text-primary-foreground shadow-[0_0_16px_-2px_var(--color-primary)]">
                   Most popular
                 </Badge>
               )}
@@ -510,7 +515,7 @@ function SubscriptionPage() {
                 ) : (
                   <Button
                     className={cn(
-                      "w-full mt-7 gap-2 transition-transform duration-200",
+                      "relative w-full mt-7 gap-2 overflow-hidden transition-transform duration-200",
                       plan.popular &&
                         "shadow-[0_10px_30px_-10px_color-mix(in_oklch,var(--color-primary)_60%,transparent)] hover:shadow-[0_14px_36px_-8px_color-mix(in_oklch,var(--color-primary)_70%,transparent)]",
                     )}
@@ -518,6 +523,7 @@ function SubscriptionPage() {
                     onClick={() => handleUpgrade(plan.key, trialEligible)}
                     disabled={!!payingPlan || isLoading}
                   >
+                    {plan.popular && <ShineSweep />}
                     {isPaying ? (
                       <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
                     ) : plan.key === "growth" ? (
