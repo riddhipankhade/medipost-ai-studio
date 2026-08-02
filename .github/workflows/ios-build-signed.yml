@@ -35,6 +35,11 @@ jobs:
       - name: Generate app icons
         run: npx @capacitor/assets generate --ios
 
+      - name: Set build number
+        run: |
+          cd ios/App
+          agvtool new-version -all ${{ github.run_number }}
+
       - name: Install Apple certificate and provisioning profile
         env:
           IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
