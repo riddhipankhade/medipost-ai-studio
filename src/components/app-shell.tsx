@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Sparkles, History, CreditCard, LogOut, Palette, Settings, Menu, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Sparkles, History, CreditCard, LogOut, Palette, Settings, Menu } from "lucide-react";
 import { motion } from "framer-motion";
 import { Brand } from "@/components/brand";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -14,7 +14,6 @@ const nav = [
   { to: "/brand",        label: "Brand Kit",        icon: Palette },
   { to: "/history",      label: "Content History",  icon: History },
   { to: "/subscription", label: "Subscription",     icon: CreditCard },
-  { to: "/contact",      label: "Contact Support",  icon: MessageSquare },
   { to: "/settings",     label: "Settings",         icon: Settings },
 ] as const;
 
