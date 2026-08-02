@@ -352,7 +352,7 @@ function Dashboard() {
                     </div>
                     <p className="font-medium truncate">{c.topic}</p>
                     <p className="text-sm text-muted-foreground truncate">
-                      {bodySnippet(c.generated_text)}
+                      {bodySnippet(c.generated_text, c.workflow_kind)}
                     </p>
                   </div>
                   <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
@@ -370,21 +370,23 @@ function Dashboard() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function bodySnippet(raw: string | null): string {
+function bodySnippet(raw: string | null, kind: string): string {
   if (!raw) return "—";
+  let parsed: Record<string, any>;
   try {
-    const parsed = JSON.parse(raw);
-    const text =
-      parsed?.content   ||
-      parsed?.greeting  ||
-      parsed?.message   ||
-      parsed?.hook      ||
-      parsed?.objective ||
-      raw;
-    return String(text).split("\n")[0].slice(0, 120);
+    parsed = JSON.parse(raw);
   } catch {
     return raw.split("\n")[0].slice(0, 120);
   }
+  const text =
+    kind === "carousel" ? (parsed?.slides?.[0]?.content ?? parsed?.title) :
+    kind === "festive"  ? parsed?.greeting :
+    kind === "story"    ? parsed?.message :
+    kind === "reel"     ? parsed?.hook :
+    kind === "campaign" ? parsed?.objective :
+    kind === "template" ? (parsed?.subline || parsed?.headline) :
+    parsed?.content ?? raw;
+  return String(text ?? "—").split("\n")[0].slice(0, 120);
 }
 
 function QuickAction({

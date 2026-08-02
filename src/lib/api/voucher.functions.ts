@@ -106,7 +106,7 @@ export const createVoucher = createServerFn({ method: "POST" })
   .validator(z.object({
     code:               z.string().min(3).max(20),
     discountPercentage: z.number().min(1).max(100),
-    applicablePlans:    z.array(z.enum(["starter", "pro", "clinic"])).min(1),
+    applicablePlans:    z.array(z.enum(["starter", "growth", "pro_clinic"])).min(1),
     maxUses:            z.number().nullable(),
     expiresAt:          z.string().nullable(),
   }))

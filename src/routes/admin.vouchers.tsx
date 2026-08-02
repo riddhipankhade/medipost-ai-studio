@@ -19,7 +19,12 @@ export const Route = createFileRoute("/admin/vouchers")({
   component: AdminVouchersPage,
 });
 
-const PLAN_OPTIONS = ["starter", "pro", "clinic"] as const;
+const PLAN_OPTIONS = ["starter", "growth", "pro_clinic"] as const;
+const PLAN_LABELS: Record<(typeof PLAN_OPTIONS)[number], string> = {
+  starter:    "Starter",
+  growth:     "Growth",
+  pro_clinic: "Pro Clinic",
+};
 
 type Voucher = {
   id: string;
@@ -43,7 +48,7 @@ function AdminVouchersPage() {
   // Create form
   const [code,       setCode]      = useState("");
   const [discount,   setDiscount]  = useState("");
-  const [plans,      setPlans]     = useState<string[]>(["starter", "pro", "clinic"]);
+  const [plans,      setPlans]     = useState<string[]>(["starter", "growth", "pro_clinic"]);
   const [maxUses,    setMaxUses]   = useState("");
   const [expiresAt,  setExpiresAt] = useState("");
   const [creating,   setCreating]  = useState(false);
@@ -84,14 +89,14 @@ function AdminVouchersPage() {
         data: {
           code,
           discountPercentage: Number(discount),
-          applicablePlans: plans as ("starter" | "pro" | "clinic")[],
+          applicablePlans: plans as ("starter" | "growth" | "pro_clinic")[],
           maxUses:   maxUses   ? Number(maxUses)  : null,
           expiresAt: expiresAt ? expiresAt        : null,
         },
       });
       toast.success(`Voucher "${code.toUpperCase()}" created!`);
       setCode(""); setDiscount(""); setMaxUses(""); setExpiresAt("");
-      setPlans(["starter", "pro", "clinic"]);
+      setPlans(["starter", "growth", "pro_clinic"]);
       loadVouchers();
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to create voucher.");
@@ -204,7 +209,7 @@ function AdminVouchersPage() {
                     }
                     className="rounded"
                   />
-                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                  {PLAN_LABELS[p]}
                 </label>
               ))}
             </div>
