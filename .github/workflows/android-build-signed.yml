@@ -41,7 +41,10 @@ jobs:
           npx cap add android
 
       - name: Sync Capacitor
-        run: npx cap sync android
+        run: |
+          mkdir -p android/app/src/main/assets
+          npx cap sync android
+        
 
       - name: Generate app icons
         run: npx @capacitor/assets generate --android
