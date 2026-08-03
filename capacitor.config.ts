@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Medipost AI',
   webDir: 'dist',
   server: {
-    url: 'https://medipost-ai-studio.vercel.app',
+    url: 'https://www.medipostai.com',
     cleartext: false,
   },
 };
