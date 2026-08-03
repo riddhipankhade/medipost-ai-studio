@@ -6,7 +6,6 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Brand } from "@/components/brand";
-import { AuthShowcasePanel } from "@/components/auth-showcase-panel";
 import { FadeIn } from "@/components/motion";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
@@ -51,12 +50,20 @@ function Login() {
   if (loading) return null;
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 lg:h-screen lg:overflow-hidden bg-background">
-      <AuthShowcasePanel
-        headline={<>Content your patients<br />actually read.</>}
-        subtext="Medipost AI helps healthcare professionals create educational, on-brand content in seconds."
-      />
-      <div className="flex items-center justify-center p-6 lg:overflow-y-auto">
+    <div className="min-h-screen grid lg:grid-cols-2 bg-background">
+      <div className="hidden lg:flex flex-col justify-between p-12 bg-primary text-primary-foreground">
+        <Brand to="/" />
+        <div>
+          <h2 className="text-3xl font-semibold leading-tight tracking-tight">
+            Content your patients<br />actually read.
+          </h2>
+          <p className="mt-3 text-primary-foreground/80 max-w-sm leading-relaxed">
+            Medipost AI helps healthcare professionals create educational, on-brand content in seconds.
+          </p>
+        </div>
+        <p className="text-sm text-primary-foreground/70">© 2026 Medipost AI</p>
+      </div>
+      <div className="flex items-center justify-center p-6">
         <FadeIn className="w-full max-w-md space-y-7">
           <div className="lg:hidden"><Brand to="/" /></div>
           <div>
@@ -80,10 +87,7 @@ function Login() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password">Password</Label>
-                    <Link
-                      to="/forgot-password"
-                      className="text-xs text-primary hover:underline"
-                    >
+                    <Link to="/forgot-password" className="text-xs text-primary hover:underline">
                       Forgot password?
                     </Link>
                   </div>

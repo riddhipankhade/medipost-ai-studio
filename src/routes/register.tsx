@@ -26,11 +26,11 @@ function Register() {
   const [email, setEmail] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [password, setPassword] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
 
-  // Redirect already-authenticated users away from the register page
   useEffect(() => {
     if (!authLoading && session) {
       navigate({ to: "/dashboard", replace: true });
@@ -60,8 +60,6 @@ function Register() {
       return;
     }
 
-    // If email confirmation is disabled in Supabase, session is set immediately.
-    // If enabled, session is null and the user must confirm via email first.
     if (data.session) {
       navigate({ to: "/dashboard", replace: true });
     } else {
@@ -148,8 +146,24 @@ function Register() {
                     required
                   />
                 </div>
+                <div className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    id="terms"
+                    checked={agreedToTerms}
+                    onChange={(e) => setAgreedToTerms(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+                  />
+                  <label htmlFor="terms" className="text-xs text-muted-foreground leading-relaxed">
+                    I agree to the{" "}
+                    <Link to="/privacy-policy" className="text-primary hover:underline">Privacy Policy</Link>,{" "}
+                    <Link to="/terms" className="text-primary hover:underline">Terms &amp; Conditions</Link>{" "}
+                    and{" "}
+                    <Link to="/refund-policy" className="text-primary hover:underline">Refund Policy</Link>
+                  </label>
+                </div>
                 {error && <p className="text-sm text-destructive">{error}</p>}
-                <Button type="submit" className="w-full" size="lg" disabled={submitting}>
+                <Button type="submit" className="w-full" size="lg" disabled={submitting || !agreedToTerms}>
                   {submitting ? "Creating account…" : "Create account"}
                 </Button>
                 <p className="text-sm text-muted-foreground text-center">
