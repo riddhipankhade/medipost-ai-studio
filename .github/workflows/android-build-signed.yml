@@ -48,8 +48,7 @@ jobs:
         run: |
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
 
-      - name: Generate keystore if not present
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 == '' }}
+      - name: Generate keystore
         run: |
           keytool -genkey -v \
             -keystore android/app/medipost.keystore \
@@ -61,37 +60,25 @@ jobs:
             -storepass medipost123 \
             -keypass medipost123
 
-      - name: Upload keystore as artifact
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 == '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: medipost-keystore
-          path: android/app/medipost.keystore
-          retention-days: 7
-
-      - name: Use keystore from secret
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/medipost.keystore
-
       - name: Build signed APK
-        env:
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'medipost' }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || 'medipost123' }}
-          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD || 'medipost123' }}
         run: |
           cd android
           ./gradlew assembleRelease \
             -Pandroid.injected.signing.store.file=$(pwd)/app/medipost.keystore \
-            -Pandroid.injected.signing.store.password="$ANDROID_STORE_PASSWORD" \
-            -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
-            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+            -Pandroid.injected.signing.store.password=medipost123 \
+            -Pandroid.injected.signing.key.alias=medipost \
+            -Pandroid.injected.signing.key.password=medipost123
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: medipost-android-signed
           path: android/app/build/outputs/apk/release/*.apk
+          retention-days: 7
+
+      - name: Upload keystore
+        uses: actions/upload-artifact@v4
+        with:
+          name: medipost-keystore
+          path: android/app/medipost.keystore
           retention-days: 7
