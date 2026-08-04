@@ -72,7 +72,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
     const { count: activeSubscriptions } = await admin
       .from("subscriptions")
       .select("*", { count: "exact", head: true })
-      .eq("plan", "pro")
+      .like("plan", "pro%")
       .eq("status", "active")
       .gt("plan_expires_at", new Date().toISOString());
 
@@ -109,7 +109,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
           .not("generated_text", "is", null)
           .neq("generated_text", "");
 
-        const isPro = sub?.plan === "pro" && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
+        const isPro = sub?.plan?.startsWith("pro") && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
 
         return {
           name:     p.full_name ?? p.email ?? "Unknown",
@@ -156,7 +156,7 @@ export const getAllUsers = createServerFn({ method: "GET" })
           .eq("user_id", p.id)
           .single();
 
-        const isPro = sub?.plan === "pro" && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
+        const isPro = sub?.plan?.startsWith("pro") && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
 
         return {
           id:     p.id,
