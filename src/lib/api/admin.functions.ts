@@ -10,6 +10,8 @@ import { createServerClient, parseCookieHeader } from "@supabase/ssr";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import { z } from "zod";
 
+const PAID_PLANS = ["pro_clinic", "pro", "growth", "clinic"];
+
 function getSupabase() {
   const cookieHeader = getRequestHeader("cookie") ?? "";
   return createServerClient(
@@ -72,7 +74,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
     const { count: activeSubscriptions } = await admin
       .from("subscriptions")
       .select("*", { count: "exact", head: true })
-      .like("plan", "pro%")
+      .in("plan", PAID_PLANS)
       .eq("status", "active")
       .gt("plan_expires_at", new Date().toISOString());
 
@@ -109,12 +111,12 @@ export const getDashboardStats = createServerFn({ method: "GET" })
           .not("generated_text", "is", null)
           .neq("generated_text", "");
 
-        const isPro = sub?.plan?.startsWith("pro") && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
+        const isPro = PAID_PLANS.includes(sub?.plan ?? "") && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
 
         return {
           name:     p.full_name ?? p.email ?? "Unknown",
           email:    p.email ?? "",
-          plan:     isPro ? "Pro" : "Free",
+          plan:     isPro ? (sub?.plan ?? "Free") : "Free",
           gens:     gens ?? 0,
           joinedAt: p.created_at,
         };
@@ -156,13 +158,13 @@ export const getAllUsers = createServerFn({ method: "GET" })
           .eq("user_id", p.id)
           .single();
 
-        const isPro = sub?.plan?.startsWith("pro") && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
+        const isPro = PAID_PLANS.includes(sub?.plan ?? "") && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
 
         return {
           id:     p.id,
           name:   p.full_name ?? "—",
           email:  p.email ?? "—",
-          plan:   isPro ? "Pro" : "Free",
+          plan:   isPro ? (sub?.plan ?? "Free") : "Free",
           status: isPro ? "Active" : (sub ? "Free" : "Trial"),
           gens:   sub?.generations_used ?? 0,
           joined: p.created_at,
