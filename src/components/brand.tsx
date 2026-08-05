@@ -6,7 +6,7 @@ export function Brand({ to = "/", compact = false }: { to?: string; compact?: bo
       <img
         src={compact ? "/logo-icon.png" : "/logo-full.png"}
         alt="Medipost AI"
-        className={compact ? "h-10 w-10" : "h-14 w-auto"}
+        className={compact ? "h-10 w-10" : "h-11 w-auto"}
       />
     </Link>
   );
