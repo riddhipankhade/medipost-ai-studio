@@ -89,7 +89,7 @@ function AdminDashboard() {
               <CardContent className="p-0">
                 <div className="divide-y divide-border">
                   <div className="grid grid-cols-12 px-5 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    <div className="col-span-5">Doctor</div>
+                    <div className="col-span-5">Clinician</div>
                     <div className="col-span-2">Plan</div>
                     <div className="col-span-3">Generations</div>
                     <div className="col-span-2 text-right">Joined</div>

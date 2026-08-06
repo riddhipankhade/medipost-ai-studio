@@ -69,7 +69,7 @@ const PLANS = [
     name:        "Starter",
     price:       0,
     period:      "/month",
-    description: "For doctors exploring AI-powered content creation.",
+    description: "For clinicians exploring AI-powered content creation.",
     icon:        Zap,
     popular:     false,
     free:        true,
@@ -87,7 +87,7 @@ const PLANS = [
     name:        "Growth",
     price:       499,
     period:      "/month",
-    description: "For active doctors building their personal brand.",
+    description: "For active clinicians building their personal brand.",
     icon:        Crown,
     popular:     true,
     free:        false,
@@ -105,7 +105,7 @@ const PLANS = [
     name:        "Pro Clinic",
     price:       999,
     period:      "/month",
-    description: "For multi-doctor clinics and hospital marketing teams.",
+    description: "For multi-clinician clinics and hospital marketing teams.",
     icon:        Building2,
     popular:     false,
     free:        false,
@@ -295,7 +295,7 @@ function SubscriptionPage() {
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
       <div className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight">Simple, doctor-friendly pricing</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Simple, clinician-friendly pricing</h1>
         <p className="text-muted-foreground mt-2 leading-relaxed">
           Choose the plan that works for your practice. Upgrade when it grows.
         </p>

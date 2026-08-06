@@ -1,6 +1,6 @@
 # Medipost AI Studio
 
-AI-powered healthcare content creation platform for doctors, clinics, hospitals, and healthcare professionals.
+AI-powered healthcare content creation platform for clinicians, clinics, hospitals, and healthcare professionals.
 
 ## Features
 
@@ -13,7 +13,7 @@ AI-powered healthcare content creation platform for doctors, clinics, hospitals,
 * Brand Kit Management
 
   * Clinic Logo Upload
-  * Doctor Photo Upload
+  * Clinician Photo Upload
   * Clinic Photo Upload
   * Cover Image Upload
   * Brand Color Configuration

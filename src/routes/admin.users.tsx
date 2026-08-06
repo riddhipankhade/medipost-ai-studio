@@ -76,7 +76,7 @@ function AdminUsers() {
 
         <Card className="border-border/60">
           <CardHeader>
-            <CardTitle className="text-base">All clinics & doctors</CardTitle>
+            <CardTitle className="text-base">All clinics & clinicians</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {loading ? (

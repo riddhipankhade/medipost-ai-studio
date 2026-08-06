@@ -290,7 +290,7 @@ function BrandKitPage() {
               <Field label="Clinic Name">
                 <Input value={draft.clinic_name} onChange={(e) => up("clinic_name", e.target.value)} />
               </Field>
-              <Field label="Doctor Name">
+              <Field label="Clinician Name">
                 <Input value={draft.doctor_name} onChange={(e) => up("doctor_name", e.target.value)} />
               </Field>
               <Field label="Specialty">
@@ -357,7 +357,7 @@ function BrandKitPage() {
             </CardHeader>
             <CardContent className="grid sm:grid-cols-2 gap-4">
               <UploadField label="Clinic Logo"           value={draft.logo_url}         onChange={(v) => up("logo_url", v ?? "")}         aspect="square" />
-              <UploadField label="Doctor Profile Photo"  value={draft.doctor_photo_url} onChange={(v) => up("doctor_photo_url", v ?? "")} aspect="square" />
+              <UploadField label="Clinician Profile Photo"  value={draft.doctor_photo_url} onChange={(v) => up("doctor_photo_url", v ?? "")} aspect="square" />
               <UploadField label="Clinic Photo"          value={draft.clinic_photo_url} onChange={(v) => up("clinic_photo_url", v ?? "")} aspect="video"  />
             </CardContent>
           </Card>
@@ -400,11 +400,11 @@ function BrandKitPage() {
                     <div className="mt-4 flex items-center gap-3">
                       <img
                         src={draft.doctor_photo_url}
-                        alt="Doctor"
+                        alt="Clinician"
                         className="h-14 w-14 rounded-full object-cover border-2 border-white/40 shrink-0"
                       />
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold truncate">{draft.doctor_name || "Doctor"}</p>
+                        <p className="text-xs font-semibold truncate">{draft.doctor_name || "Clinician"}</p>
                         <p className="text-[11px] opacity-70 truncate">{draft.specialty}</p>
                       </div>
                     </div>

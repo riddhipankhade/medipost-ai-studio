@@ -97,7 +97,7 @@ function Register() {
           <div className="lg:hidden"><Brand to="/" /></div>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
-            <p className="text-muted-foreground text-sm mt-1.5">Built for doctors, dentists &amp; clinics.</p>
+            <p className="text-muted-foreground text-sm mt-1.5">Built for clinicians &amp; clinics.</p>
           </div>
           <Card className="shadow-md">
             <CardContent className="p-7">

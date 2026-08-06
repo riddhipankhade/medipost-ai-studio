@@ -116,8 +116,8 @@ export function AppShell() {
   const nameForDisplay = profile?.full_name?.trim() || metaName;
   const initials = nameForDisplay
     ? nameForDisplay.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-    : "DR";
-  const displayName = nameForDisplay || profile?.email || user?.email || "Doctor";
+    : "CL";
+  const displayName = nameForDisplay || profile?.email || user?.email || "Clinician";
   // The live `plans` row a brand-new/downgraded user's plan_id actually points
   // to is named "Free Trial" (not "Free"/"Starter") — trusting its display_name
   // directly here would show "Free Trial" to every non-paying user, forever, on

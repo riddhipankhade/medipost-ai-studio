@@ -70,7 +70,7 @@ function PrivacyPolicy() {
             <Ul items={["Name of the user", "Email address", "Password (stored in encrypted/hashed form)", "Phone number (if provided)", "Profile photo (if provided)"]} />
           </SubSection>
           <SubSection title="3.2 Professional & Business Information">
-            <Ul items={["Clinic, hospital, or practice name", "Doctor or practitioner name", "Medical specialty or area of practice", "Business address, website, and contact details", "Logo, branding assets, and business social-media handles"]} />
+            <Ul items={["Clinic, hospital, or practice name", "Clinician or practitioner name", "Medical specialty or area of practice", "Business address, website, and contact details", "Logo, branding assets, and business social-media handles"]} />
           </SubSection>
           <SubSection title="3.3 Content Inputs">
             <Ul items={["Topics, prompts, and instructions", "Tone, style, and language preferences", "Draft text, captions, and notes", "Images or media you upload for use in content"]} />

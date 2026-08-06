@@ -111,7 +111,7 @@ function Dashboard() {
       if (cancelled) return;
 
       const profile = profileRes.data as unknown as { full_name: string } | null;
-      setName(profile?.full_name || user.email?.split("@")[0] || "Doctor");
+      setName(profile?.full_name || user.email?.split("@")[0] || "Clinician");
 
       if (creditsRes.data)
         setCredits(creditsRes.data as unknown as Credits);
@@ -158,7 +158,7 @@ function Dashboard() {
       })
     : null;
 
-  const greeting = name ? `Dr. ${name}` : "Doctor";
+  const greeting = name || "Clinician";
 
   return (
     <div className="space-y-10">

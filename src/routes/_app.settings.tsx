@@ -194,7 +194,7 @@ function Settings() {
             <AccordionItem value="what-is">
               <AccordionTrigger>What is Medipost AI?</AccordionTrigger>
               <AccordionContent className="text-muted-foreground">
-                Medipost AI is a content studio built for doctors and clinics. It turns a topic
+                Medipost AI is a content studio built for clinicians and clinics. It turns a topic
                 and a few clicks into patient-ready social posts, education handouts, and
                 articles — written in your specialty's voice and using your Brand Kit.
               </AccordionContent>

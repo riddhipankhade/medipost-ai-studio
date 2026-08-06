@@ -392,7 +392,7 @@ const CATEGORY_HINTS: Record<z.infer<typeof CategoryEnum>, string> = {
   "health-tips":
     "Give 3–6 specific, low-friction tips a patient can act on this week. No vague advice.",
   "warning-signs":
-    "List the red-flag symptoms that mean 'see a doctor now'. Be firm but not alarmist. End with a clear next-step.",
+    "List the red-flag symptoms that mean 'see a clinician now'. Be firm but not alarmist. End with a clear next-step.",
   "prevention":
     "Focus on small daily/weekly habits that prevent the condition. Mention realistic risk reduction.",
   "doctor-explains":
@@ -400,7 +400,7 @@ const CATEGORY_HINTS: Record<z.infer<typeof CategoryEnum>, string> = {
   "awareness":
     "Frame the issue, scale of the problem, who is at risk, and a clear call to action / movement.",
   "clinic-promo":
-    "Highlight a specific service / package / new doctor. Lead with patient benefit, not features. End with a booking CTA.",
+    "Highlight a specific service / package / new clinician. Lead with patient benefit, not features. End with a booking CTA.",
   "greeting":
     "Warm, culturally respectful festive wish from a clinic. Tie wellbeing to the occasion subtly.",
   "reel-hook":
@@ -505,12 +505,12 @@ function brandBlock(b: GenerateInput["brand"]): string {
   if (!b) return "BRAND: not provided. Keep content brand-neutral.";
   const lines: string[] = ["BRAND CONTEXT (subtly weave in, do not stuff):"];
   if (b.clinicName)    lines.push(`- Clinic name: ${b.clinicName}`);
-  if (b.doctorName)    lines.push(`- Doctor: ${b.doctorName}`);
+  if (b.doctorName)    lines.push(`- Clinician: ${b.doctorName}`);
   if (b.primaryColor || b.secondaryColor)
     lines.push(`- Brand colors: ${b.primaryColor ?? ""} ${b.secondaryColor ?? ""}`.trim());
   if (b.website)        lines.push(`- Website: ${b.website}`);
   if (b.phone)          lines.push(`- Phone: ${b.phone}`);
-  if (b.hasDoctorPhoto) lines.push(`- Doctor headshot available — reference in visual.concept.`);
+  if (b.hasDoctorPhoto) lines.push(`- Clinician headshot available — reference in visual.concept.`);
   if (b.hasClinicPhoto) lines.push(`- Clinic photo available — reference as possible background.`);
   if (b.hasLogo)        lines.push(`- Clinic logo available — mention as brand mark.`);
   return lines.join("\n");
@@ -588,7 +588,7 @@ Return STRICT JSON, no markdown:
       const n         = d.slideCount ?? 7;
       const structure = carouselStructureFor(d.category, n);
       return {
-        system: "You are Medipost AI. You design educational carousel posts for doctors. Respond ONLY with strict JSON.",
+        system: "You are Medipost AI. You design educational carousel posts for clinicians. Respond ONLY with strict JSON.",
         user: `${base}
 
 TASK: Design an Instagram CAROUSEL with exactly ${n} slides on "${d.topic}".
@@ -684,8 +684,8 @@ Return STRICT JSON:
         ? `ADDITIONAL INSTRUCTIONS:\n"""\n${d.customInstructions!.trim()}\n"""`
         : "";
       const signOff = doctorName
-        ? `Write it as a PERSONAL greeting FROM ${doctorName}${clinicName ? ` and the ${clinicName} team` : ""} — first-person warmth ("I wish you...", "we at ..."), like a doctor signing a card for their patients, not a corporate announcement.`
-        : `Write it as a warm personal greeting from the clinic's doctor to their patients, not a corporate announcement.`;
+        ? `Write it as a PERSONAL greeting FROM ${doctorName}${clinicName ? ` and the ${clinicName} team` : ""} — first-person warmth ("I wish you...", "we at ..."), like a clinician signing a card for their patients, not a corporate announcement.`
+        : `Write it as a warm personal greeting from the clinic's clinician to their patients, not a corporate announcement.`;
       return {
         system:
           "You are Medipost AI, a culturally-aware festive greeting writer for healthcare brands. You write greetings for ANY occasion. Respond ONLY with strict JSON.",
@@ -701,7 +701,7 @@ ${extra}
 Return STRICT JSON:
 {
   "festival": "${fest}",
-  "greeting": "main greeting, 2-3 warm sentences, ready to render on a card, signed in spirit from the doctor",
+  "greeting": "main greeting, 2-3 warm sentences, ready to render on a card, signed in spirit from the clinician",
   "caption": "matching social caption, 1-2 sentences",
   "hashtags": ["#tag1","... 6-10 festive + healthcare hashtags"],
   ${FESTIVE_VISUAL_BLOCK}
