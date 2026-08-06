@@ -803,18 +803,23 @@ export function CalloutDiagram(p: LayoutProps) {
       <BrandHeader p={{ ...p, theme: headerTheme }} />
       <h3 className="text-center" style={{ ...typo("sectionHeading", p.fontScale), marginTop: c.gap * 0.5, ...(onImage ? photoText("heading") : { color: p.theme.heading }) }}>{p.slideTitle}</h3>
       <div className="flex-1 relative" style={{ marginTop: c.gap * 0.5 }}>
-        {!onImage && (
-          <svg className="absolute inset-0 w-full h-full" aria-hidden>
-            {items.map((_, i) => (
-              <line key={i} x1="50%" y1="50%" x2={positions[i].left} y2={positions[i].top} stroke={`${p.theme.accent}66`} strokeWidth={1.5} />
-            ))}
-          </svg>
-        )}
-        {/* central illustration is dropped over a photo — the photo already occupies that space */}
+        {/* connector lines stay even over a photo — without them the callouts read as
+            random floating boxes instead of a diagram (they just switch to a white
+            stroke so they're visible against an arbitrary image) */}
+        <svg className="absolute inset-0 w-full h-full" aria-hidden>
+          {items.map((_, i) => (
+            <line key={i} x1="50%" y1="50%" x2={positions[i].left} y2={positions[i].top} stroke={onImage ? "rgba(255,255,255,0.6)" : `${p.theme.accent}66`} strokeWidth={1.5} />
+          ))}
+        </svg>
+        {/* central illustration is dropped over a photo — the photo already occupies that
+            space — but a small hub dot keeps the lines anchored to a visible point */}
         {!onImage && (
           <div className="absolute grid place-items-center" style={{ inset: `${Math.round(48 - c.illustrationEmphasis * 30)}%` }}>
             <Illustration className="w-full h-full" accent={p.theme.accent} line={p.theme.heading} />
           </div>
+        )}
+        {onImage && (
+          <div className="absolute rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: "50%", top: "50%", height: 10, width: 10, background: "#ffffff", boxShadow: "0 0 0 4px rgba(255,255,255,0.35)" }} />
         )}
         {items.map((item, i) => (
           <div key={i} className="absolute -translate-x-1/2 -translate-y-1/2 max-w-[38%] text-center"
@@ -875,13 +880,18 @@ export function RadialDiagram(p: LayoutProps) {
       <BrandHeader p={{ ...p, theme: headerTheme }} />
       <h3 className="text-center" style={{ ...typo("sectionHeading", p.fontScale), marginTop: c.gap * 0.5, ...(onImage ? photoText("heading") : { color: p.theme.heading }) }}>{p.slideTitle}</h3>
       <div className="flex-1 relative" style={{ marginTop: c.gap * 0.5 }}>
-        {/* dashed orbit ring through the item positions (r=40% → inset 10%) */}
-        {!onImage && <div className="absolute rounded-full" style={{ inset: "10%", border: `1.5px dashed ${p.theme.heading}44` }} />}
+        {/* dashed orbit ring through the item positions (r=40% → inset 10%) — kept over a
+            photo (in white) so the dot markers still read as an orbit instead of floating
+            free; only the tinted fill+illustration below drop since the photo fills that space */}
+        <div className="absolute rounded-full" style={{ inset: "10%", border: onImage ? "1.5px dashed rgba(255,255,255,0.6)" : `1.5px dashed ${p.theme.heading}44` }} />
         {/* central illustration + tinted circle are dropped over a photo — same reasoning as CalloutDiagram */}
         {!onImage && (
           <div className="absolute grid place-items-center rounded-full" style={{ inset: `${centerInset}%`, background: `${p.theme.accent}22` }}>
             <Illustration className="w-3/4 h-3/4" accent={p.theme.accent} line={p.theme.heading} />
           </div>
+        )}
+        {onImage && (
+          <div className="absolute rounded-full -translate-x-1/2 -translate-y-1/2" style={{ left: "50%", top: "50%", height: 10, width: 10, background: "#ffffff", boxShadow: "0 0 0 4px rgba(255,255,255,0.35)" }} />
         )}
         {items.map((item, i) => (
           <div key={i} className="absolute -translate-x-1/2 -translate-y-1/2 max-w-[34%] text-center"
