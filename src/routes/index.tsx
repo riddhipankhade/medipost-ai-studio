@@ -24,7 +24,7 @@ export const Route = createFileRoute("/")({
       { title: "Medipost AI — Weeks of clinic content, created in minutes" },
       { name: "description", content: "AI content creation built for clinicians, healthcare professionals and clinic owners. Generate on-brand Instagram posts, carousels, stories, patient education and campaigns in minutes." },
       { property: "og:title", content: "Medipost AI" },
-      { property: "og:description", content: "AI marketing built for clinics, not marketers." },
+      { property: "og:description", content: "AI marketing built for clinics." },
     ],
   }),
   component: Landing,
@@ -44,7 +44,7 @@ function Landing() {
         <div className="max-w-6xl mx-auto px-6 pt-12 pb-10 md:pt-16 grid lg:grid-cols-[1.05fr_1fr] gap-10 lg:gap-8 items-center">
           <Reveal className="text-center lg:text-left">
             <Badge variant="outline" className="mb-5 gap-1.5 border-primary/25 bg-primary/5 text-primary">
-              <Sparkles className="h-3 w-3" /> AI marketing, built for clinics — not marketers
+              <Sparkles className="h-3 w-3" /> AI marketing, built for clinics
             </Badge>
             <h1 className="text-4xl md:text-5xl xl:text-[3.4rem] font-semibold tracking-tight text-balance leading-[1.08]">
               Weeks of clinic content, <span className="text-primary">created in minutes.</span>
