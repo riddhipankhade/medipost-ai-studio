@@ -56,6 +56,8 @@ import {
   defaultCategoryFor,
   type ContentCategory,
 } from "@/lib/mock-data";
+import { getTopicExamples } from "@/lib/topic-suggestions";
+import { useTypewriter } from "@/hooks/useTypewriter";
 import {
   generateContent,
   generateImage,
@@ -193,7 +195,7 @@ function readPersistedBrief(userId: string): PersistedBrief | null {
 const DEFAULT_BRIEF_FORM: Omit<GenerateInput, "kind"> = {
   category: "educational",
   specialty: "Dentist",
-  topic: "Daily oral hygiene habits",
+  topic: "",
   tone: "Standard",
   audience: "General Public",
   festival: "Diwali",
@@ -233,6 +235,12 @@ function GeneratePage() {
   const [category, setCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
   const [form, setForm] = useState<Omit<GenerateInput, "kind">>(DEFAULT_BRIEF_FORM);
   const [templateFrame, setTemplateFrame] = useState<TemplateFrameId>("clinic-classic");
+
+  // Animated "e.g. ..." examples in the Topic/Prompt field — inspiration for a
+  // doctor who isn't sure what to write. Freezes once they start typing.
+  const topicExamples = useMemo(() => getTopicExamples(kind, form.specialty), [kind, form.specialty]);
+  const animatedTopicExample = useTypewriter(topicExamples, form.topic.trim() === "");
+  const topicPlaceholder = `e.g. ${animatedTopicExample}`;
 
   useEffect(() => {
     if (typeof window === "undefined" || !userId) return;
@@ -573,7 +581,7 @@ function GeneratePage() {
                   <Input
                     value={form.topic}
                     onChange={(e) => update("topic", e.target.value)}
-                    placeholder="e.g. Wish patients good health this season"
+                    placeholder={topicPlaceholder}
                   />
                 </Field>
                 <Field label="Creative Style">
@@ -603,7 +611,7 @@ function GeneratePage() {
                 <Input
                   value={form.topic}
                   onChange={(e) => update("topic", e.target.value)}
-                  placeholder={kind === "campaign" ? "e.g. Heart health awareness month" : "e.g. Root canal myths"}
+                  placeholder={topicPlaceholder}
                 />
               </Field>
             )}
