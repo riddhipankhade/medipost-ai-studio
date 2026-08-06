@@ -117,11 +117,13 @@ import {
   resolveTheme,
   resolveFestiveColors,
   resolveTemplateColors,
+  resolveStoryColors,
   DEFAULT_TEMPLATE_IMAGE_OFFSET,
   type SingleCustomization,
   type CarouselCustomization,
   type FestiveCustomization,
   type TemplateCustomization,
+  type StoryCustomization,
 } from "@/lib/post-customization";
 import { Slider } from "@/components/ui/slider";
 import FestiveCard from "@/components/FestiveCard";
@@ -833,7 +835,8 @@ function ResultPreview({ result, specialty, rowId, category, topic, templateFram
                         initialSlideImages={sessionSeed?.initialSlideImages ?? null}
                         initialCustomization={sessionSeed?.initialCustomization?.kind === "carousel" ? sessionSeed.initialCustomization : null} />;
     case "story":    return <StoryPreview post={result} specialty={specialty} rowId={rowId}
-                        initialImageUrl={sessionSeed?.initialImageUrl ?? null} />;
+                        initialImageUrl={sessionSeed?.initialImageUrl ?? null}
+                        initialCustomization={sessionSeed?.initialCustomization?.kind === "story" ? sessionSeed.initialCustomization : null} />;
     case "reel":     return <ReelPreview post={result} specialty={specialty} />;
     case "campaign": return <CampaignPreview plan={result} />;
     case "festive":  return <FestivePreview post={result} specialty={specialty} rowId={rowId}
@@ -1090,8 +1093,21 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
   const savedTheme = initialCustomization?.theme;
   const [idx, setIdx] = useState(0);
   const [themeId, setThemeId] = useState<string>(() => savedTheme?.themeId ?? suggestThemeId(specialty));
-  const [layout, setLayout] = useState<SlideLayout>(() => initialCustomization?.slides[0]?.layout ?? "centered");
-  const [autoLayout, setAutoLayout] = useState(() => initialCustomization?.autoLayout ?? true);
+  // per-slide manual layout pin — null means "follow the AI recommendation for this
+  // slide"; picking a layout only pins the slide you're currently viewing, not the
+  // whole carousel. Seeded from persisted state by diffing each slide's saved layout
+  // against what the strategy resolver would recommend fresh: if they match, treat it
+  // as still-auto (no separate "was this auto" flag is persisted per slide).
+  const [layoutOverrides, setLayoutOverrides] = useState<(SlideLayout | null)[]>(() => {
+    if (!initialCustomization) return post.slides.map(() => null);
+    const total0 = post.slides.length;
+    return post.slides.map((s, i) => {
+      const saved = initialCustomization.slides[i]?.layout;
+      if (!saved) return null;
+      const st = resolveVisualStrategy(s, category, { slideIndex: i, totalSlides: total0, isCta: i === total0 - 1 });
+      return saved === st.archetype ? null : saved;
+    });
+  });
   const [fontFamily, setFontFamily] = useState<string>(() => savedTheme?.fontFamily ?? carouselThemes[0].fontFamily);
   const [fontScale, setFontScale] = useState<number>(() => savedTheme?.fontScale ?? 1);
   const [headingColor, setHeadingColor] = useState<string | null>(() => savedTheme?.headingColor ?? null);
@@ -1109,6 +1125,7 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
   const thumbCaptureRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   if (slideImages.length !== post.slides.length) setSlideImages(post.slides.map(() => null));
+  if (layoutOverrides.length !== post.slides.length) setLayoutOverrides(post.slides.map(() => null));
 
   async function captureSlidePng(i: number): Promise<string | null> {
     const node = thumbCaptureRefs.current[i];
@@ -1176,20 +1193,21 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
 
   const slidesStrategy = useMemo(() => post.slides.map((s, i) => {
     const st = resolveVisualStrategy(s, category, { slideIndex: i, totalSlides: total, isCta: i === total - 1 });
-    return { layout: (autoLayout ? st.archetype : layout) as SlideLayout, composition: st.composition };
-  }), [post.slides, category, total, autoLayout, layout]);
+    return { layout: (layoutOverrides[i] ?? st.archetype) as SlideLayout, composition: st.composition };
+  }), [post.slides, category, total, layoutOverrides]);
 
   const customization: CarouselCustomization = useMemo(() => ({
     v: 1, engine: "v1", kind: "carousel",
     theme: { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
-    autoLayout, slides: slidesStrategy,
-  }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, autoLayout, slidesStrategy]);
+    autoLayout: layoutOverrides.every((v) => v == null), slides: slidesStrategy,
+  }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, layoutOverrides, slidesStrategy]);
   usePersistCustomization(rowId, customization, !!initialCustomization);
 
   if (!slide) return null;
 
   const strategy = resolveVisualStrategy(slide, category, { slideIndex: idx, totalSlides: total, isCta: idx === total - 1 });
-  const effectiveLayout: SlideLayout = autoLayout ? strategy.archetype : layout;
+  const currentOverride = layoutOverrides[idx] ?? null;
+  const effectiveLayout: SlideLayout = currentOverride ?? strategy.archetype;
 
   return (
     <Card className="border-border/60">
@@ -1244,7 +1262,7 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
               {post.slides.map((s, i) => {
                 const st = resolveVisualStrategy(s, category, { slideIndex: i, totalSlides: total, isCta: i === total - 1 });
-                const captureLayout: SlideLayout = autoLayout ? st.archetype : layout;
+                const captureLayout: SlideLayout = layoutOverrides[i] ?? st.archetype;
                 return (
                   <div key={i} ref={(el) => { thumbCaptureRefs.current[i] = el; }}>
                     <SlideCanvas
@@ -1267,9 +1285,9 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
               setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
             }}
             layout={effectiveLayout}
-            setLayout={(v) => { setAutoLayout(false); setLayout(v); }}
-            autoLayout={autoLayout}
-            setAutoLayout={setAutoLayout}
+            setLayout={(v) => setLayoutOverrides((arr) => { const next = [...arr]; next[idx] = v; return next; })}
+            autoLayout={currentOverride == null}
+            setAutoLayout={(v) => { if (v) setLayoutOverrides((arr) => { const next = [...arr]; next[idx] = null; return next; }); }}
             recommendedLayout={strategy.archetype}
             fontFamily={fontFamily} setFontFamily={setFontFamily}
             fontScale={fontScale} setFontScale={setFontScale}
@@ -1476,11 +1494,29 @@ function PhotoAdjustPanel({
   );
 }
 
-function StoryPreview({ post, specialty, rowId, initialImageUrl }: { post: StoryPost; specialty: string; rowId?: string | null; initialImageUrl?: string | null }) {
+function StoryPreview({ post, specialty, rowId, initialImageUrl, initialCustomization }: {
+  post: StoryPost; specialty: string; rowId?: string | null;
+  initialImageUrl?: string | null; initialCustomization?: StoryCustomization | null;
+}) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId, initialImageUrl);
   const storyRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
+
+  const [useBrandColors, setUseBrandColors] = useState(() => initialCustomization?.useBrandColors ?? true);
+  const [primaryColor, setPrimaryColor] = useState<string | null>(() => initialCustomization?.primaryColor ?? null);
+  const [secondaryColor, setSecondaryColor] = useState<string | null>(() => initialCustomization?.secondaryColor ?? null);
+  const [tertiaryColor, setTertiaryColor] = useState<string | null>(() => initialCustomization?.tertiaryColor ?? null);
+  const palette = post.visual.colors;
+  const cardColors = resolveStoryColors({ useBrandColors, primaryColor, secondaryColor, tertiaryColor }, brand, palette);
+  const hasManualColors = primaryColor !== null || secondaryColor !== null || tertiaryColor !== null;
+  const resetManualColors = () => { setPrimaryColor(null); setSecondaryColor(null); setTertiaryColor(null); };
+
+  const customization: StoryCustomization = useMemo(() => ({
+    v: 1, engine: "v1", kind: "story",
+    useBrandColors, primaryColor, secondaryColor, tertiaryColor,
+  }), [useBrandColors, primaryColor, secondaryColor, tertiaryColor]);
+  usePersistCustomization(rowId, customization, !!initialCustomization);
 
   async function captureStoryPng(): Promise<string | null> {
     if (!storyRef.current) return null;
@@ -1523,6 +1559,7 @@ function StoryPreview({ post, specialty, rowId, initialImageUrl }: { post: Story
           imageUrl={ai.url}
           imageLoading={ai.loading}
           loadingOverlay={<ImageLoadingOverlay />}
+          colorOverrides={cardColors}
         />
         <div className="space-y-2">
           <div className="flex flex-wrap justify-center gap-2">
@@ -1535,6 +1572,28 @@ function StoryPreview({ post, specialty, rowId, initialImageUrl }: { post: Story
           </div>
           <RemoveWatermarkRow />
         </div>
+
+        <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Card colors</Label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <span>Use clinic brand colors</span>
+              <input type="checkbox" checked={useBrandColors} className="accent-[color:var(--teal)]"
+                onChange={(e) => { setUseBrandColors(e.target.checked); resetManualColors(); }} />
+            </label>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <MiniColor label="Top" value={cardColors.primary} onChange={setPrimaryColor} />
+            <MiniColor label="Middle" value={cardColors.secondary} onChange={setSecondaryColor} />
+            <MiniColor label="Bottom" value={cardColors.tertiary} onChange={setTertiaryColor} />
+          </div>
+          {hasManualColors && (
+            <button type="button" onClick={resetManualColors} className="text-[11px] text-[color:var(--teal)] hover:underline">
+              Reset to suggested colors
+            </button>
+          )}
+        </div>
+
         <SectionBlock title="Headline" body={post.headline} />
         <SectionBlock title="Short Message" body={post.message} />
         <SectionBlock title="CTA" body={post.cta} />

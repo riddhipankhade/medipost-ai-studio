@@ -248,7 +248,7 @@ function Landing() {
         <MeshGlow variant="soft" />
         <div className="max-w-3xl mx-auto px-6 text-center">
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Ready to delight your patients?</h2>
-          <p className="text-muted-foreground mt-3 leading-relaxed">Join 1,200+ doctors creating with Medipost AI.</p>
+          <p className="text-muted-foreground mt-3 leading-relaxed">Join 534+ clinicians creating with Medipost AI.</p>
           <div className="mt-8 flex justify-center gap-3">
             <Button size="lg" asChild className="relative overflow-hidden gap-2 shadow-[0_0_0_1px_var(--color-primary)_inset,0_10px_30px_-10px_oklch(0.58_0.1_199_/_0.5)]">
               <Link to="/register"><ShineSweep /><Sparkles className="h-4 w-4" /> Start free</Link>

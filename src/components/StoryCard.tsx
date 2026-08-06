@@ -1,12 +1,23 @@
 import { forwardRef } from "react";
+import { ArrowRight } from "lucide-react";
 import { BrandContactBar } from "@/components/brand-frame";
 import { ContextualBackground } from "@/components/carousel-layouts";
 import { Watermark } from "@/components/Watermark";
 import type { BrandKit } from "@/lib/brand-kit";
 
+/** Optional per-card color overrides (studio pickers). Falls back to brand kit → AI palette → defaults. */
+export type StoryCardColors = {
+  /** gradient top */
+  primary?: string | null;
+  /** gradient mid */
+  secondary?: string | null;
+  /** gradient bottom */
+  tertiary?: string | null;
+};
+
 /**
  * The actual story creative — 9:16 gradient card, full-bleed AI/brand photo,
- * centered headline + message, doctor/clinic line, contact bar, CTA pill.
+ * centered headline + message, doctor/clinic line, contact bar, CTA button.
  * Shared between the studio preview (src/routes/_app.generate.tsx) and
  * Content History's post viewer so both render the exact same design
  * instead of drifting apart.
@@ -24,11 +35,12 @@ const StoryCard = forwardRef<
     imageLoading?: boolean;
     loadingOverlay?: React.ReactNode;
     width?: number;
+    colorOverrides?: StoryCardColors;
   }
->(({ headline, message, cta, colors, brand, specialty, imageUrl, imageLoading, loadingOverlay, width = 270 }, ref) => {
-  const c1 = brand.primaryColor || colors[0] || "#0E7C7B";
-  const c2 = brand.secondaryColor || colors[1] || "#1f4e79";
-  const c3 = colors[2] || "#0a3d62";
+>(({ headline, message, cta, colors, brand, specialty, imageUrl, imageLoading, loadingOverlay, width = 270, colorOverrides }, ref) => {
+  const c1 = colorOverrides?.primary || brand.primaryColor || colors[0] || "#0E7C7B";
+  const c2 = colorOverrides?.secondary || brand.secondaryColor || colors[1] || "#1f4e79";
+  const c3 = colorOverrides?.tertiary || colors[2] || "#0a3d62";
   const photo = imageUrl || brand.coverPhoto || brand.clinicPhoto || brand.doctorPhoto;
 
   return (
@@ -75,7 +87,12 @@ const StoryCard = forwardRef<
             badgeFg={c1}
             className="mb-2"
           />
-          <div className="rounded-full bg-white text-sm font-semibold py-2.5 text-center shadow" style={{ color: c1 }}>{cta}</div>
+          {cta && (
+            <div className="rounded-full bg-white text-sm font-semibold py-2.5 px-4 shadow flex items-center justify-center gap-1.5" style={{ color: c1 }}>
+              <span className="truncate">{cta}</span>
+              <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+            </div>
+          )}
         </div>
         <Watermark />
       </div>

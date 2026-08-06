@@ -220,7 +220,7 @@ export function AuthShowcasePanel({ headline, subtext, creative = defaultCreativ
               </span>
             ))}
           </div>
-          <p className="text-sm text-primary-foreground/80">Trusted by 1,200+ clinicians</p>
+          <p className="text-sm text-primary-foreground/80">Trusted by 534+ clinicians</p>
         </FadeIn>
         <p className="text-sm text-primary-foreground/70">© 2026 Medipost AI</p>
       </div>

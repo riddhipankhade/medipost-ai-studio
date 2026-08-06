@@ -35,10 +35,12 @@ import {
   resolveTheme,
   resolveFestiveColors,
   resolveTemplateColors,
+  resolveStoryColors,
   defaultSingleCustomization,
   defaultCarouselCustomization,
   defaultFestiveCustomization,
   defaultTemplateCustomization,
+  defaultStoryCustomization,
 } from "@/lib/post-customization";
 
 export const Route = createFileRoute("/_app/history")({
@@ -250,6 +252,9 @@ function PostDetailDialog({
   const templateCustom = isTemplate
     ? parseCustomization(row.customization, "template") ?? defaultTemplateCustomization()
     : null;
+  const storyCustom = isStory
+    ? parseCustomization(row.customization, "story") ?? defaultStoryCustomization()
+    : null;
 
   // Template frame choice now comes from persisted customization (falls back
   // to the default frame for older rows that never saved one).
@@ -433,6 +438,7 @@ function PostDetailDialog({
               brand={slideBrand}
               specialty={row.specialty}
               imageUrl={directImageUrl}
+              colorOverrides={storyCustom ? resolveStoryColors(storyCustom, slideBrand, p?.visual?.colors ?? []) : undefined}
             />
           </div>
         )}

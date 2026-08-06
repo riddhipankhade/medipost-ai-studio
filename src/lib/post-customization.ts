@@ -79,7 +79,11 @@ export const TemplateCustomizationSchema = z.object({
   imageOffsetY: z.number().min(0).max(100).optional(),
   imageZoom: z.number().min(1).max(2.5).optional(),
 });
-export const StoryCustomizationSchema    = z.object({ ...Envelope, kind: z.literal("story") });
+export const StoryCustomizationSchema    = z.object({
+  ...Envelope, kind: z.literal("story"),
+  useBrandColors: z.boolean(),
+  primaryColor: HexColor.nullable(), secondaryColor: HexColor.nullable(), tertiaryColor: HexColor.nullable(),
+});
 export const ReelCustomizationSchema     = z.object({ ...Envelope, kind: z.literal("reel") });
 export const CampaignCustomizationSchema = z.object({ ...Envelope, kind: z.literal("campaign") });
 
@@ -97,6 +101,7 @@ export type SingleCustomization = z.infer<typeof SingleCustomizationSchema>;
 export type CarouselCustomization = z.infer<typeof CarouselCustomizationSchema>;
 export type FestiveCustomization = z.infer<typeof FestiveCustomizationSchema>;
 export type TemplateCustomization = z.infer<typeof TemplateCustomizationSchema>;
+export type StoryCustomization = z.infer<typeof StoryCustomizationSchema>;
 
 /** Parses `raw` (whatever the DB's jsonb column holds) and returns it only if valid AND matching `kind`; otherwise null so the caller can fall back to computed defaults. Never throws. */
 export function parseCustomization<K extends PostCustomization["kind"]>(
@@ -149,6 +154,18 @@ export function resolveTemplateColors(
   return {
     primary: knobs.primaryColor ?? ((knobs.useBrandColors ? brand.primaryColor : "") || palette[0] || "#0E7C7B"),
     secondary: knobs.secondaryColor ?? ((knobs.useBrandColors ? brand.secondaryColor : "") || palette[1] || "#134e4a"),
+  };
+}
+
+export function resolveStoryColors(
+  knobs: Pick<StoryCustomization, "useBrandColors" | "primaryColor" | "secondaryColor" | "tertiaryColor">,
+  brand: BrandKit,
+  palette: string[],
+) {
+  return {
+    primary: knobs.primaryColor ?? ((knobs.useBrandColors ? brand.primaryColor : "") || palette[0] || "#0E7C7B"),
+    secondary: knobs.secondaryColor ?? ((knobs.useBrandColors ? brand.secondaryColor : "") || palette[1] || "#1f4e79"),
+    tertiary: knobs.tertiaryColor ?? (palette[2] || "#0a3d62"),
   };
 }
 
@@ -211,8 +228,11 @@ export function defaultTemplateCustomization(): TemplateCustomization {
   };
 }
 
-export function defaultStoryCustomization(): z.infer<typeof StoryCustomizationSchema> {
-  return { v: CUSTOMIZATION_VERSION, engine: RENDER_ENGINE, kind: "story" };
+export function defaultStoryCustomization(): StoryCustomization {
+  return {
+    v: CUSTOMIZATION_VERSION, engine: RENDER_ENGINE, kind: "story",
+    useBrandColors: true, primaryColor: null, secondaryColor: null, tertiaryColor: null,
+  };
 }
 export function defaultReelCustomization(): z.infer<typeof ReelCustomizationSchema> {
   return { v: CUSTOMIZATION_VERSION, engine: RENDER_ENGINE, kind: "reel" };

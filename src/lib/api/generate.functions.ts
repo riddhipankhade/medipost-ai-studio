@@ -620,11 +620,13 @@ Return STRICT JSON:
 
 TASK: Write ONE Instagram Story (9:16) about "${d.topic}". Max 25 words total.
 
+- cta: a short, direct action line (2-4 words, e.g. "Book Appointment", "Call Now", "DM to Book"). NOT a question, NOT a poll/tap-to-vote prompt.
+
 Return STRICT JSON:
 {
   "headline": "4-6 word headline",
   "message": "supporting message, max 25 words",
-  "cta": "tap-style CTA",
+  "cta": "2-4 word action line",
   ${VISUAL_BLOCK}
 }`,
       };
