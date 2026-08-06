@@ -44,18 +44,16 @@ export const emptyBrandKit: BrandKit = {
 };
 
 // Earlier versions merged defaultBrandKit into every read and hydrateFromDb
-// persisted that merge, so existing per-account caches carry the dummy
-// identity values. Strip exact matches so they never resurface on creatives.
-const IDENTITY_KEYS = ["clinicName", "doctorName", "specialty", "phone", "website", "address"] as const;
-
-function stripLegacyDummies(kit: BrandKit): BrandKit {
-  const out = { ...kit };
-  for (const k of IDENTITY_KEYS) {
-    if (out[k] === defaultBrandKit[k]) out[k] = "";
-  }
-  return out;
-}
-
+// persisted that merge, so pre-2026-07-14 caches could carry dummy identity
+// values (e.g. specialty "Dentist"). That source bug is long fixed —
+// hydrateFromDb below only ever overwrites a cached field when the DB holds a
+// genuinely non-empty value, and the Brand page's Save writes every field
+// explicitly — so any leftover corrupted cache self-heals the next time this
+// account's kit hydrates or gets saved. A prior version of this file instead
+// stripped any field that exactly matched a placeholder value on every read
+// (or once per browser/account): that's indistinguishable from a real doctor
+// whose specialty genuinely IS "Dentist" — the exact sample value — silently
+// blanking it forever. Don't reintroduce that; let hydration self-heal instead.
 const KEY_PREFIX = "medipost.brandkit.v1";
 
 // Brand kits are namespaced per signed-in account so switching accounts in the
@@ -80,7 +78,7 @@ export function readBrandKit(userId: string): BrandKit {
       }
     }
     if (!raw) return emptyBrandKit;
-    return stripLegacyDummies({ ...emptyBrandKit, ...(JSON.parse(raw) as Partial<BrandKit>) });
+    return { ...emptyBrandKit, ...(JSON.parse(raw) as Partial<BrandKit>) };
   } catch {
     return emptyBrandKit;
   }
@@ -127,20 +125,28 @@ async function hydrateFromDb(userId: string): Promise<void> {
   const colors = (d.brand_colors ?? {}) as Record<string, string>;
   const str = (v: unknown): string | undefined =>
     typeof v === "string" && v.trim() ? v : undefined;
+  const strOrEmpty = (v: unknown): string => (typeof v === "string" ? v : "");
 
-  // Only non-empty DB values override the cache; fields the doctor left blank
-  // stay empty so creatives simply omit them (never placeholder data).
-  const fromDb: Partial<BrandKit> = {};
+  const fromDb: Partial<BrandKit> = {
+    // Identity text fields: the DB row is fully authoritative once it exists,
+    // set exactly as stored — including empty string. A field the doctor
+    // genuinely left blank must render blank, not whatever the cache
+    // happened to hold before (e.g. a pre-2026-07-14 corrupted cache, or a
+    // field the doctor has since cleared).
+    clinicName: strOrEmpty(d.clinic_name),
+    doctorName: strOrEmpty(d.doctor_name),
+    specialty:  strOrEmpty(d.specialty),
+    phone:      strOrEmpty(d.phone),
+    website:    strOrEmpty(d.website),
+    address:    strOrEmpty(d.address),
+  };
+  // Colors and photos: only override when the DB actually has a value.
+  // Colors need a sensible non-empty fallback (can't render "" as a CSS
+  // color); "no photo uploaded" already means the field is absent, not that
+  // it was ever corrupted the way the identity fields were.
   const put = (key: keyof BrandKit, value: string | undefined) => {
     if (value !== undefined) (fromDb as Record<string, string>)[key] = value;
   };
-
-  put("clinicName",     str(d.clinic_name));
-  put("doctorName",     str(d.doctor_name));
-  put("specialty",      str(d.specialty));
-  put("phone",          str(d.phone));
-  put("website",        str(d.website));
-  put("address",        str(d.address));
   put("primaryColor",   str(colors.primary));
   put("secondaryColor", str(colors.secondary));
   put("logo",           str(d.logo_url));

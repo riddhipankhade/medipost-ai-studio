@@ -603,7 +603,8 @@ Library: `html-to-image`'s `toPng()`, chosen explicitly over `html2canvas` becau
 3. Fires a DB hydration query in parallel, merging DB values into the cache — **only overwriting fields the DB has a non-empty value for**, so a doctor leaving a field blank in the DB doesn't blank out what's cached, but also never invents placeholder text.
 4. Writes the merged result back to localStorage and dispatches a `"brandkit:change"` `CustomEvent`, which every other mounted `useBrandKit()` instance on the page listens for — this is how a save in one component propagates to sibling components (e.g. the live preview and the studio controls) without a shared global store or Context.
 5. A 3-second per-user dedup guard prevents the burst of `useBrandKit()` instances that mount simultaneously across a page from each independently re-hydrating from the DB.
-6. `stripLegacyDummies()` strips any cached field that still exactly matches an old seeded sample identity ("Dr. Rhea Patel", "Bright Smile Dental Studio") — a migration guard against early-version caches showing fake identity data on real creatives.
+
+Earlier versions carried a `stripLegacyDummies()` pass that blanked any cached field still exactly matching an old seeded sample identity ("Dr. Rhea Patel", "Bright Smile Dental Studio", specialty "Dentist") — a migration guard against pre-2026-07-14 caches showing fake identity data on real creatives. It was removed: it's indistinguishable from a real doctor whose data genuinely matches the sample (specialty "Dentist" being the obvious collision), so it was silently blanking real fields — which is what caused the Brand page's completeness % (reads the DB directly) to disagree with Content Studio's (reads this cache). Step 3 above already self-heals any leftover corrupted cache the moment a genuinely non-empty DB value exists for that field, so no explicit strip is needed.
 
 ---
 
