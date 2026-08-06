@@ -86,7 +86,8 @@ import {
   getTheme,
   type SlideLayout,
 } from "@/lib/carousel-themes";
-import { useBrandKit, fileToDataUrl } from "@/lib/brand-kit";
+import { useBrandKit, fileToDataUrl, brandKitCompleteness } from "@/lib/brand-kit";
+import { BrandKitProgressBanner } from "@/components/brand-kit-progress-banner";
 import { supabase } from "@/lib/supabase";
 import { Phone, ImageDown, RefreshCw, Wand, Upload } from "lucide-react";
 import {
@@ -203,6 +204,7 @@ const DEFAULT_BRIEF_FORM: Omit<GenerateInput, "kind"> = {
 function GeneratePage() {
   const callGenerate = useServerFn(generateContent);
   const [brand] = useBrandKit();
+  const brandKitPercent = brandKitCompleteness(brand).percent;
   const { user } = useAuth();
   const isPro = useIsPro(user?.id);
   const trialEligible = useGrowthTrialEligible(user?.id);
@@ -470,6 +472,8 @@ function GeneratePage() {
           Pick a format and generate complete, ready-to-publish healthcare content.
         </p>
       </div>
+
+      <BrandKitProgressBanner percent={brandKitPercent} />
 
       <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {workflows.map((w) => {

@@ -198,6 +198,27 @@ export function useBrandKit(): [BrandKit, (next: BrandKit) => void] {
   return [kit, save];
 }
 
+// ── Completeness ─────────────────────────────────────────────────────────
+// Shared by the Brand Kit page (which tracks fields as a Draft, not a BrandKit)
+// and the Content Studio nudge banner, so both read the exact same rule for
+// "how full is this field list."
+export type BrandKitCompleteness = { percent: number; filled: number; total: number };
+
+export function computeCompleteness(values: (string | undefined | null)[]): BrandKitCompleteness {
+  const total = values.length;
+  const filled = values.filter((v) => !!v && v.trim().length > 0).length;
+  return { percent: total === 0 ? 0 : Math.round((filled / total) * 100), filled, total };
+}
+
+const COMPLETENESS_FIELDS: (keyof BrandKit)[] = [
+  "clinicName", "doctorName", "specialty", "phone", "website", "address",
+  "logo", "doctorPhoto", "clinicPhoto",
+];
+
+export function brandKitCompleteness(kit: BrandKit): BrandKitCompleteness {
+  return computeCompleteness(COMPLETENESS_FIELDS.map((k) => kit[k]));
+}
+
 export async function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

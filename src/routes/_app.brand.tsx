@@ -12,7 +12,8 @@ import {
   Save, Palette, X, Loader2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { writeBrandKit, readBrandKit, resetHydrationCache } from "@/lib/brand-kit";
+import { writeBrandKit, readBrandKit, resetHydrationCache, computeCompleteness } from "@/lib/brand-kit";
+import { Progress } from "@/components/ui/progress";
 
 export const Route = createFileRoute("/_app/brand")({
   head: () => ({ meta: [{ title: "Clinic Brand Kit — Medipost AI" }] }),
@@ -229,6 +230,11 @@ function BrandKitPage() {
   const up = <K extends keyof Draft>(k: K, v: Draft[K]) =>
     setDraft((d) => ({ ...d, [k]: v }));
 
+  const completeness = computeCompleteness([
+    draft.clinic_name, draft.doctor_name, draft.specialty, draft.phone,
+    draft.website, draft.address, draft.logo_url, draft.doctor_photo_url, draft.clinic_photo_url,
+  ]);
+
   // ── Render ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -247,6 +253,15 @@ function BrandKitPage() {
             Fill in your clinic details and brand colors once — Medipost applies them
             automatically to every generated post, carousel, story, and greeting.
           </p>
+          <div className="mt-3 max-w-xs">
+            <div className="flex items-center justify-between text-xs font-medium mb-1">
+              <span className="text-muted-foreground">
+                {completeness.percent >= 100 ? "Brand kit complete" : "Brand kit completeness"}
+              </span>
+              <span className="text-primary font-semibold">{completeness.percent}%</span>
+            </div>
+            <Progress value={completeness.percent} className="h-1.5" />
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={reset} className="gap-2">
