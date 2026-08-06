@@ -65,7 +65,7 @@ export function LandingNav() {
         <div className="col-start-3 flex items-center gap-2 justify-self-end">
           <div className="hidden md:flex items-center gap-2">
             <Button variant="outline" size="sm" asChild>
-              <a href={`mailto:${ENQUIRY_EMAIL}`}>Enquire</a>
+              <a href={`mailto:${ENQUIRY_EMAIL}`}>Contact Us</a>
             </Button>
             <Button size="sm" asChild><Link to="/login">Sign in</Link></Button>
           </div>
@@ -96,7 +96,7 @@ export function LandingNav() {
               <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-border/70">
                 <Button variant="outline" asChild>
                   <a href={`mailto:${ENQUIRY_EMAIL}`} onClick={() => setMobileOpen(false)}>
-                    Enquire
+                    Contact Us
                   </a>
                 </Button>
                 <Button asChild onClick={() => setMobileOpen(false)}>
