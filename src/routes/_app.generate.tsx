@@ -567,7 +567,7 @@ function GeneratePage() {
                     ))}
                   </div>
                 </Field>
-                <Field label="Message angle (Topic)">
+                <Field label="Message angle (Topic / Prompt)">
                   <Input
                     value={form.topic}
                     onChange={(e) => update("topic", e.target.value)}
@@ -597,7 +597,7 @@ function GeneratePage() {
                 </Field>
               </>
             ) : (
-              <Field label="Topic">
+              <Field label="Topic / Prompt">
                 <Input
                   value={form.topic}
                   onChange={(e) => update("topic", e.target.value)}

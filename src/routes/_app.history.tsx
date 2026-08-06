@@ -313,10 +313,19 @@ function PostDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className={`${wideDialog ? "max-w-[560px]" : "max-w-[460px]"} p-4 max-h-[90vh] overflow-y-auto`}>
-        <DialogHeader className="pb-2">
-          <DialogTitle className="text-base font-semibold truncate">{row.topic}</DialogTitle>
+      <DialogContent className={`${wideDialog ? "max-w-[560px]" : "max-w-[460px]"} p-4 max-h-[90vh] overflow-y-auto min-w-0`}>
+        <DialogHeader className="pb-1 pr-6 min-w-0">
+          <DialogTitle className="text-base font-semibold">
+            {KIND_LABELS[kind] ?? kind}
+          </DialogTitle>
         </DialogHeader>
+
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+            Prompt
+          </p>
+          <p className="text-sm font-medium leading-snug wrap-break-word">{row.topic}</p>
+        </div>
 
         {isCarousel && canvasProps && (
           <div className="space-y-3">
@@ -657,8 +666,11 @@ function History() {
                         {new Date(c.created_at).toLocaleDateString()}
                       </span>
                     </div>
-                    <p className="font-semibold text-foreground truncate">{c.topic}</p>
-                    <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Prompt
+                    </p>
+                    <p className="font-semibold text-foreground line-clamp-2 wrap-break-word">{c.topic}</p>
+                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                       {bodyPreview(c)}
                     </p>
                     {c.hashtags?.length > 0 && (
