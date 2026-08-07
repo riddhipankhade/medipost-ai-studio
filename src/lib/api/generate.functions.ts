@@ -55,7 +55,7 @@ const PLAN_AI_CONFIG = {
     imageSteps:      6,
   },
   pro_clinic: {
-    model:           "gemini-2.5-pro",
+    model:           "gemini-2.5-pro-preview-06-05",
     temperature:     1.0,
     topK:            64,
     topP:            0.95,
