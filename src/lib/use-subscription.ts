@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabase";
+import { PAID_PLANS } from "@/lib/constants";
 
 export type SubscriptionWithPlan = {
   plan: string;
@@ -20,9 +21,6 @@ export type SubscriptionWithPlan = {
     ai_generations_limit: number; // -1 = unlimited
   };
 };
-
-// Paid plan keys — update here if new plans are added
-const PAID_PLANS = ["growth", "pro_clinic", "pro"] as const;
 
 export function useSubscription(userId: string | undefined) {
   return useQuery({

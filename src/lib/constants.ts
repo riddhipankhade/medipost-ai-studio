@@ -1,0 +1,1 @@
+export const PAID_PLANS = ["growth", "pro_clinic"] as const;

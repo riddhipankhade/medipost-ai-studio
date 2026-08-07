@@ -9,8 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import { z } from "zod";
-
-const PAID_PLANS = ["pro_clinic", "pro", "growth", "clinic"];
+import { PAID_PLANS } from "@/lib/constants";
 
 function getSupabase() {
   const cookieHeader = getRequestHeader("cookie") ?? "";
@@ -111,7 +110,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
           .not("generated_text", "is", null)
           .neq("generated_text", "");
 
-        const isPro = PAID_PLANS.includes(sub?.plan ?? "") && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
+        const isPro = (PAID_PLANS as readonly string[]).includes(sub?.plan ?? "") && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
 
         return {
           name:     p.full_name ?? p.email ?? "Unknown",
@@ -158,7 +157,7 @@ export const getAllUsers = createServerFn({ method: "GET" })
           .eq("user_id", p.id)
           .single();
 
-        const isPro = PAID_PLANS.includes(sub?.plan ?? "") && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
+        const isPro = (PAID_PLANS as readonly string[]).includes(sub?.plan ?? "") && sub?.plan_expires_at && new Date(sub.plan_expires_at) > new Date();
 
         return {
           id:     p.id,

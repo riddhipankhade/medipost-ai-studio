@@ -1,7 +1,7 @@
 /**
  * src/routes/api/cron/renew-subscriptions.ts
  *
- * Vercel calls this endpoint daily at 06:00 IST (00:30 UTC). Two phases:
+ * Vercel calls this endpoint daily at 06:00 IST (00:30 UTC). Three phases:
  *
  *  1. Renewals — every subscription whose next_billing_date is due today or
  *     overdue gets a PayU SI auto-debit fired. PayU confirms the result
@@ -9,6 +9,10 @@
  *  2. Downgrades — every subscription that's stopped auto-renewing (cancelled,
  *     or never had SI set up) and whose plan_expires_at has passed gets moved
  *     to the free plan.
+ *  3. Lapsed auto-renew — subscriptions still marked auto_renew=true but whose
+ *     plan_expires_at passed more than 3 days ago (payment kept failing, webhook
+ *     never confirmed). Grace period prevents a single failed debit + slow
+ *     webhook from stripping access immediately.
  *
  * Vercel automatically sends the Authorization header:
  *   Authorization: Bearer <CRON_SECRET>
@@ -94,10 +98,46 @@ export default defineEventHandler(async (event) => {
     console.log("[cron/renew] downgrades processed:", downgradeSummary);
   }
 
+  // ── Phase 3: downgrade lapsed auto-renew subs where payment keeps failing ─
+  // auto_renew=true but plan_expires_at passed 3+ days ago means PayU kept
+  // rejecting the debit and the webhook never confirmed success.
+  const graceCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: lapsed, error: lapsedError } = await supabase
+    .from("subscriptions")
+    .select("user_id")
+    .eq("auto_renew", true)
+    .neq("plan", "starter")
+    .not("plan_expires_at", "is", null)
+    .lte("plan_expires_at", graceCutoff);
+
+  if (lapsedError) {
+    console.error("[cron/renew] lapsed query error:", lapsedError.message);
+  }
+
+  let lapsedSummary: unknown[] = [];
+  if (lapsed?.length) {
+    const results = await Promise.allSettled(
+      lapsed.map((sub) => downgradeToFreePlan(sub.user_id))
+    );
+
+    lapsedSummary = results.map((r, i) => ({
+      userId:  lapsed[i].user_id,
+      success: r.status === "fulfilled" ? r.value.success : false,
+      error:   r.status === "rejected"
+                 ? String(r.reason?.message)
+                 : r.value.error,
+    }));
+
+    console.log("[cron/renew] lapsed auto-renew downgrades:", lapsedSummary);
+  }
+
   return {
     renewed:    subs?.length ?? 0,
     downgraded: expired?.length ?? 0,
+    lapsed:     lapsed?.length ?? 0,
     renewalSummary,
     downgradeSummary,
+    lapsedSummary,
   };
 });
