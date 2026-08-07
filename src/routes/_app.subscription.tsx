@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Check, Zap, Crown, Building2, Loader2, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -143,9 +143,9 @@ function SubscriptionPage() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelling,       setCancelling]       = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id));
-  });
+  }, []);
 
   const { data: sub, isLoading } = useSubscription(userId);
 
@@ -239,6 +239,7 @@ function SubscriptionPage() {
         },
         {
           responseHandler: async (bolt) => {
+            console.log("PayU full response:", JSON.stringify(bolt.response));
             try {
               const r = bolt.response ?? {};
               const txnStatus = (r.txnStatus ?? "").toUpperCase();
