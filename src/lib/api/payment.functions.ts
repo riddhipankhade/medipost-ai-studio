@@ -25,8 +25,6 @@ function getSupabase() {
   );
 }
 
-// Admin client — uses service role key, bypasses RLS.
-// Only used server-side in cron/webhook handlers — never exposed to client.
 function getSupabaseAdmin() {
   return createClient(
     process.env.SUPABASE_URL!,
@@ -34,20 +32,23 @@ function getSupabaseAdmin() {
   );
 }
 
-// ── Server-side plan catalog — client can never override these prices ─────────
-// Starter is free — no payment entry needed.
 const PLAN_CATALOG: Record<string, { amount: string; productinfo: string }> = {
   growth:     { amount: "499.00",  productinfo: "Medipost Growth Plan"     },
   pro_clinic: { amount: "999.00",  productinfo: "Medipost Pro Clinic Plan" },
 };
 
+const TRIAL_PLAN_KEY  = "growth";
+const TRIAL_PRICE     = "1.00";
+const TRIAL_DAYS      = 7;
+
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. createPayUHash — generates txnid + SHA-512 hash for checkout.
+// 1. createPayUHash
 // ─────────────────────────────────────────────────────────────────────────────
 export const createPayUHash = createServerFn({ method: "POST" })
   .validator(z.object({
     planKey:     z.string(),
     voucherCode: z.string().optional(),
+    startTrial:  z.boolean().optional(),
   }))
   .handler(async ({ data }) => {
     const plan = PLAN_CATALOG[data.planKey];
@@ -56,6 +57,16 @@ export const createPayUHash = createServerFn({ method: "POST" })
     const supabase = getSupabase();
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) throw new Error("Unauthorized. Please sign in.");
+
+    let isTrial = false;
+    if (data.startTrial && data.planKey === TRIAL_PLAN_KEY) {
+      const { data: existingSub } = await supabase
+        .from("subscriptions")
+        .select("trial_used_at")
+        .eq("user_id", user.id)
+        .single();
+      isTrial = !existingSub?.trial_used_at;
+    }
 
     const key       = process.env.PAYU_MERCHANT_KEY!;
     const salt      = process.env.PAYU_SALT!;
@@ -66,10 +77,11 @@ export const createPayUHash = createServerFn({ method: "POST" })
     const email     = user.email!;
     const phone     = (user.user_metadata?.phone as string | undefined) ?? "9999999999";
 
-    // Apply voucher discount server-side
     let finalAmount = plan.amount;
 
-    if (data.voucherCode) {
+    if (isTrial) {
+      finalAmount = TRIAL_PRICE;
+    } else if (data.voucherCode) {
       const { data: voucher } = await supabase
         .from("vouchers")
         .select("discount_percentage, applicable_plans, max_uses, used_count, expires_at")
@@ -88,11 +100,13 @@ export const createPayUHash = createServerFn({ method: "POST" })
       }
     }
 
-    const hashString = `${key}|${txnid}|${finalAmount}|${plan.productinfo}|${firstname}|${email}|||||||||||${salt}`;
+    const productinfo = isTrial ? `${plan.productinfo} — 7-Day Trial` : plan.productinfo;
+
+    const hashString = `${key}|${txnid}|${finalAmount}|${productinfo}|${firstname}|${email}|||||||||||${salt}`;
     const hash = crypto.createHash("sha512").update(hashString).digest("hex");
 
     const si_details = JSON.stringify({
-      billingAmount:   finalAmount,
+      billingAmount:   plan.amount,
       billingInterval: 1,
       paymentCount:    0,
       billingCycle:    "MONTHLY",
@@ -101,19 +115,19 @@ export const createPayUHash = createServerFn({ method: "POST" })
     });
 
     return {
-      key, txnid, amount: finalAmount, productinfo: plan.productinfo,
+      key, txnid, amount: finalAmount, productinfo,
       firstname, email, phone, hash,
-      si:         "1",
-      si_details,
+      si: "1", si_details, isTrial,
     };
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. verifyPayUPayment — verifies response hash + activates subscription.
+// 2. verifyPayUPayment
 // ─────────────────────────────────────────────────────────────────────────────
 const VerifySchema = z.object({
   planKey:      z.string(),
   voucherCode:  z.string().optional(),
+  startTrial:   z.boolean().optional(),
   txnid:        z.string(),
   status:       z.string(),
   amount:       z.string(),
@@ -143,6 +157,22 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
     if (data.status !== "success")
       throw new Error(`Payment ${data.status}. No subscription activated.`);
 
+    const { data: alreadyProcessed } = await supabase
+      .from("subscriptions")
+      .select("plan_expires_at, auto_renew")
+      .eq("user_id", user.id)
+      .eq("payu_txn_id", data.txnid)
+      .maybeSingle();
+
+    if (alreadyProcessed) {
+      return {
+        success:          true,
+        expiresAt:        alreadyProcessed.plan_expires_at,
+        autoRenew:        alreadyProcessed.auto_renew,
+        alreadyProcessed: true,
+      };
+    }
+
     const { data: planRow } = await supabase
       .from("plans")
       .select("id")
@@ -151,20 +181,47 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
 
     if (!planRow) throw new Error(`Plan "${data.planKey}" not found. Contact support.`);
 
+    const isTrial = !!data.startTrial && data.planKey === TRIAL_PLAN_KEY;
+
+    if (isTrial) {
+      const { data: claimed, error: claimError } = await supabase
+        .from("subscriptions")
+        .update({ trial_used_at: new Date().toISOString() })
+        .eq("user_id", user.id)
+        .is("trial_used_at", null)
+        .select("user_id");
+
+      if (claimError) throw new Error(`Trial claim failed: ${claimError.message}`);
+
+      if (!claimed?.length) {
+        const { data: existingSub } = await supabase
+          .from("subscriptions")
+          .select("trial_used_at")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (existingSub?.trial_used_at)
+          throw new Error(
+            "Trial already used. If you were charged ₹1 just now, contact support — it will be refunded."
+          );
+      }
+    }
+
+    const periodDays = isTrial ? TRIAL_DAYS : 30;
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
+    expiresAt.setDate(expiresAt.getDate() + periodDays);
 
     const nextBillingDate = new Date();
-    nextBillingDate.setDate(nextBillingDate.getDate() + 29);
+    nextBillingDate.setDate(nextBillingDate.getDate() + (isTrial ? periodDays : periodDays - 1));
 
     const { error: upsertError } = await supabase
       .from("subscriptions")
       .upsert(
         {
           user_id:              user.id,
+          email:                user.email,
           plan_id:              planRow.id,
-          plan:                 data.planKey,   // ← uses actual plan key, not hardcoded "pro"
-          status:               "active",
+          plan:                 data.planKey,
+          status:               isTrial ? "trialing" : "active",
           plan_expires_at:      expiresAt.toISOString(),
           current_period_start: new Date().toISOString(),
           current_period_end:   expiresAt.toISOString(),
@@ -173,6 +230,8 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
           payu_subid:           data.subId ?? null,
           auto_renew:           !!data.subId,
           next_billing_date:    data.subId ? nextBillingDate.toISOString() : null,
+          trial_used_at:        isTrial ? new Date().toISOString() : undefined,
+          canceled_at:          null,
           updated_at:           new Date().toISOString(),
         },
         { onConflict: "user_id" }
@@ -203,7 +262,7 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. debitUserSI — triggers PayU SI auto-debit for one user.
+// 3. debitUserSI
 // ─────────────────────────────────────────────────────────────────────────────
 export async function debitUserSI(
   userId: string,
@@ -217,11 +276,36 @@ export async function debitUserSI(
     .eq("auto_renew", true)
     .single();
 
-  if (!sub?.payu_subid) return { success: false, error: "No active SI subscription." };
+  if (!sub?.payu_subid) {
+    console.warn(
+      `[debitUserSI] No payu_subid for user ${userId} — likely forged subId. Clearing auto_renew.`
+    );
+    await supabase
+      .from("subscriptions")
+      .update({ auto_renew: false, updated_at: new Date().toISOString() })
+      .eq("user_id", userId);
+    return { success: false, error: "No active SI subscription." };
+  }
 
   const planKey  = (sub.plan_info as any)?.name as string | undefined;
   const planInfo = planKey ? PLAN_CATALOG[planKey] : undefined;
-  if (!planInfo)  return { success: false, error: `Unknown plan: ${planKey}` };
+  if (!planInfo) return { success: false, error: `Unknown plan: ${planKey}` };
+
+  const claimBefore = new Date().toISOString();
+  const retryAt = new Date();
+  retryAt.setDate(retryAt.getDate() + 1);
+
+  const { data: claimed } = await supabase
+    .from("subscriptions")
+    .update({ next_billing_date: retryAt.toISOString() })
+    .eq("user_id", userId)
+    .eq("auto_renew", true)
+    .lte("next_billing_date", claimBefore)
+    .select("user_id");
+
+  if (!claimed?.length) {
+    return { success: false, error: "Debit already claimed by a concurrent run." };
+  }
 
   const key     = process.env.PAYU_MERCHANT_KEY!;
   const salt    = process.env.PAYU_SALT!;
@@ -261,7 +345,7 @@ export async function debitUserSI(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. activateSubscriptionFromWebhook — called by /api/payu-webhook on SI debit.
+// 4. activateSubscriptionFromWebhook
 // ─────────────────────────────────────────────────────────────────────────────
 export async function activateSubscriptionFromWebhook(params: {
   txnid:       string;
@@ -286,11 +370,23 @@ export async function activateSubscriptionFromWebhook(params: {
 
   const supabase = getSupabaseAdmin();
 
-  const { data: { users } } = await supabase.auth.admin.listUsers();
-  const user = users.find((u) => u.email === email);
-  if (!user) throw new Error(`No user found for email: ${email}`);
+  const { data: subRow } = await supabase
+    .from("subscriptions")
+    .select("user_id, auto_renew")
+    .eq("email", email)
+    .single();
 
-  const expiresAt       = new Date();
+  if (!subRow) throw new Error(`No subscription found for email: ${email}`);
+
+  if (!subRow.auto_renew) {
+    console.error(
+      `[payu-webhook] Debit succeeded for user ${subRow.user_id} (txn ${txnid}) after they cancelled — ` +
+      `not re-extending access. This charge may need a manual refund.`
+    );
+    return;
+  }
+
+  const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
 
   const nextBillingDate = new Date();
@@ -308,5 +404,125 @@ export async function activateSubscriptionFromWebhook(params: {
       next_billing_date:    nextBillingDate.toISOString(),
       updated_at:           new Date().toISOString(),
     })
-    .eq("user_id", user.id);
+    .eq("user_id", subRow.user_id);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. revokePayUMandate
+// ─────────────────────────────────────────────────────────────────────────────
+async function revokePayUMandate(payuSubId: string): Promise<{ success: boolean; error?: string }> {
+  const key       = process.env.PAYU_MERCHANT_KEY!;
+  const salt      = process.env.PAYU_SALT!;
+  const command   = "mandate_revoke";
+  const requestId = `cxl_${payuSubId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10)}_${Date.now()}`;
+
+  const var1 = JSON.stringify({ authpayuid: payuSubId, requestId });
+
+  const hashString = `${key}|${command}|${var1}|${salt}`;
+  const hash = crypto.createHash("sha512").update(hashString).digest("hex");
+
+  try {
+    const res = await fetch("https://info.payu.in/merchant/postservice.php?form=2", {
+      method:  "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body:    new URLSearchParams({ key, command, var1, hash }).toString(),
+    });
+
+    const result = await res.json() as Record<string, unknown>;
+
+    if (String(result.status) !== "1") {
+      return { success: false, error: String(result.message ?? "Mandate revoke failed") };
+    }
+
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message ?? "Network error calling PayU mandate_revoke" };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. cancelSubscription
+// ─────────────────────────────────────────────────────────────────────────────
+export const cancelSubscription = createServerFn({ method: "POST" })
+  .handler(async () => {
+    const supabase = getSupabase();
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) throw new Error("Unauthorized. Please sign in.");
+
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("auto_renew, canceled_at, plan_expires_at")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!sub) throw new Error("No subscription found.");
+
+    if (sub.canceled_at) {
+      return { success: true, accessUntil: sub.plan_expires_at, alreadyCancelled: true };
+    }
+
+    if (!sub.auto_renew) throw new Error("Auto-renewal isn't active on this subscription — nothing to cancel.");
+
+    const { data: claimed, error: claimError } = await supabase
+      .from("subscriptions")
+      .update({
+        auto_renew:        false,
+        canceled_at:       new Date().toISOString(),
+        next_billing_date: null,
+        updated_at:        new Date().toISOString(),
+      })
+      .eq("user_id", user.id)
+      .is("canceled_at", null)
+      .select("payu_subid, plan_expires_at");
+
+    if (claimError) throw new Error(`Cancellation failed: ${claimError.message}`);
+
+    if (!claimed?.length) {
+      return { success: true, accessUntil: sub.plan_expires_at, alreadyCancelled: true };
+    }
+
+    const won = claimed[0];
+
+    if (won.payu_subid) {
+      const revoke = await revokePayUMandate(won.payu_subid);
+      if (!revoke.success) {
+        console.error(
+          `[cancelSubscription] PayU mandate_revoke failed for user ${user.id}: ${revoke.error}`
+        );
+      }
+    }
+
+    return { success: true, accessUntil: won.plan_expires_at };
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. downgradeToFreePlan
+// ─────────────────────────────────────────────────────────────────────────────
+export async function downgradeToFreePlan(userId: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: freePlan } = await supabase
+    .from("plans")
+    .select("id")
+    .eq("name", "trial")
+    .maybeSingle();
+
+  if (!freePlan) return { success: false, error: "Default free-tier plan row not found — skipping downgrade." };
+
+  const { error } = await supabase
+    .from("subscriptions")
+    .update({
+      plan:              "starter",
+      plan_id:           freePlan.id,
+      status:            "active",
+      plan_expires_at:   null,
+      payu_subid:        null,
+      auto_renew:        false,
+      next_billing_date: null,
+      updated_at:        new Date().toISOString(),
+    })
+    .eq("user_id", userId);
+
+  if (error) return { success: false, error: error.message };
+  return { success: true };
 }
