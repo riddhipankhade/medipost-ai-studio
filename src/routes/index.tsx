@@ -50,7 +50,7 @@ function Landing() {
               Weeks of clinic content, <span className="text-primary">created in minutes.</span>
             </h1>
             <p className="mt-5 text-lg text-muted-foreground max-w-xl mx-auto lg:mx-0 leading-relaxed">
-              Medipost AI is content creation built specifically for clinicians, healthcare professionals and clinic owners. Generate on-brand Instagram posts, carousels, stories, patient education, marketing campaigns and blog articles — and get hours of your week back.
+              Medipost AI is content creation platform, built specifically for clinicians, healthcare professionals and clinic owners. Generate on-brand Instagram posts, carousels, stories, patient education, marketing campaigns and blog articles — and get hours of your week back.
             </p>
             <div className="mt-8 flex flex-wrap justify-center lg:justify-start gap-3">
               <div className="relative">
