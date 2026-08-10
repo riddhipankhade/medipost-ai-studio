@@ -68,21 +68,10 @@ export function useIsPro(userId: string | undefined): boolean {
     new Date(data.plan_expires_at) > new Date()
   );
 }
-
-/** Returns true when creatives should carry the Medipost watermark — free/Starter
- *  plan, expired plan, or no subscription row at all. Defaults to "show watermark"
- *  while the subscription query is loading so a paid check never briefly renders
- *  clean (the safe direction to be wrong in). */
 export function useShowWatermark(userId: string | undefined): boolean {
   return !useIsPro(userId);
 }
 
-/** Returns true when the user is still eligible for the ₹1 / 7-day Growth trial —
- *  i.e. they've never redeemed it (subscriptions.trial_used_at is null). Defaults
- *  to false while loading or logged out, so trial-only CTAs never flash on for a
- *  user who might already have used it (mirrors useShowWatermark's default-safe
- *  pattern). This only reflects eligibility for copy/CTA purposes — the actual
- *  once-per-user gate is re-enforced server-side in payment.functions.ts. */
 export function useGrowthTrialEligible(userId: string | undefined): boolean {
   const { data, isLoading } = useSubscription(userId);
   if (!userId || isLoading) return false;

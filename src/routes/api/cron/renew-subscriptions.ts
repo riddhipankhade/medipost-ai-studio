@@ -1,23 +1,3 @@
-/**
- * src/routes/api/cron/renew-subscriptions.ts
- *
- * Vercel calls this endpoint daily at 06:00 IST (00:30 UTC). Three phases:
- *
- *  1. Renewals — every subscription whose next_billing_date is due today or
- *     overdue gets a PayU SI auto-debit fired. PayU confirms the result
- *     asynchronously via /api/payu-webhook.
- *  2. Downgrades — every subscription that's stopped auto-renewing (cancelled,
- *     or never had SI set up) and whose plan_expires_at has passed gets moved
- *     to the free plan.
- *  3. Lapsed auto-renew — subscriptions still marked auto_renew=true but whose
- *     plan_expires_at passed more than 3 days ago (payment kept failing, webhook
- *     never confirmed). Grace period prevents a single failed debit + slow
- *     webhook from stripping access immediately.
- *
- * Vercel automatically sends the Authorization header:
- *   Authorization: Bearer <CRON_SECRET>
- * Add CRON_SECRET to your Vercel environment variables.
- */
 
 import { defineEventHandler, getHeader, createError } from "h3";
 import { createClient } from "@supabase/supabase-js";
