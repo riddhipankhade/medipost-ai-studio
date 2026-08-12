@@ -918,7 +918,7 @@ export const generateImage = createServerFn({ method: "POST" })
   .validator((data: unknown) => ImageInputSchema.parse(data))
   .handler(async ({ data }): Promise<GenerateImageOutput> => {
     try {
-      const { supabaseUrl, supabaseAnonKey } = validateEnv();
+      const { supabaseUrl, supabaseAnonKey, geminiApiKey } = validateEnv();
 
       const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
       const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -1001,7 +1001,7 @@ const UpdateCustomizationInputSchema = z.object({
 export const updatePostCustomization = createServerFn({ method: "POST" })
   .validator((data: unknown) => UpdateCustomizationInputSchema.parse(data))
   .handler(async ({ data }): Promise<{ ok: true }> => {
-    const { supabaseUrl, supabaseAnonKey } = validateEnv();
+    const { supabaseUrl, supabaseAnonKey, geminiApiKey } = validateEnv();
     const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized. Please sign in.");
@@ -1015,3 +1015,4 @@ export const updatePostCustomization = createServerFn({ method: "POST" })
     if (error) throw new Error(`Save failed: ${error.message}`);
     return { ok: true };
   });
+
