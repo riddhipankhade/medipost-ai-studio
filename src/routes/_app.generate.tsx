@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { AutoGrowTextarea } from "@/components/ui/auto-grow-textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -91,7 +93,7 @@ import {
 import { useBrandKit, fileToDataUrl, brandKitCompleteness } from "@/lib/brand-kit";
 import { BrandKitProgressBanner } from "@/components/brand-kit-progress-banner";
 import { supabase } from "@/lib/supabase";
-import { Phone, ImageDown, RefreshCw, Wand, Upload } from "lucide-react";
+import { Phone, ImageDown, RefreshCw, Wand, Upload, Maximize2 } from "lucide-react";
 import {
   type SlideCanvasProps,
   CenteredLayout,
@@ -578,7 +580,7 @@ function GeneratePage() {
                   </div>
                 </Field>
                 <Field label="Message angle (Topic / Prompt)">
-                  <Input
+                  <AutoGrowTextarea
                     value={form.topic}
                     onChange={(e) => update("topic", e.target.value)}
                     placeholder={topicPlaceholder}
@@ -608,7 +610,7 @@ function GeneratePage() {
               </>
             ) : (
               <Field label="Topic / Prompt">
-                <Input
+                <AutoGrowTextarea
                   value={form.topic}
                   onChange={(e) => update("topic", e.target.value)}
                   placeholder={topicPlaceholder}
@@ -923,6 +925,92 @@ export function ExactScalePreview({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Renders a creative at a known natural width and scales it (up or down) to fit
+ * the available width, capped by the viewport height and a max zoom. Mirrors
+ * ExactScalePreview's proven pattern (absolute child, top-left transform origin)
+ * so the scaled copy can't overflow its container — a plain `transform: scale`
+ * leaves the element's layout box at full width and spills out of narrow
+ * dialogs. Unlike ExactScalePreview (fixed to CREATIVE_DESIGN_WIDTH), the width
+ * is a prop, so it fits any creative — square post, 9:16 story, festive card —
+ * proportionally, showing a big, faithful copy of what downloads.
+ */
+function FitScaledPreview({ naturalWidth, children, maxHeightVh = 80, maxScale = 3 }: {
+  naturalWidth: number; children: React.ReactNode; maxHeightVh?: number; maxScale?: number;
+}) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState<number | null>(null);
+  const [box, setBox] = useState<{ height: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const host = hostRef.current;
+      const content = contentRef.current;
+      if (!host || !content) return;
+      // offsetHeight is the pre-transform layout height at the fixed natural
+      // width, so it stays stable even while the dialog opens/animates.
+      const nh = content.offsetHeight;
+      const availW = host.clientWidth;
+      const availH = (window.innerHeight * maxHeightVh) / 100;
+      if (availW <= 0 || nh <= 0) return;
+      const s = Math.min(availW / naturalWidth, availH / nh, maxScale);
+      setScale(s);
+      setBox({ height: nh * s, left: Math.max(0, (availW - naturalWidth * s) / 2) });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (hostRef.current) ro.observe(hostRef.current);
+    window.addEventListener("resize", measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+  }, [naturalWidth, maxHeightVh, maxScale, children]);
+  return (
+    <div
+      ref={hostRef}
+      className="relative w-full overflow-hidden"
+      style={box ? { height: box.height } : undefined}
+    >
+      <div
+        ref={contentRef}
+        className="absolute top-0"
+        style={{
+          width: naturalWidth,
+          left: box?.left ?? 0,
+          transform: scale ? `scale(${scale})` : undefined,
+          transformOrigin: "top left",
+          // hidden until measured so the full-width copy never flashes/overflows
+          visibility: scale ? "visible" : "hidden",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A "Preview" button that opens the creative full-size in a dialog, so a post
+ * that renders small in the studio column can be inspected big and clearly.
+ */
+function CreativePreviewDialog({ title, naturalWidth, triggerClassName = "", children }: {
+  title: string; naturalWidth: number; triggerClassName?: string; children: React.ReactNode;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button type="button" size="sm" variant="secondary" className={`gap-1.5 h-8 ${triggerClassName}`}>
+          <Maximize2 className="h-3.5 w-3.5" /> Preview
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-[min(96vw,760px)] max-h-[92vh] overflow-y-auto gap-3 p-4 sm:p-5">
+        <DialogHeader className="pr-8">
+          <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
+        </DialogHeader>
+        <FitScaledPreview naturalWidth={naturalWidth}>{children}</FitScaledPreview>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function useAiImage(contentId?: string | null, initialUrl?: string | null) {
   const call = useServerFn(generateImage);
   const [url, setUrl] = useState<string | null>(initialUrl ?? null);
@@ -1046,6 +1134,11 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
                 Download post
               </Button>
             </CreativeActions>
+            <div className="mx-auto mt-2 w-full max-w-md">
+              <CreativePreviewDialog title="Post preview" naturalWidth={CREATIVE_DESIGN_WIDTH} triggerClassName="w-full">
+                <SlideCanvas {...canvasProps} imageUrl={ai.url} />
+              </CreativePreviewDialog>
+            </div>
             <RemoveWatermarkRow className="mt-2" />
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
               <div ref={captureRef}>
@@ -1265,6 +1358,17 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
                 Download all
               </Button>
             </CreativeActions>
+            <div className="mx-auto mt-2 w-full max-w-md">
+              <CreativePreviewDialog title={`Slide ${idx + 1} of ${total}`} naturalWidth={CREATIVE_DESIGN_WIDTH} triggerClassName="w-full">
+                <SlideCanvas
+                  slideTitle={slide.title} slideBody={slide.content} slideIndex={idx} totalSlides={total}
+                  isCta={idx === total - 1} cta={post.cta} specialty={specialty} theme={theme} layout={effectiveLayout}
+                  fontScale={fontScale} showIcons={showIcons} brand={brand}
+                  imageUrl={slideImages[idx]}
+                  topic={topic} category={category} composition={strategy.composition}
+                />
+              </CreativePreviewDialog>
+            </div>
             <RemoveWatermarkRow className="mt-2" />
 
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
@@ -1577,6 +1681,18 @@ function StoryPreview({ post, specialty, rowId, initialImageUrl, initialCustomiz
               {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
               Download story
             </Button>
+            <CreativePreviewDialog title="Story preview (9:16)" naturalWidth={270}>
+              <StoryCard
+                headline={post.headline}
+                message={post.message}
+                cta={post.cta}
+                colors={post.visual.colors}
+                brand={brand}
+                specialty={specialty}
+                imageUrl={ai.url}
+                colorOverrides={cardColors}
+              />
+            </CreativePreviewDialog>
           </div>
           <RemoveWatermarkRow />
         </div>
@@ -1765,6 +1881,17 @@ function FestivePreview({ post, specialty, rowId, initialImageUrl, initialCustom
             <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8" onClick={download} disabled={ai.loading}>
               <ImageDown className="h-3.5 w-3.5" /> Download post
             </Button>
+            <CreativePreviewDialog title={`${post.festival} greeting`} naturalWidth={448}>
+              <FestiveCard
+                festival={post.festival}
+                greeting={post.greeting}
+                colors={post.visual.colors}
+                brand={brand}
+                specialty={specialty}
+                imageUrl={ai.url}
+                colorOverrides={cardColors}
+              />
+            </CreativePreviewDialog>
           </div>
           <RemoveWatermarkRow />
         </div>
@@ -1972,6 +2099,11 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
               Download post
             </Button>
           </CreativeActions>
+          <div className="mt-2">
+            <CreativePreviewDialog title={`Template — ${entry.name}`} naturalWidth={CREATIVE_DESIGN_WIDTH} triggerClassName="w-full">
+              <Frame {...frameProps} />
+            </CreativePreviewDialog>
+          </div>
           <RemoveWatermarkRow className="mt-2" />
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onUploadPhoto} />
         </div>
