@@ -334,6 +334,11 @@ function GeneratePage() {
   const [result, setResult] = useState<GenerateOutput | null>(null);
   const [rowId,  setRowId]  = useState<string | null>(null);
   const [sessionSeed, setSessionSeed] = useState<StudioSessionRow | null>(null);
+  // Stable identity for the current result's preview. The preview stays mounted
+  // while you peek at other workflow tabs (so its generated AI visual and studio
+  // edits survive), and only remounts — resetting that in-memory state — when a
+  // genuinely new post is generated or restored, i.e. when this key changes.
+  const [resultKey, setResultKey] = useState<string>("none");
   // The category `result` was generated/restored under — frozen separately
   // from the brief form's `category` (which resets per-tab in switchKind) so
   // that peeking at another workflow tab and coming back still renders the
@@ -368,6 +373,7 @@ function GeneratePage() {
         setForm((f) => ({ ...f, category: pointer.category }));
         setResult(row.result);
         setRowId(pointer.rowId);
+        setResultKey(pointer.rowId);
         setSessionSeed(row);
         setResultCategory(pointer.category);
         if (pointer.kind === "template" && row.initialCustomization?.kind === "template") {
@@ -445,8 +451,13 @@ function GeneratePage() {
       // for this kind — a failed attempt leaves whatever was there (this
       // kind's own previous post, or another kind's preserved-while-peeking
       // one) intact instead of blanking the screen.
-      setRowId((out as any)._rowId ?? null);
+      const newRowId = (out as any)._rowId ?? null;
+      setRowId(newRowId);
       setResult(out);
+      // New post → new identity so the preview remounts fresh (a prior post's
+      // generated image/edits must not bleed into this one). Fall back to a
+      // timestamp when the server didn't return a row id.
+      setResultKey(newRowId ?? `gen-${Date.now()}`);
       setResultCategory(category);
       setSessionSeed(null);
       toast.success("Your content is ready");
@@ -752,15 +763,23 @@ function GeneratePage() {
             )
           )}
 
-          {!loading && showResult && result && (
-            <>
+          {/* The generated result stays mounted whenever it exists — even while
+              you peek at another workflow tab — so its AI visual and studio
+              edits aren't discarded. It's just hidden until you're back on its
+              tab. `key={resultKey}` remounts it (a clean slate) only when a new
+              post is generated or restored, not when you switch tabs. */}
+          {result && (
+            <div
+              key={resultKey}
+              className={!loading && showResult && !outOfCredits ? "space-y-6" : "hidden"}
+            >
               <ResultPreview
                 result={result} specialty={form.specialty} rowId={rowId} category={resultCategory} topic={form.topic}
                 templateFrame={templateFrame} onTemplateFrameChange={setTemplateFrame}
                 sessionSeed={sessionSeed}
               />
               <VisualConceptCard visual={result.visual} />
-            </>
+            </div>
           )}
         </div>
       </div>
