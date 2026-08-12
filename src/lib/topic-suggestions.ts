@@ -56,6 +56,41 @@ const TOPIC_EXAMPLES_BY_SPECIALTY: Record<string, string[]> = {
     "Pregnancy myths vs facts",
     "When to see a gynecologist",
   ],
+  "Ayurvedic Doctor": [
+    "Everyday Ayurvedic tips for better digestion",
+    "Balancing your dosha through the seasons",
+    "Myths about Ayurvedic medicine",
+    "Simple herbs for immunity",
+    "Ayurveda vs modern medicine — how they work together",
+  ],
+  "Homeopathic Doctor": [
+    "How homeopathy actually works",
+    "Common homeopathy myths busted",
+    "Managing seasonal allergies with homeopathy",
+    "Is homeopathy safe for children?",
+    "When homeopathy helps most",
+  ],
+  Physiotherapist: [
+    "Fixing posture for desk workers",
+    "Simple stretches for lower back pain",
+    "When knee pain needs a physiotherapist",
+    "Recovering faster after a sports injury",
+    "Do's and don'ts after a sprain",
+  ],
+  Nutritionist: [
+    "Reading food labels the right way",
+    "Myths about weight-loss diets",
+    "Building a balanced Indian thali",
+    "Foods that actually boost immunity",
+    "Sugar cravings — why they happen",
+  ],
+  "ENT Specialist": [
+    "When an ear infection needs a doctor",
+    "Managing chronic sinus problems",
+    "Why you keep getting a sore throat",
+    "Protecting your hearing from loud noise",
+    "Home remedies for a blocked nose that work",
+  ],
 };
 
 const GENERAL_TOPIC_FALLBACK = [
@@ -74,6 +109,11 @@ const CAMPAIGN_EXAMPLES_BY_SPECIALTY: Record<string, string[]> = {
   Pediatrician: ["Child nutrition awareness month", "Vaccination awareness drive", "Back-to-school health campaign"],
   Orthodontist: ["Braces awareness month", "Smile confidence campaign", "Teen orthodontic care month"],
   Gynecologist: ["Women's health awareness month", "Cervical cancer awareness month", "PCOS awareness campaign"],
+  "Ayurvedic Doctor": ["Ayurveda wellness awareness month", "Seasonal detox (Ritucharya) campaign", "Immunity through Ayurveda drive"],
+  "Homeopathic Doctor": ["World Homeopathy Day campaign", "Gentle immunity awareness month", "Seasonal allergy relief campaign"],
+  Physiotherapist: ["Posture awareness month", "Back-pain prevention campaign", "World Physiotherapy Day drive"],
+  Nutritionist: ["Healthy eating awareness month", "Sugar-free challenge campaign", "Balanced-diet awareness week"],
+  "ENT Specialist": ["Hearing health awareness month", "Sinus care awareness campaign", "World Hearing Day drive"],
 };
 
 const CAMPAIGN_FALLBACK = [

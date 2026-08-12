@@ -75,6 +75,11 @@ export const specialties = [
   "Pediatrician",
   "Orthodontist",
   "Gynecologist",
+  "Ayurvedic Doctor",
+  "Homeopathic Doctor",
+  "Physiotherapist",
+  "Nutritionist",
+  "ENT Specialist",
 ];
 export const contentTypes = [
   "Instagram Post",
