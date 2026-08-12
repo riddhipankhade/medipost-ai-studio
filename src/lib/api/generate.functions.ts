@@ -2,7 +2,6 @@
  * src/lib/api/generate.functions.ts
  */
 
-import https from "node:https";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
@@ -132,98 +131,44 @@ async function callGeminiText(
   throw new Error("AI service is overloaded right now. Please try again in a moment.");
 }
 
-// Uses native Node.js https to avoid undici/fetch network issues with Cloudflare
-function cfHttpsRequest(
-  accountId: string,
-  apiToken:  string,
-  bodyStr:   string,
-): Promise<{ ok: boolean; status: number; text: string }> {
-  return new Promise((resolve, reject) => {
-    const bodyBuf = Buffer.from(bodyStr, "utf8");
-    const req = https.request(
-      {
-        hostname: "api.cloudflare.com",
-        path:     `/client/v4/accounts/${accountId}/ai/run/%40cf/black-forest-labs/flux-1-schnell`,
-        method:   "POST",
-        headers: {
-          Authorization:    `Bearer ${apiToken}`,
-          "Content-Type":   "application/json",
-          "Content-Length": bodyBuf.length,
-        },
-        timeout: 60_000,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data",  (c: Buffer) => chunks.push(c));
-        res.on("end",   () => resolve({
-          ok:     (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
-          status: res.statusCode ?? 0,
-          text:   Buffer.concat(chunks).toString("utf8"),
-        }));
-        res.on("error", reject);
-      },
-    );
-    req.on("error",   reject);
-    req.on("timeout", () => req.destroy(new Error("Cloudflare request timed out")));
-    req.write(bodyBuf);
-    req.end();
-  });
-}
-
-async function callCloudflareImage(
-  prompt:   string,
-  numSteps: number = 4,
+async function callGeminiImage(
+  prompt: string,
+  apiKey: string,
 ): Promise<{ dataUrl: string }> {
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-  const apiToken  = process.env.CLOUDFLARE_API_TOKEN;
-
-  if (!accountId || !apiToken) {
-    throw new Error(
-      "Image generation is not configured. " +
-      "Add CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN to your .env file.",
-    );
-  }
-
-  const bodyStr = JSON.stringify({ prompt, num_steps: numSteps });
-
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    let res: { ok: boolean; status: number; text: string };
-    try {
-      res = await cfHttpsRequest(accountId, apiToken, bodyStr);
-    } catch (networkErr: any) {
-      console.warn(`[Cloudflare AI] Network error on attempt ${attempt}:`, networkErr?.message);
-      if (attempt < 2) {
-        await new Promise((r) => setTimeout(r, 2000));
-        continue;
-      }
-      throw new Error(
-        "Image generation service is temporarily unreachable. " +
-        "Please wait a moment and try again.",
-      );
-    }
-
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`;
+  const body = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: { responseModalities: ["image"] },
+  };
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res = await fetch(endpoint, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(body),
+    });
     if (res.ok) {
-      const json = JSON.parse(res.text) as any;
-      const b64  = json?.result?.image as string | undefined;
-      if (!b64) throw new Error("Image generation returned an empty result.");
-      return { dataUrl: `data:image/png;base64,${b64}` };
+      const json = await res.json();
+      const parts = json?.candidates?.[0]?.content?.parts ?? [];
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          const mimeType = part.inlineData.mimeType ?? "image/png";
+          return { dataUrl: `data:${mimeType};base64,${part.inlineData.data}` };
+        }
+      }
+      throw new Error("Image generation returned an empty result.");
     }
-
     const isRetryable = res.status === 429 || res.status >= 500;
-    if (attempt < 2 && isRetryable) {
-      console.warn(`[Cloudflare AI] Attempt ${attempt} got ${res.status}. Retrying in 2000ms…`);
-      await new Promise((r) => setTimeout(r, 2000));
+    if (attempt < 3 && isRetryable) {
+      console.warn(`[Gemini Image] Attempt ${attempt} got ${res.status}. Retrying...`);
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
       continue;
     }
-
+    const errBody = await res.text().catch(() => "");
     if (res.status === 429)
       throw new Error("Image generation is rate-limited. Please try again shortly.");
-    if (res.status === 401 || res.status === 403)
-      throw new Error("Cloudflare API token is invalid. Check CLOUDFLARE_API_TOKEN in your .env.");
-    throw new Error(`Image generation failed (${res.status}): ${res.text.slice(0, 200)}`);
+    throw new Error(`Image generation failed (${res.status}): ${errBody.slice(0, 200)}`);
   }
-
-  throw new Error("Image generation failed after 2 attempts. Please try again in a moment.");
+  throw new Error("Image generation failed after 3 attempts. Please try again in a moment.");
 }
 
 const BrandSchema = z
@@ -999,7 +944,7 @@ export const generateImage = createServerFn({ method: "POST" })
         .filter(Boolean)
         .join(" ");
 
-      const { dataUrl } = await callCloudflareImage(fullPrompt, imgConfig.imageSteps);
+      const { dataUrl } = await callGeminiImage(fullPrompt, geminiApiKey);
 
       // Persist the generated visual onto its content row so it survives
       // navigation/remount (Content History, tab switches, etc.) — mirrors
