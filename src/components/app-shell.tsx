@@ -3,6 +3,7 @@ import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-route
 import { LayoutDashboard, Sparkles, History, CreditCard, LogOut, Palette, Settings, Menu } from "lucide-react";
 import { motion } from "framer-motion";
 import { Brand } from "@/components/brand";
+import { ContactButton } from "@/components/contact-modal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth-context";
@@ -17,9 +18,6 @@ const nav = [
   { to: "/settings",     label: "Settings",         icon: Settings },
 ] as const;
 
-/* The animated active-pill only runs in the desktop sidebar: the mobile sheet
-   mounts a second copy of the nav, and two motion elements sharing a layoutId
-   fight over the animation. */
 function SidebarNav({ pathname, animated }: { pathname: string; animated: boolean }) {
   return (
     <nav className="flex-1 p-3 space-y-1">
@@ -99,13 +97,10 @@ export function AppShell() {
     }
   }, [loading, session, navigate]);
 
-  // navigating from the sheet should close it
   useEffect(() => {
     setMobileNavOpen(false);
   }, [pathname]);
 
-  // <main> is part of the persistent shell and only the <Outlet/> content
-  // swaps on navigation, so its scroll position carries over between pages.
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0);
   }, [pathname]);
@@ -118,11 +113,6 @@ export function AppShell() {
     ? nameForDisplay.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "CL";
   const displayName = nameForDisplay || profile?.email || user?.email || "Clinician";
-  // The live `plans` row a brand-new/downgraded user's plan_id actually points
-  // to is named "Free Trial" (not "Free"/"Starter") — trusting its display_name
-  // directly here would show "Free Trial" to every non-paying user, forever, on
-  // every page. Only trust the joined name for confirmed paid plans; otherwise
-  // use the same "Starter" label the Subscription page already shows.
   const planName = isPro ? (sub?.plans?.display_name ?? "Free") : "Starter";
 
   async function handleSignOut() {
@@ -136,6 +126,9 @@ export function AppShell() {
           <Brand to="/dashboard" />
         </div>
         <SidebarNav pathname={pathname} animated />
+        <div className="px-3 pb-1">
+          <ContactButton userEmail={user?.email} userName={nameForDisplay} />
+        </div>
         <UserFooter initials={initials} displayName={displayName} planName={planName} onSignOut={handleSignOut} />
       </aside>
       <main ref={mainRef} className="flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden">
@@ -156,6 +149,9 @@ export function AppShell() {
                 <Brand to="/dashboard" />
               </div>
               <SidebarNav pathname={pathname} animated={false} />
+              <div className="px-3 pb-1">
+                <ContactButton userEmail={user?.email} userName={nameForDisplay} />
+              </div>
               <UserFooter initials={initials} displayName={displayName} planName={planName} onSignOut={handleSignOut} />
             </SheetContent>
           </Sheet>
