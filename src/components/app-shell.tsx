@@ -18,7 +18,12 @@ const nav = [
   { to: "/settings",     label: "Settings",         icon: Settings },
 ] as const;
 
-function SidebarNav({ pathname, animated }: { pathname: string; animated: boolean }) {
+function SidebarNav({ pathname, animated, userEmail, userName }: {
+  pathname: string;
+  animated: boolean;
+  userEmail?: string;
+  userName?: string;
+}) {
   return (
     <nav className="flex-1 p-3 space-y-1">
       {nav.map((item) => {
@@ -51,6 +56,7 @@ function SidebarNav({ pathname, animated }: { pathname: string; animated: boolea
           </Link>
         );
       })}
+      <ContactButton userEmail={userEmail} userName={userName} />
     </nav>
   );
 }
@@ -125,10 +131,7 @@ export function AppShell() {
         <div className="px-5 py-5 border-b border-border/70">
           <Brand to="/dashboard" />
         </div>
-        <SidebarNav pathname={pathname} animated />
-        <div className="px-3 pb-1">
-          <ContactButton userEmail={user?.email} userName={nameForDisplay} />
-        </div>
+        <SidebarNav pathname={pathname} animated userEmail={user?.email} userName={nameForDisplay} />
         <UserFooter initials={initials} displayName={displayName} planName={planName} onSignOut={handleSignOut} />
       </aside>
       <main ref={mainRef} className="flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden">
@@ -148,10 +151,7 @@ export function AppShell() {
               <div className="px-5 py-5 border-b border-border/70">
                 <Brand to="/dashboard" />
               </div>
-              <SidebarNav pathname={pathname} animated={false} />
-              <div className="px-3 pb-1">
-                <ContactButton userEmail={user?.email} userName={nameForDisplay} />
-              </div>
+              <SidebarNav pathname={pathname} animated={false} userEmail={user?.email} userName={nameForDisplay} />
               <UserFooter initials={initials} displayName={displayName} planName={planName} onSignOut={handleSignOut} />
             </SheetContent>
           </Sheet>
