@@ -29,6 +29,7 @@ import { useBrandKit } from "@/lib/brand-kit";
 import type { ContentCategory } from "@/lib/mock-data";
 import type { SlideCanvasProps } from "@/components/carousel-layouts";
 import { getTemplateFrame } from "@/components/template-frames";
+import { getPostTemplate, type PostTemplateProps } from "@/components/post-templates";
 import { ShareButtons } from "@/components/ShareButtons";
 import {
   parseCustomization,
@@ -273,8 +274,26 @@ function PostDetailDialog({
       }
     : null;
 
+  // A fixed-design Post template determines rendering entirely -- when set,
+  // resolveSinglePostStrategy() is never consulted and canvasProps (below)
+  // stays null for this row, exactly mirroring how isTemplate/TemplateFrame
+  // already bypasses the single/carousel path for Poster rows.
+  const postTemplate = isSingle && singleCustom?.templateRenderKey
+    ? getPostTemplate(singleCustom.templateRenderKey)
+    : null;
+  const postTemplateProps: PostTemplateProps | null = postTemplate
+    ? {
+        headline: p?.headline ?? row.topic,
+        content: p?.content ?? "",
+        cta: p?.cta ?? "",
+        specialty: row.specialty,
+        brand: slideBrand,
+        imageUrl: directImageUrl,
+      }
+    : null;
+
   const canvasProps: SlideCanvasProps | null =
-    isSingle && singleCustom
+    isSingle && singleCustom && !postTemplate
       ? {
           slideTitle: p?.headline ?? row.topic,
           slideBody: p?.content ?? "",
@@ -425,6 +444,23 @@ function PostDetailDialog({
               <SlideCanvas {...canvasProps} />
             </div>
           </div>
+        )}
+
+        {postTemplate && postTemplateProps && (
+          <>
+            <div className="flex justify-center overflow-auto max-h-[70vh]">
+              <div className="w-full max-w-md">
+                <ExactScalePreview>
+                  <postTemplate.Component {...postTemplateProps} />
+                </ExactScalePreview>
+              </div>
+            </div>
+            <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: CREATIVE_DESIGN_WIDTH }}>
+              <div ref={cardRef}>
+                <postTemplate.Component {...postTemplateProps} />
+              </div>
+            </div>
+          </>
         )}
 
         {isStory && (

@@ -80,6 +80,7 @@ import {
   TEMPLATE_SAMPLES,
   type TemplateFrameId,
 } from "@/components/template-frames";
+import { getPostTemplate } from "@/components/post-templates";
 import {
   carouselThemes,
   slideLayouts,
@@ -148,6 +149,19 @@ import {
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
+  // Populated by Template Studio's "Use Template" action (src/routes/_app.templates.tsx).
+  // All optional/loosely-typed here; validated for real (against templateFrames/
+  // contentCategories/known WorkflowKinds) where they're actually applied, below.
+  // frameId is Poster-only (a real render_key); kind+slideCount are for the
+  // Post/Carousel/Story catalog entries, which have no render_key to pass.
+  validateSearch: (search: Record<string, unknown>): { frameId?: string; templateId?: string; category?: string; kind?: string; slideCount?: string; renderKey?: string } => ({
+    frameId:    typeof search.frameId === "string" ? search.frameId : undefined,
+    templateId: typeof search.templateId === "string" ? search.templateId : undefined,
+    category:   typeof search.category === "string" ? search.category : undefined,
+    kind:       typeof search.kind === "string" ? search.kind : undefined,
+    slideCount: typeof search.slideCount === "string" ? search.slideCount : undefined,
+    renderKey:  typeof search.renderKey === "string" ? search.renderKey : undefined,
+  }),
   component: GeneratePage,
 });
 
@@ -171,6 +185,11 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 const CONTENT_LANGUAGES = [
   "English", "Hindi", "Marathi", "Kannada", "Tamil", "Telugu", "Bengali", "Gujarati", "Punjabi", "Malayalam",
 ];
+
+// The three catalog formats with no render_key (see migration
+// 20240001000015) that arrive at /generate via ?kind=&category=&slideCount=
+// instead of Poster's ?frameId=.
+const TEMPLATE_CATALOG_KINDS: readonly WorkflowKind[] = ["single", "carousel", "story"];
 
 const BRIEF_STORAGE_PREFIX = "medipost.studio-brief.v1";
 
@@ -205,10 +224,17 @@ const DEFAULT_BRIEF_FORM: Omit<GenerateInput, "kind"> = {
   festiveStyle: "Warm & Friendly",
   slideCount: 7,
   language: "English",
+  // Only meaningful when category === "did-you-know" -- see the "Statistic &
+  // source" field shown conditionally below, and the server-side requirement
+  // in generate.functions.ts's InputSchema superRefine.
+  statistic: "",
+  statisticSource: "",
+  statisticContext: "",
 };
 
 function GeneratePage() {
   const callGenerate = useServerFn(generateContent);
+  const search = Route.useSearch();
   const [brand] = useBrandKit();
   const brandKitPercent = brandKitCompleteness(brand).percent;
   const { user } = useAuth();
@@ -237,6 +263,65 @@ function GeneratePage() {
   const [category, setCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
   const [form, setForm] = useState<Omit<GenerateInput, "kind">>(DEFAULT_BRIEF_FORM);
   const [templateFrame, setTemplateFrame] = useState<TemplateFrameId>("clinic-classic");
+  // Which `templates` catalog row (if any) the current brief started from —
+  // set only via the ?frameId=/?templateId= search params below, cleared on
+  // any manual workflow-tab switch since the association is only meaningful
+  // for the specific selection that navigated here. See generate.functions.ts's
+  // InputSchema.templateId and migration 20240001000014's comment on
+  // content_generations.template_id.
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  // Which fixed-design Post/Carousel/Story renderer (if any) this brief's
+  // template came with — set only via ?renderKey=, distinct from
+  // selectedTemplateId (which catalog row) since a template can exist
+  // without a finalized render yet. See src/components/post-templates.tsx.
+  const [selectedRenderKey, setSelectedRenderKey] = useState<string | null>(null);
+  const appliedTemplateSearchRef = useRef(false);
+
+  // Apply a Template Studio "Use Template" selection once, on arrival.
+  // Deliberately does not touch specialty/tone/audience/topic — the user
+  // still writes their own brief; only which template/category (and, for
+  // Post/Carousel/Story catalog entries, which kind/slideCount) this brief is
+  // for gets pre-selected. Poster entries arrive via ?frameId= (a real
+  // render_key); Post/Carousel/Story entries have no render_key (see
+  // migration 20240001000015) and arrive via ?kind=&category=&slideCount=
+  // instead.
+  useEffect(() => {
+    if (appliedTemplateSearchRef.current) return;
+
+    if (search.frameId) {
+      const validFrame = templateFrames.some((f) => f.id === search.frameId);
+      if (!validFrame) return;
+      appliedTemplateSearchRef.current = true;
+      setKind("template");
+      setTemplateFrame(search.frameId as TemplateFrameId);
+      setSelectedTemplateId(search.templateId ?? null);
+      if (search.category && contentCategories.some((c) => c.id === search.category)) {
+        const cat = search.category as ContentCategory;
+        setCategory(cat);
+        setForm((f) => ({ ...f, category: cat }));
+      }
+      return;
+    }
+
+    if (search.kind) {
+      const validKind = TEMPLATE_CATALOG_KINDS.includes(search.kind as WorkflowKind);
+      if (!validKind) return;
+      appliedTemplateSearchRef.current = true;
+      const nextKind = search.kind as WorkflowKind;
+      setKind(nextKind);
+      setSelectedTemplateId(search.templateId ?? null);
+      setSelectedRenderKey(search.renderKey ?? null);
+      if (search.category && contentCategories.some((c) => c.id === search.category)) {
+        const cat = search.category as ContentCategory;
+        setCategory(cat);
+        setForm((f) => ({ ...f, category: cat }));
+      }
+      const parsedSlides = search.slideCount ? Number(search.slideCount) : NaN;
+      if (nextKind === "carousel" && Number.isInteger(parsedSlides) && parsedSlides >= 2 && parsedSlides <= 10) {
+        setForm((f) => ({ ...f, slideCount: parsedSlides }));
+      }
+    }
+  }, [search.frameId, search.templateId, search.category, search.kind, search.slideCount, search.renderKey]);
 
   // Animated "e.g. ..." examples in the Topic/Prompt field — inspiration for a
   // doctor who isn't sure what to write. Freezes once they start typing.
@@ -361,7 +446,11 @@ function GeneratePage() {
     let cancelled = false;
 
     (async () => {
-      const pointer = readStudioSessionPointer(userId);
+      // Arriving with an explicit template selection (Template Studio's "Use
+      // Template") takes priority over resuming whatever was last being
+      // edited — treat it as if there's no pointer to restore. Covers both
+      // Poster (?frameId=) and Post/Carousel/Story (?kind=) catalog entries.
+      const pointer = (search.frameId || search.kind) ? null : readStudioSessionPointer(userId);
       if (!pointer) { setSessionHydrated(true); return; }
 
       const row = await fetchStudioSessionRow(pointer.rowId);
@@ -386,7 +475,7 @@ function GeneratePage() {
     })();
 
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [userId, search.frameId, search.kind]);
 
   useEffect(() => {
     if (!userId || !sessionHydrated) return;
@@ -404,6 +493,8 @@ function GeneratePage() {
 
   function switchKind(next: WorkflowKind) {
     setKind(next);
+    setSelectedTemplateId(null);
+    setSelectedRenderKey(null);
     const nextCat = defaultCategoryFor(next);
     setCategory(nextCat);
     setForm((f) => ({ ...f, category: nextCat }));
@@ -432,6 +523,13 @@ function GeneratePage() {
       toast.error("Please enter a topic");
       return;
     }
+    // UX guard only — generate.functions.ts's InputSchema superRefine is the
+    // actual guard against an invented statistic, and runs server-side
+    // regardless of whether this check is ever bypassed.
+    if (category === "did-you-know" && (!form.statistic?.trim() || !form.statisticSource?.trim())) {
+      toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
+      return;
+    }
     setLoading(true);
     setStage(0);
     setOutOfCredits(false);
@@ -445,6 +543,14 @@ function GeneratePage() {
           ...form,
           category,
           brand: supabaseBrand,
+          templateId: selectedTemplateId ?? undefined,
+          // "" (the default, kept for controlled-input purposes) must become
+          // undefined, not an empty string -- InputSchema's statistic/
+          // statisticSource use z.string().min(1), which an empty string
+          // fails even though the field itself is .optional().
+          statistic:        form.statistic?.trim() || undefined,
+          statisticSource:  form.statisticSource?.trim() || undefined,
+          statisticContext: form.statisticContext?.trim() || undefined,
         },
       });
       // Only replace the in-memory result once generation actually succeeds
@@ -564,6 +670,35 @@ function GeneratePage() {
             <Field label="Medical Specialty">
               <SpecialtySelect value={form.specialty} onChange={(v) => update("specialty", v)} />
             </Field>
+
+            {category === "did-you-know" && (
+              <>
+                <Field label="Statistic (required)">
+                  <Input
+                    value={form.statistic ?? ""}
+                    onChange={(e) => update("statistic", e.target.value)}
+                    placeholder="e.g. Nearly 1 in 3 adults have high blood pressure"
+                  />
+                  <p className="text-[11px] text-muted-foreground pt-1">
+                    Medipost formats this for social media — it never invents or changes the number.
+                  </p>
+                </Field>
+                <Field label="Source (required)">
+                  <Input
+                    value={form.statisticSource ?? ""}
+                    onChange={(e) => update("statisticSource", e.target.value)}
+                    placeholder="e.g. WHO, 2023"
+                  />
+                </Field>
+                <Field label="Additional context (optional)">
+                  <Input
+                    value={form.statisticContext ?? ""}
+                    onChange={(e) => update("statisticContext", e.target.value)}
+                    placeholder="e.g. many don't know they have it"
+                  />
+                </Field>
+              </>
+            )}
 
             {kind === "festive" ? (
               <>
@@ -777,6 +912,7 @@ function GeneratePage() {
                 result={result} specialty={form.specialty} rowId={rowId} category={resultCategory} topic={form.topic}
                 templateFrame={templateFrame} onTemplateFrameChange={setTemplateFrame}
                 sessionSeed={sessionSeed}
+                renderKey={selectedRenderKey}
               />
               <VisualConceptCard visual={result.visual} />
             </div>
@@ -851,15 +987,17 @@ function LoadingPanel({ stage }: { stage: number }) {
   );
 }
 
-function ResultPreview({ result, specialty, rowId, category, topic, templateFrame, onTemplateFrameChange, sessionSeed }: {
+function ResultPreview({ result, specialty, rowId, category, topic, templateFrame, onTemplateFrameChange, sessionSeed, renderKey }: {
   result: GenerateOutput; specialty: string; rowId: string | null; category: ContentCategory; topic: string;
   templateFrame: TemplateFrameId; onTemplateFrameChange: (id: TemplateFrameId) => void;
   sessionSeed: StudioSessionRow | null;
+  renderKey?: string | null;
 }) {
   switch (result.kind) {
     case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic}
                         initialImageUrl={sessionSeed?.initialImageUrl ?? null}
-                        initialCustomization={sessionSeed?.initialCustomization?.kind === "single" ? sessionSeed.initialCustomization : null} />;
+                        initialCustomization={sessionSeed?.initialCustomization?.kind === "single" ? sessionSeed.initialCustomization : null}
+                        renderKey={renderKey} />;
     case "carousel": return <CarouselPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic}
                         initialSlideImages={sessionSeed?.initialSlideImages ?? null}
                         initialCustomization={sessionSeed?.initialCustomization?.kind === "carousel" ? sessionSeed.initialCustomization : null} />;
@@ -1063,9 +1201,13 @@ export function AiImageButton({ loading, hasImage, onClick, size = "sm", label }
   );
 }
 
-function SinglePostPreview({ post, specialty, rowId, category, topic, initialImageUrl, initialCustomization }: {
+function SinglePostPreview({ post, specialty, rowId, category, topic, initialImageUrl, initialCustomization, renderKey }: {
   post: SinglePost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string;
   initialImageUrl?: string | null; initialCustomization?: SingleCustomization | null;
+  /** Set only when arriving via Template Studio's "Use Template" for a Post
+   *  catalog entry (?renderKey=). Takes priority over initialCustomization's
+   *  own persisted value so a fresh "Use Template" navigation always wins. */
+  renderKey?: string | null;
 }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId, initialImageUrl);
@@ -1083,27 +1225,40 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
   const [downloading, setDownloading] = useState(false);
   const captureRef = useRef<HTMLDivElement>(null);
 
+  // A fixed-design Post template determines the composition entirely -- when
+  // set, resolveSinglePostStrategy() is never called (below) and none of the
+  // theme/layout controls above apply. renderKey (fresh "Use Template" nav)
+  // wins over whatever was previously persisted for this row.
+  const [templateRenderKeyState] = useState<string | null>(() => renderKey ?? initialCustomization?.templateRenderKey ?? null);
+  const template = getPostTemplate(templateRenderKeyState);
+
   const theme = resolveTheme(
     { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
     brand,
   );
 
-  const strategy = resolveSinglePostStrategy({ headline: post.headline, content: post.content }, category);
-  const effectiveLayout: SlideLayout = autoLayout ? strategy.archetype : layout;
+  const strategy = template ? null : resolveSinglePostStrategy({ headline: post.headline, content: post.content }, category);
+  const effectiveLayout: SlideLayout = strategy ? (autoLayout ? strategy.archetype : layout) : "hero-card";
 
   const canvasProps: Omit<SlideCanvasProps, "imageUrl" | "imageLoading"> = {
     slideTitle: post.headline, slideBody: post.content, slideIndex: 0, totalSlides: 1,
     isCta: true, cta: post.cta, specialty, theme, layout: effectiveLayout,
     fontScale, showIcons, brand,
-    topic, category, composition: strategy.composition,
+    topic, category, composition: strategy?.composition ?? "hero-left",
   };
+
+  const templateProps = { headline: post.headline, content: post.content, cta: post.cta, specialty, brand };
 
   const customization: SingleCustomization = useMemo(() => ({
     v: 1, engine: "v1", kind: "single",
     theme: { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
-    strategy: { layout: effectiveLayout, composition: strategy.composition },
+    // Placeholder strategy when a fixed template is active -- never read for
+    // rendering in that case (dispatch checks templateRenderKey first), kept
+    // only because the schema still requires the field for the non-template path.
+    strategy: strategy ? { layout: effectiveLayout, composition: strategy.composition } : { layout: "hero-card", composition: "hero-left" },
     autoLayout,
-  }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, effectiveLayout, strategy.composition, autoLayout]);
+    ...(template ? { templateRenderKey: template.id } : {}),
+  }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, effectiveLayout, strategy, autoLayout, template]);
   usePersistCustomization(rowId, customization, !!initialCustomization);
 
   async function captureSinglePostPng(): Promise<string | null> {
@@ -1136,15 +1291,19 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
           <div className="min-w-0">
             <div className="mx-auto w-full max-w-md">
               <ExactScalePreview>
-                <SlideCanvas {...canvasProps} imageUrl={ai.url} imageLoading={ai.loading} />
+                {template
+                  ? <template.Component {...templateProps} imageUrl={ai.url} imageLoading={ai.loading} loadingOverlay={<ImageLoadingOverlay />} />
+                  : <SlideCanvas {...canvasProps} imageUrl={ai.url} imageLoading={ai.loading} />}
               </ExactScalePreview>
             </div>
             <CreativeActions className="mt-3">
-              <AiImageButton
-                loading={ai.loading}
-                hasImage={!!ai.url}
-                onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
-              />
+              {(!template || template.usesImage) && (
+                <AiImageButton
+                  loading={ai.loading}
+                  hasImage={!!ai.url}
+                  onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+                />
+              )}
               <Button
                 type="button" size="sm" variant="outline" className="gap-1.5 h-8"
                 onClick={downloadPost} disabled={downloading || ai.loading}
@@ -1155,36 +1314,50 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
             </CreativeActions>
             <div className="mx-auto mt-2 w-full max-w-md">
               <CreativePreviewDialog title="Post preview" naturalWidth={CREATIVE_DESIGN_WIDTH} triggerClassName="w-full">
-                <SlideCanvas {...canvasProps} imageUrl={ai.url} />
+                {template
+                  ? <template.Component {...templateProps} imageUrl={ai.url} />
+                  : <SlideCanvas {...canvasProps} imageUrl={ai.url} />}
               </CreativePreviewDialog>
             </div>
             <RemoveWatermarkRow className="mt-2" />
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
               <div ref={captureRef}>
-                <SlideCanvas {...canvasProps} imageUrl={ai.url} />
+                {template
+                  ? <template.Component {...templateProps} imageUrl={ai.url} />
+                  : <SlideCanvas {...canvasProps} imageUrl={ai.url} />}
               </div>
             </div>
           </div>
 
-          <StudioControls
-            themeId={themeId}
-            setThemeId={(id) => {
-              setThemeId(id); setFontFamily(getTheme(id).fontFamily);
-              setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
-            }}
-            layout={effectiveLayout}
-            setLayout={(v) => { setAutoLayout(false); setLayout(v); }}
-            autoLayout={autoLayout}
-            setAutoLayout={setAutoLayout}
-            recommendedLayout={strategy.archetype}
-            fontFamily={fontFamily} setFontFamily={setFontFamily}
-            fontScale={fontScale} setFontScale={setFontScale}
-            headingColor={headingColor ?? theme.heading} setHeadingColor={setHeadingColor}
-            textColor={textColor ?? theme.text} setTextColor={setTextColor}
-            accentColor={accentColor ?? theme.accent} setAccentColor={setAccentColor}
-            useBrandColors={useBrandColors} setUseBrandColors={setUseBrandColors}
-            showIcons={showIcons} setShowIcons={setShowIcons}
-          />
+          {template ? (
+            <div className="rounded-xl border border-border bg-card p-4 space-y-2 text-sm h-fit">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Template</p>
+              <p className="font-semibold">{template.name}</p>
+              <p className="text-xs text-muted-foreground">
+                This post uses a fixed template design from Template Studio — layout and theme aren't adjustable here, only the brand kit's colors and contact details.
+              </p>
+            </div>
+          ) : strategy && (
+            <StudioControls
+              themeId={themeId}
+              setThemeId={(id) => {
+                setThemeId(id); setFontFamily(getTheme(id).fontFamily);
+                setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
+              }}
+              layout={effectiveLayout}
+              setLayout={(v) => { setAutoLayout(false); setLayout(v); }}
+              autoLayout={autoLayout}
+              setAutoLayout={setAutoLayout}
+              recommendedLayout={strategy.archetype}
+              fontFamily={fontFamily} setFontFamily={setFontFamily}
+              fontScale={fontScale} setFontScale={setFontScale}
+              headingColor={headingColor ?? theme.heading} setHeadingColor={setHeadingColor}
+              textColor={textColor ?? theme.text} setTextColor={setTextColor}
+              accentColor={accentColor ?? theme.accent} setAccentColor={setAccentColor}
+              useBrandColors={useBrandColors} setUseBrandColors={setUseBrandColors}
+              showIcons={showIcons} setShowIcons={setShowIcons}
+            />
+          )}
         </div>
 
         <SectionBlock title="Headline" body={post.headline} />

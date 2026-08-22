@@ -7,6 +7,7 @@ import { z } from "zod";
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import { PostCustomizationSchema, defaultCustomizationFor } from "@/lib/post-customization";
+import { validateTemplateContent } from "@/lib/template-content-schema";
 
 function validateEnv(): { supabaseUrl: string; supabaseAnonKey: string; geminiApiKey: string } {
   const supabaseUrl     = process.env.SUPABASE_URL;
@@ -223,6 +224,38 @@ const InputSchema = z.object({
   slideCount: z.number().int().min(2).max(10).optional(),
   language:   z.string().max(40).optional(),
   brand:      BrandSchema,
+  // Which `templates` catalog row this generation started from, if the user
+  // arrived via Template Studio's "Use Template" action. Optional and
+  // independent of `data.kind`/frame choice below -- see migration
+  // 20240001000014's comment on content_generations.template_id for why this
+  // is allowed to diverge from the actual render/frame chosen.
+  templateId: z.string().uuid().optional(),
+  // "Did You Know" statistics are always supplied by the doctor, never
+  // invented by Gemini -- see the superRefine below, which makes statistic +
+  // statisticSource required whenever category === "did-you-know", for every
+  // kind, not just Template Studio's Stat Spotlight entry. Frontend fields
+  // mirror this for UX; this schema-level check is the actual guard, and it
+  // runs inside `.validator()` -- before deduct_credit is ever called.
+  statistic:        z.string().min(1).max(300).optional(),
+  statisticSource:  z.string().min(1).max(200).optional(),
+  statisticContext: z.string().max(300).optional(),
+}).superRefine((data, ctx) => {
+  if (data.category === "did-you-know") {
+    if (!data.statistic?.trim()) {
+      ctx.addIssue({
+        code:    z.ZodIssueCode.custom,
+        path:    ["statistic"],
+        message: "A statistic is required for the \"Did You Know\" category -- Medipost formats it, but never invents the number.",
+      });
+    }
+    if (!data.statisticSource?.trim()) {
+      ctx.addIssue({
+        code:    z.ZodIssueCode.custom,
+        path:    ["statisticSource"],
+        message: "A source is required for the \"Did You Know\" category.",
+      });
+    }
+  }
 });
 
 export type GenerateInput = z.infer<typeof InputSchema>;
@@ -404,8 +437,10 @@ Paragraph 1 starts with "Myth: " — the common belief in 1-2 short sentences.
 Paragraph 2 starts with "Fact: " — the evidence-based truth + 1-line why, 2-3 short sentences.`;
     case "did-you-know":
       return `CONTENT STRUCTURE (strict — rendered as a big-number poster):
-"content" MUST open with the single most surprising concrete statistic (e.g. "70%…", "1 in 4…", "3x…"),
-followed by ONE supporting line. 25-45 words total. "headline" is the curiosity hook.`;
+"content" MUST open with the SUPPLIED STATISTIC given above, verbatim (see the SUPPLIED STATISTIC block),
+followed by ONE supporting line that cites the source naturally. 25-45 words total. "headline" is the curiosity hook.
+Do NOT substitute a different number and do NOT invent one if that block is somehow missing -- in that
+case, use a qualitative surprising fact or mechanism instead, with no invented statistic.`;
     case "patient-faq":
       return `CONTENT STRUCTURE (strict — rendered as a question/answer chat exchange):
 "headline" MUST be the patient's question, ending with "?".
@@ -444,6 +479,27 @@ You MUST write ALL text content in ${l} using its native script. Do NOT write in
 - EXCEPTION 1: Every field inside "visual" (concept, style, composition, imagePrompt, visualStyle, layout) MUST stay in English — this goes to an image-generation model that only understands English.
 - EXCEPTION 2: Structural CONTENT STRUCTURE markers (e.g. "Myth: " and "Fact: " prefixes) stay in English exactly as specified — only the text after the marker is in ${l}.
 If any content field is in English instead of ${l}, the output is wrong. Write in ${l}.`;
+}
+
+/**
+ * Placed in buildPrompt()'s shared `base` block (not just the "single" case)
+ * so the no-invented-statistic rule applies to every kind that can carry
+ * category === "did-you-know" -- carousel, story, etc, not only single posts
+ * or Template Studio's Stat Spotlight entry. Returns "" for every other
+ * category, and also "" if statistic is somehow absent (the InputSchema
+ * superRefine is what actually prevents that for did-you-know).
+ */
+function statisticBlock(d: GenerateInput): string {
+  if (d.category !== "did-you-know" || !d.statistic) return "";
+  return `
+SUPPLIED STATISTIC — MANDATORY, VERBATIM (non-negotiable)
+You MUST use this exact statistic, unchanged: "${d.statistic}"
+Source (cite naturally in the supporting line, do not just append "(Source)"): ${d.statisticSource ?? "not provided"}
+${d.statisticContext ? `Additional context supplied: ${d.statisticContext}` : ""}
+- Do NOT alter this number, round it, or restate it differently.
+- Do NOT introduce any second, different numeric/statistical claim anywhere in the output.
+- Your job is only to rewrite the surrounding copy for social media, add one supporting explanatory
+  line, and write the caption/CTA -- never to invent or adjust the figure itself.`;
 }
 
 function brandBlock(b: GenerateInput["brand"]): string {
@@ -501,6 +557,7 @@ function buildPrompt(d: GenerateInput): { system: string; user: string } {
 
 CATEGORY GUIDANCE
 ${CATEGORY_HINTS[d.category]}
+${statisticBlock(d)}
 
 ${brandBlock(d.brand)}
 
@@ -833,16 +890,43 @@ export const generateContent = createServerFn({ method: "POST" })
 
       const { system, user: userPrompt } = buildPrompt({ ...data, brand: mergedBrand });
 
-      let rawText: string;
-      try {
-        rawText = await callGeminiText(system, userPrompt, geminiApiKey, aiConfig);
-      } catch (geminiErr: any) {
-        try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
-        throw geminiErr;
+      // Runs the full Gemini call -> parse -> normalize -> (for `template`
+      // only) schema-validate pipeline once. Thrown errors here (a Gemini
+      // call failure, malformed JSON, or -- template kind only -- a missing
+      // required slot) are handled by the retry/refund logic below, not here.
+      async function generateAndValidate(): Promise<GenerateOutput> {
+        const rawText = await callGeminiText(system, userPrompt, geminiApiKey, aiConfig);
+        const parsed = extractJson(rawText);
+        const generated = normalize(data.kind, parsed);
+        return generated.kind === "template" ? validateTemplateContent(generated) : generated;
       }
 
-      const parsed = extractJson(rawText);
-      const result = normalize(data.kind, parsed);
+      let result: GenerateOutput;
+      try {
+        result = await generateAndValidate();
+      } catch (firstErr: any) {
+        if (data.kind === "template") {
+          // Template content is schema-validated (see template-content-schema.ts).
+          // A failure here is worth one automatic, uncharged retry before
+          // giving up -- no second credit is deducted, since deduct_credit
+          // already ran once above for this whole request.
+          console.warn("[generateContent] template generation failed validation, retrying once:", firstErr?.message);
+          try {
+            result = await generateAndValidate();
+          } catch (secondErr: any) {
+            try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
+            console.error("[generateContent] template generation failed validation twice:", secondErr?.message);
+            throw new Error("We couldn't generate valid content for this template. Please try again.");
+          }
+        } else {
+          // Unchanged behavior for the other six kinds, extended to also
+          // cover extractJson/normalize failures (previously only a raw
+          // callGeminiText failure triggered a refund here -- a malformed-
+          // JSON response deducted a credit with no refund).
+          try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
+          throw firstErr;
+        }
+      }
 
       const hashtags =
         "hashtags" in result && Array.isArray(result.hashtags) ? result.hashtags : [];
@@ -868,6 +952,7 @@ export const generateContent = createServerFn({ method: "POST" })
           status:           "completed",
           ai_model:         aiConfig.model,
           customization,
+          template_id:      data.templateId ?? null,
         })
         .select("id")
         .single();

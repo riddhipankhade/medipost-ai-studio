@@ -5,6 +5,7 @@ import { carouselThemes, fontFamilies, slideLayouts, getTheme, suggestThemeId, t
 import { compositionRules, type Composition } from "@/lib/design-tokens";
 import { resolveSinglePostStrategy, resolveVisualStrategy } from "@/lib/visual-strategy";
 import { templateFrames, type TemplateFrameId } from "@/components/template-frames";
+import { postTemplates, type PostTemplateId } from "@/components/post-templates";
 import type { GenerateOutput } from "@/lib/api/generate.functions";
 
 /**
@@ -34,6 +35,7 @@ const FontFamilyId = z.custom<string>((v) => typeof v === "string" && fontFamili
 const SlideLayoutId = z.custom<SlideLayout>((v) => typeof v === "string" && slideLayouts.some((l) => l.id === v), { message: "Unknown layout" });
 const CompositionId = z.custom<Composition>((v) => typeof v === "string" && v in compositionRules, { message: "Unknown composition" });
 const TemplateFrameIdSchema = z.custom<TemplateFrameId>((v) => typeof v === "string" && templateFrames.some((f) => f.id === v), { message: "Unknown frameId" });
+const PostTemplateIdSchema = z.custom<PostTemplateId>((v) => typeof v === "string" && postTemplates.some((t) => t.id === v), { message: "Unknown templateRenderKey" });
 const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Expected a 6-digit hex color");
 
 const SlideStrategySnapshot = z.object({ layout: SlideLayoutId, composition: CompositionId });
@@ -56,6 +58,14 @@ const Envelope = { v: z.literal(CUSTOMIZATION_VERSION), engine: z.literal(RENDER
 export const SingleCustomizationSchema = z.object({
   ...Envelope, kind: z.literal("single"),
   theme: ThemeKnobsSchema, strategy: SlideStrategySnapshot, autoLayout: z.boolean(),
+  // Set only when this post was generated from a fixed-design Post catalog
+  // template (Template Studio "Use Template", ?renderKey=). When present,
+  // it -- not `strategy` -- determines rendering: SinglePostPreview/History
+  // dispatch through postTemplates' registry (src/components/post-templates.tsx)
+  // with the real generated content, and resolveSinglePostStrategy() is never
+  // called. Absent for every plain brief-first single post, old and new alike
+  // -- those keep using `strategy` exactly as before this field existed.
+  templateRenderKey: PostTemplateIdSchema.optional(),
 });
 export const CarouselCustomizationSchema = z.object({
   ...Envelope, kind: z.literal("carousel"),
