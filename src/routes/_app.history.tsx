@@ -30,6 +30,8 @@ import type { ContentCategory } from "@/lib/mock-data";
 import type { SlideCanvasProps } from "@/components/carousel-layouts";
 import { getTemplateFrame } from "@/components/template-frames";
 import { getPostTemplate, type PostTemplateProps } from "@/components/post-templates";
+import { getCarouselTemplate, type CarouselTemplateSlideProps } from "@/components/carousel-templates";
+import { getStoryTemplate, type StoryTemplateProps } from "@/components/story-templates";
 import { ShareButtons } from "@/components/ShareButtons";
 import {
   parseCustomization,
@@ -265,6 +267,9 @@ function PostDetailDialog({
         headline: p?.headline ?? row.topic,
         subline:  p?.subline ?? "",
         cta:      p?.cta ?? "",
+        features: Array.isArray(p?.features) ? p.features : [],
+        doctorPhoto:  brand.doctorPhoto,
+        doctorName:   brand.doctorName,
         logo:         brand.logo,
         businessName: brand.clinicName,
         phone:        brand.phone,
@@ -292,6 +297,42 @@ function PostDetailDialog({
       }
     : null;
 
+  // A fixed-design Carousel template determines every slide's composition --
+  // when set, resolveVisualStrategy() is never consulted per-slide and
+  // canvasProps stays null for this row, mirroring postTemplate above.
+  const carouselTemplate = isCarousel && carouselCustom?.templateRenderKey
+    ? getCarouselTemplate(carouselCustom.templateRenderKey)
+    : null;
+  const carouselSlideImages = isCarousel ? slideImages : [];
+  const carouselTemplateProps: CarouselTemplateSlideProps | null = carouselTemplate && slides[slideIdx]
+    ? {
+        slideTitle: slides[slideIdx].title,
+        slideBody: slides[slideIdx].content,
+        slideIndex: slideIdx,
+        totalSlides: slides.length,
+        cta: p?.cta ?? "",
+        specialty: row.specialty,
+        brand: slideBrand,
+        imageUrl: carouselSlideImages[slideIdx] ?? undefined,
+      }
+    : null;
+
+  // A fixed-design Story template determines the composition entirely --
+  // when set, StoryCard is never rendered for this row.
+  const storyTemplate = isStory && storyCustom?.templateRenderKey
+    ? getStoryTemplate(storyCustom.templateRenderKey)
+    : null;
+  const storyTemplateProps: StoryTemplateProps | null = storyTemplate
+    ? {
+        headline: p?.headline ?? row.topic,
+        message: p?.message ?? "",
+        cta: p?.cta ?? "",
+        specialty: row.specialty,
+        brand: slideBrand,
+        imageUrl: directImageUrl,
+      }
+    : null;
+
   const canvasProps: SlideCanvasProps | null =
     isSingle && singleCustom && !postTemplate
       ? {
@@ -312,7 +353,7 @@ function PostDetailDialog({
           category: row.content_category as ContentCategory,
           composition: singleCustom.strategy.composition,
         }
-      : isCarousel && carouselCustom && slides[slideIdx]
+      : isCarousel && carouselCustom && slides[slideIdx] && !carouselTemplate
       ? {
           slideTitle: slides[slideIdx].title,
           slideBody: slides[slideIdx].content,
@@ -363,6 +404,27 @@ function PostDetailDialog({
             <div className="flex gap-2">
               <Button variant="outline" size="sm" className="flex-1" disabled={slideIdx === 0} onClick={() => setSlideIdx(i => i - 1)}>← Prev</Button>
               <Button variant="outline" size="sm" className="flex-1" disabled={slideIdx === slides.length - 1} onClick={() => setSlideIdx(i => i + 1)}>Next →</Button>
+            </div>
+          </div>
+        )}
+
+        {isCarousel && carouselTemplate && carouselTemplateProps && (
+          <div className="space-y-3">
+            <div className="flex justify-center overflow-auto max-h-[70vh]">
+              <div className="w-full max-w-md">
+                <ExactScalePreview>
+                  <carouselTemplate.Component {...carouselTemplateProps} />
+                </ExactScalePreview>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1" disabled={slideIdx === 0} onClick={() => setSlideIdx(i => i - 1)}>← Prev</Button>
+              <Button variant="outline" size="sm" className="flex-1" disabled={slideIdx === slides.length - 1} onClick={() => setSlideIdx(i => i + 1)}>Next →</Button>
+            </div>
+            <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: CREATIVE_DESIGN_WIDTH }}>
+              <div ref={cardRef}>
+                <carouselTemplate.Component {...carouselTemplateProps} />
+              </div>
             </div>
           </div>
         )}
@@ -465,17 +527,21 @@ function PostDetailDialog({
 
         {isStory && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
-            <StoryCard
-              ref={cardRef}
-              headline={p?.headline ?? row.topic}
-              message={p?.message ?? ""}
-              cta={p?.cta ?? ""}
-              colors={p?.visual?.colors ?? []}
-              brand={slideBrand}
-              specialty={row.specialty}
-              imageUrl={directImageUrl}
-              colorOverrides={storyCustom ? resolveStoryColors(storyCustom, slideBrand, p?.visual?.colors ?? []) : undefined}
-            />
+            {storyTemplate && storyTemplateProps ? (
+              <storyTemplate.Component ref={cardRef} {...storyTemplateProps} />
+            ) : (
+              <StoryCard
+                ref={cardRef}
+                headline={p?.headline ?? row.topic}
+                message={p?.message ?? ""}
+                cta={p?.cta ?? ""}
+                colors={p?.visual?.colors ?? []}
+                brand={slideBrand}
+                specialty={row.specialty}
+                imageUrl={directImageUrl}
+                colorOverrides={storyCustom ? resolveStoryColors(storyCustom, slideBrand, p?.visual?.colors ?? []) : undefined}
+              />
+            )}
           </div>
         )}
 

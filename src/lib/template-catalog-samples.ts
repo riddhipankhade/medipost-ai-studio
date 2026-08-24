@@ -48,7 +48,7 @@ export type StorySample = {
   specialty: string;
 };
 
-// ── Post (11–18) ────────────────────────────────────────────────────────────
+// ── Post (11–18, 36–39) ──────────────────────────────────────────────────────
 export const POST_SAMPLES: Record<string, PostSample> = {
   // 11 · Myth vs Fact Spotlight
   "00000000-0000-4000-8000-000000000011": {
@@ -99,32 +99,68 @@ export const POST_SAMPLES: Record<string, PostSample> = {
     specialty: "Gynecologist",
     topic: "Reducing cervical cancer risk",
   },
-  // 16 · Warning Signs Alert
+  // 16 · Editorial Column
   "00000000-0000-4000-8000-000000000016": {
-    headline: "Don't Ignore These Signs",
+    headline: "Understanding Chronic Migraine",
     content:
-      "Chest pain or pressure lasting more than a few minutes\nShortness of breath\nPain spreading to your arm, jaw, or back\nCold sweat with nausea\nIf you notice these, seek emergency care immediately.",
-    cta: "Learn Your Risk Factors",
-    specialty: "Cardiologist",
-    topic: "Signs of a heart attack you shouldn't ignore",
+      "Chronic migraine means headaches on 15 or more days a month, with migraine features on at least 8 of those days. It's more than a bad headache — it's a distinct neurological condition, and it's manageable with the right treatment plan.",
+    cta: "Book a Consultation",
+    specialty: "Neurologist",
+    topic: "What chronic migraine actually means",
   },
-  // 17 · Doctor Explains
+  // 17 · Blueprint Grid
   "00000000-0000-4000-8000-000000000017": {
-    headline: "Knee Pain Doesn't Always Mean Surgery",
+    headline: "A Clear Path From Diagnosis to Recovery",
     content:
-      "As an orthopedic specialist, here's what I tell my patients: many cases of knee pain respond well to physiotherapy, weight management, and targeted strengthening before surgery is ever discussed. Surgery is one option among several, not the automatic first step.",
-    cta: "Book a Knee Assessment",
+      "Every treatment plan starts with a precise diagnosis, moves through a tailored care plan, and ends with a measurable recovery milestone — no guesswork at any step.",
+    cta: "Start Your Assessment",
     specialty: "Orthopedic Surgeon",
-    topic: "Why knee pain doesn't always mean surgery",
+    topic: "How a structured treatment plan works",
   },
-  // 18 · Skin Concern Spotlight
+  // 18 · Torn Ticket
   "00000000-0000-4000-8000-000000000018": {
-    headline: "When Should You Get a Mole Checked?",
+    headline: "Your Spot Is Reserved",
     content:
-      "Most moles are harmless, but the ABCDE rule is worth knowing: Asymmetry, an irregular Border, uneven Color, a Diameter that's grown noticeably, or any recent Evolution in size or shape. If you notice any of these, a quick professional check gives you peace of mind either way.",
-    cta: "Book a Skin Check",
+      "New patient slots are limited this month. Book your consultation and get a full assessment, a personalized plan, and answers to every question you bring.",
+    cta: "Reserve Your Slot",
+    specialty: "Dentist",
+    topic: "Booking a limited new-patient consultation slot",
+  },
+  // 36 · Certified Seal
+  "00000000-0000-4000-8000-000000000036": {
+    headline: "Board-Certified Cardiac Care",
+    content:
+      "Every treatment plan here is led by a board-certified specialist and grounded in current clinical guidelines — care you can verify, not just trust.",
+    cta: "Verify & Book",
+    specialty: "Cardiologist",
+    topic: "Board-certified, guideline-based cardiac care",
+  },
+  // 37 · Dossier Tab
+  "00000000-0000-4000-8000-000000000037": {
+    headline: "Your First Visit File",
+    content:
+      "On your first visit, we review your history, run a focused assessment, and open a file that follows you through every future appointment — nothing repeated, nothing lost.",
+    cta: "Open Your File",
+    specialty: "General Physician",
+    topic: "What happens during a first-visit intake",
+  },
+  // 38 · Layered Frame
+  "00000000-0000-4000-8000-000000000038": {
+    headline: "Personalized Skin Care, Layer by Layer",
+    content:
+      "From diagnosis to treatment to long-term maintenance — your plan is built in stages, each one shaped by how your skin actually responds.",
+    cta: "Start Your Plan",
     specialty: "Dermatologist",
-    topic: "When a mole is worth checking",
+    topic: "A staged, personalized skin-care treatment plan",
+  },
+  // 39 · Swiss Grid Bold
+  "00000000-0000-4000-8000-000000000039": {
+    headline: "Prevention Beats Treatment",
+    content:
+      "Regular screening catches most conditions years before symptoms appear. A 20-minute visit today can change the next 20 years.",
+    cta: "Book Screening",
+    specialty: "General Physician",
+    topic: "The case for regular preventive screening",
   },
 };
 

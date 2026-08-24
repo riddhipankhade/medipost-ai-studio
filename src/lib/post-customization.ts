@@ -6,6 +6,8 @@ import { compositionRules, type Composition } from "@/lib/design-tokens";
 import { resolveSinglePostStrategy, resolveVisualStrategy } from "@/lib/visual-strategy";
 import { templateFrames, type TemplateFrameId } from "@/components/template-frames";
 import { postTemplates, type PostTemplateId } from "@/components/post-templates";
+import { carouselTemplates, type CarouselTemplateId } from "@/components/carousel-templates";
+import { storyTemplates, type StoryTemplateId } from "@/components/story-templates";
 import type { GenerateOutput } from "@/lib/api/generate.functions";
 
 /**
@@ -36,6 +38,8 @@ const SlideLayoutId = z.custom<SlideLayout>((v) => typeof v === "string" && slid
 const CompositionId = z.custom<Composition>((v) => typeof v === "string" && v in compositionRules, { message: "Unknown composition" });
 const TemplateFrameIdSchema = z.custom<TemplateFrameId>((v) => typeof v === "string" && templateFrames.some((f) => f.id === v), { message: "Unknown frameId" });
 const PostTemplateIdSchema = z.custom<PostTemplateId>((v) => typeof v === "string" && postTemplates.some((t) => t.id === v), { message: "Unknown templateRenderKey" });
+const CarouselTemplateIdSchema = z.custom<CarouselTemplateId>((v) => typeof v === "string" && carouselTemplates.some((t) => t.id === v), { message: "Unknown templateRenderKey" });
+const StoryTemplateIdSchema = z.custom<StoryTemplateId>((v) => typeof v === "string" && storyTemplates.some((t) => t.id === v), { message: "Unknown templateRenderKey" });
 const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Expected a 6-digit hex color");
 
 const SlideStrategySnapshot = z.object({ layout: SlideLayoutId, composition: CompositionId });
@@ -71,6 +75,14 @@ export const CarouselCustomizationSchema = z.object({
   ...Envelope, kind: z.literal("carousel"),
   theme: ThemeKnobsSchema, autoLayout: z.boolean(),
   slides: z.array(SlideStrategySnapshot).max(20),
+  // Set only when this carousel was generated from a fixed-design Carousel
+  // catalog template (Template Studio "Use Template", ?renderKey=). When
+  // present, it -- not `slides` -- determines rendering: CarouselPreview/
+  // History dispatch through carouselTemplates' registry (see
+  // src/components/carousel-templates.tsx) with the real generated slide
+  // content, and resolveVisualStrategy() is never called per-slide. Absent
+  // for every plain brief-first carousel, old and new alike.
+  templateRenderKey: CarouselTemplateIdSchema.optional(),
 });
 export const FestiveCustomizationSchema = z.object({
   ...Envelope, kind: z.literal("festive"),
@@ -93,6 +105,12 @@ export const StoryCustomizationSchema    = z.object({
   ...Envelope, kind: z.literal("story"),
   useBrandColors: z.boolean(),
   primaryColor: HexColor.nullable(), secondaryColor: HexColor.nullable(), tertiaryColor: HexColor.nullable(),
+  // Set only when this story was generated from a fixed-design Story catalog
+  // template. When present, it -- not the color knobs above -- determines
+  // rendering: StoryPreview/History dispatch through storyTemplates' registry
+  // (see src/components/story-templates.tsx) instead of StoryCard. Absent for
+  // every plain brief-first story, old and new alike.
+  templateRenderKey: StoryTemplateIdSchema.optional(),
 });
 export const ReelCustomizationSchema     = z.object({ ...Envelope, kind: z.literal("reel") });
 export const CampaignCustomizationSchema = z.object({ ...Envelope, kind: z.literal("campaign") });

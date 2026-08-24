@@ -29,6 +29,8 @@ const MAX = {
   caption: 500,
   hashtag: 40,
   hashtagCount: 15,
+  feature: 28, // prompt asks 1-3 words
+  featureCount: 4,
   visualText: 300, // concept / style / layout / composition
   visualStyle: 60,
   imagePrompt: 1500, // prompt asks 60-120 words (~500-800 chars); generous cap
@@ -53,6 +55,10 @@ export function sanitizeTemplateContent(raw: TemplatePost): TemplatePost {
       .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
       .slice(0, MAX.hashtagCount)
       .map((h) => truncate(h, MAX.hashtag)),
+    features: (Array.isArray(raw?.features) ? raw.features : [])
+      .filter((f): f is string => typeof f === "string" && f.trim().length > 0)
+      .slice(0, MAX.featureCount)
+      .map((f) => truncate(f, MAX.feature)),
     visual: {
       concept: truncate(raw?.visual?.concept ?? "", MAX.visualText),
       colors: (Array.isArray(raw?.visual?.colors) ? raw.visual.colors : [])
@@ -93,6 +99,10 @@ export const TemplateGeneratedContentSchema = z.object({
   cta: z.string(),
   caption: z.string(),
   hashtags: z.array(z.string()),
+  // Optional per-frame content -- most frames ignore it (see TemplatePost's
+  // comment); never required, so a frame without a feature-row slot never
+  // depends on the model producing anything here.
+  features: z.array(z.string()),
   visual: TemplateVisualSchema,
 });
 

@@ -24,12 +24,10 @@ import {
   TEMPLATE_SAMPLES,
   type TemplateFrameId,
 } from "@/components/template-frames";
-import { ExactScalePreview, SlideCanvas } from "@/routes/_app.generate";
-import { resolveVisualStrategy } from "@/lib/visual-strategy";
-import { resolveTheme } from "@/lib/post-customization";
-import { suggestThemeId, getTheme } from "@/lib/carousel-themes";
-import StoryCard from "@/components/StoryCard";
+import { ExactScalePreview } from "@/routes/_app.generate";
 import { getPostTemplate } from "@/components/post-templates";
+import { getCarouselTemplate } from "@/components/carousel-templates";
+import { getStoryTemplate } from "@/components/story-templates";
 import {
   POST_SAMPLES,
   CAROUSEL_SAMPLES,
@@ -54,9 +52,10 @@ export const Route = createFileRoute("/_app/templates")({
 
 type TemplateRow = {
   id: string;
-  // NULL for every format except Poster ("template") — see migration
-  // 20240001000015. Post/Carousel/Story rows resolve their renderer
-  // dynamically from category + content instead of a stored lookup key.
+  // Real, code-owned lookup key once a format's bespoke renderer registry
+  // exists (Poster: templateFrames.tsx, Post: post-templates.tsx, Carousel:
+  // carousel-templates.tsx, Story: story-templates.tsx). NULL means this
+  // row's bespoke design hasn't shipped yet — see migration 20240001000016.
   render_key: string | null;
   name: string;
   description: string | null;
@@ -88,8 +87,12 @@ function hasPreviewData(t: TemplateRow): boolean {
     // is exactly the "template = category with different text" behavior
     // this architecture replaces.
     case "single":    return !!POST_SAMPLES[t.id] && getPostTemplate(t.render_key) !== null;
-    case "carousel":  return !!CAROUSEL_SAMPLES[t.id];
-    case "story":     return !!STORY_SAMPLES[t.id];
+    // Same "real, built render_key required" rule as Post -- a Carousel or
+    // Story row without a bespoke design yet is excluded rather than falling
+    // back to the per-slide dynamic engine / generic StoryCard, which is
+    // exactly the behavior this architecture replaces.
+    case "carousel":  return !!CAROUSEL_SAMPLES[t.id] && getCarouselTemplate(t.render_key) !== null;
+    case "story":     return !!STORY_SAMPLES[t.id] && getStoryTemplate(t.render_key) !== null;
     default:          return false;
   }
 }
@@ -113,21 +116,6 @@ function useMeasuredWidth() {
   return [ref, width] as const;
 }
 
-/** Deterministic theme for a static sample — same resolveTheme() formula
- *  Content Studio's SinglePostPreview/CarouselPreview use, with brand colors
- *  on (matching their own default) so the preview reflects the real brand kit. */
-function sampleTheme(specialty: string, brand: BrandKit) {
-  const themeId = suggestThemeId(specialty);
-  return resolveTheme(
-    {
-      themeId, useBrandColors: true,
-      headingColor: null, textColor: null, accentColor: null,
-      fontFamily: getTheme(themeId).fontFamily, fontScale: 1, showIcons: true,
-    },
-    brand,
-  );
-}
-
 /**
  * Post catalog rows render through the SAME postTemplates registry lookup
  * Content Studio's post-generation preview and Content History use (see
@@ -146,33 +134,47 @@ function PostPreviewCanvas({ sample, brand, renderKey }: { sample: PostSample; b
   );
 }
 
-function CarouselPreviewCanvas({ sample, category, brand, slideIdx }: {
-  sample: CarouselSample; category: ContentCategory; brand: BrandKit; slideIdx: number;
+/**
+ * Carousel catalog rows render through the SAME carouselTemplates registry
+ * lookup Content Studio's per-slide preview and Content History use (see
+ * src/components/carousel-templates.tsx) -- resolveVisualStrategy() is never
+ * called here. hasPreviewData() above already guarantees a bespoke render_key
+ * resolves for any row reaching this component; the null guard is defensive.
+ */
+function CarouselPreviewCanvas({ sample, brand, renderKey, slideIdx }: {
+  sample: CarouselSample; brand: BrandKit; renderKey: string | null; slideIdx: number;
 }) {
+  const template = getCarouselTemplate(renderKey);
+  if (!template) return null;
   const total = sample.slides.length;
   const idx = Math.min(Math.max(slideIdx, 0), total - 1);
   const slide = sample.slides[idx];
-  const strategy = resolveVisualStrategy(slide, category, { slideIndex: idx, totalSlides: total, isCta: idx === total - 1 });
   return (
     <ExactScalePreview>
-      <SlideCanvas
+      <template.Component
         slideTitle={slide.title} slideBody={slide.content} slideIndex={idx} totalSlides={total}
-        isCta={idx === total - 1} cta={sample.cta} specialty={sample.specialty} theme={sampleTheme(sample.specialty, brand)}
-        layout={strategy.archetype} fontScale={1} showIcons brand={brand}
-        topic={sample.topic} category={category} composition={strategy.composition}
+        cta={sample.cta} specialty={sample.specialty} brand={brand}
       />
     </ExactScalePreview>
   );
 }
 
-function StoryPreviewCanvas({ sample, brand }: { sample: StorySample; brand: BrandKit }) {
+/**
+ * Story catalog rows render through the SAME storyTemplates registry lookup
+ * Content Studio's preview and Content History use (see
+ * src/components/story-templates.tsx). hasPreviewData() above already
+ * guarantees a bespoke render_key resolves; the null guard is defensive.
+ */
+function StoryPreviewCanvas({ sample, brand, renderKey }: { sample: StorySample; brand: BrandKit; renderKey: string | null }) {
   const [ref, width] = useMeasuredWidth();
+  const template = getStoryTemplate(renderKey);
+  if (!template) return null;
   return (
     <div ref={ref} className="w-full">
       {width > 0 && (
-        <StoryCard
+        <template.Component
           headline={sample.headline} message={sample.message} cta={sample.cta}
-          colors={[]} brand={brand} specialty={sample.specialty} width={width}
+          specialty={sample.specialty} brand={brand} width={width}
         />
       )}
     </div>
@@ -180,15 +182,16 @@ function StoryPreviewCanvas({ sample, brand }: { sample: StorySample; brand: Bra
 }
 
 /**
- * Dispatches to the right existing renderer for a catalog row's format —
- * Poster keeps its original getTemplateFrame()/TEMPLATE_SAMPLES path
- * unchanged; Post/Carousel/Story use the sample-content canvases above,
- * which are themselves thin wrappers around the exact same rendering
- * pipeline Content Studio uses for real generations (resolveSinglePostStrategy/
- * resolveVisualStrategy + SlideCanvas, or StoryCard) — no new renderer.
+ * Dispatches to the right bespoke renderer for a catalog row's format —
+ * Poster: getTemplateFrame()/TEMPLATE_SAMPLES; Post/Carousel/Story: the
+ * sample-content canvases above, which are thin wrappers around each
+ * format's template registry (post-templates.tsx / carousel-templates.tsx /
+ * story-templates.tsx) — the exact same components Content Studio's
+ * preview and Content History use for real generations. No dynamic-engine
+ * fallback for any format.
  * `slideIdx` only matters for Carousel (defaults to a representative content
- * slide, not the hook, so the card shows the archetype rather than a generic
- * opener); the preview dialog overrides it via local nav state.
+ * slide, not the hook, so the card shows the deck's inside-slide treatment
+ * rather than just its cover); the preview dialog overrides it via local nav state.
  */
 function CatalogCardPreview({ t, brand, frameProps, slideIdx }: {
   t: TemplateRow;
@@ -212,11 +215,11 @@ function CatalogCardPreview({ t, brand, frameProps, slideIdx }: {
     case "carousel": {
       const sample = CAROUSEL_SAMPLES[t.id];
       const defaultIdx = Math.min(1, sample.slides.length - 1);
-      return <CarouselPreviewCanvas sample={sample} category={t.category} brand={brand} slideIdx={slideIdx ?? defaultIdx} />;
+      return <CarouselPreviewCanvas sample={sample} brand={brand} renderKey={t.render_key} slideIdx={slideIdx ?? defaultIdx} />;
     }
     case "story": {
       const sample = STORY_SAMPLES[t.id];
-      return <StoryPreviewCanvas sample={sample} brand={brand} />;
+      return <StoryPreviewCanvas sample={sample} brand={brand} renderKey={t.render_key} />;
     }
     default:
       return null;
@@ -330,6 +333,8 @@ function TemplateStudioPage() {
     logo: brand.logo,
     businessName: brand.clinicName,
     phone: brand.phone,
+    doctorPhoto: brand.doctorPhoto,
+    doctorName: brand.doctorName,
     colors: { primary: brand.primaryColor, secondary: brand.secondaryColor },
     placeholders: true,
   };

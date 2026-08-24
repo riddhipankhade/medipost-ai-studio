@@ -331,6 +331,12 @@ export type TemplatePost = {
   cta:      string;
   caption:  string;
   hashtags: string[];
+  // Short (1-3 word) benefit/feature labels, e.g. "Expert Doctors",
+  // "Advanced Care" -- optional per-frame content; only Poster frames with a
+  // feature-row slot (currently just Benefit Grid) render these. Every other
+  // frame ignores the field entirely, matching how `subline`/`cta` already
+  // work (some frames use them, none require every field to be non-empty).
+  features: string[];
   visual:   Visual;
 };
 
@@ -717,13 +723,14 @@ Return STRICT JSON:
           "You are Medipost AI, a copywriter for poster-style local healthcare ads (clinic flyers, treatment-center promos). Respond ONLY with strict JSON.",
         user: `${base}
 
-TASK: Write the copy for ONE poster-style promo creative about "${d.topic}" — the kind of ad a local clinic prints or posts on social media: a bold service headline, a short benefit line, and a contact-style CTA.
+TASK: Write the copy for ONE poster-style promo creative about "${d.topic}" — the kind of ad a local clinic prints or posts on social media: a bold service headline, a short benefit line, a contact-style CTA, and a short list of trust/benefit feature labels.
 
 Return STRICT JSON:
 {
   "headline": "3-6 word poster headline naming the service/condition center or promise (e.g. 'Hernia Treatment Center', 'Are You Suffering From Piles?')",
   "subline": "1-2 short benefit/action lines, 8-16 words total, specific and reassuring (e.g. 'Get checked here, treat it early')",
   "cta": "2-4 word action line (e.g. 'Contact Now', 'Book Appointment')",
+  "features": ["1-3 word benefit/trust labels for this exact specialty and topic, e.g. 'Expert Doctors', 'Advanced Care', 'Painless Procedure', 'Proven Results' — exactly 4, each genuinely relevant to \\"${d.topic}\\", never generic filler unrelated to this specialty"],
   "caption": "1-2 sentence social caption",
   "hashtags": ["#tag1","... 8-12 hashtags"],
   ${TEMPLATE_VISUAL_BLOCK}
@@ -834,6 +841,7 @@ function normalize(kind: GenerateInput["kind"], raw: any): GenerateOutput {
         cta:      String(raw?.cta ?? ""),
         caption:  String(raw?.caption ?? ""),
         hashtags: Array.isArray(raw?.hashtags) ? raw.hashtags.map(String) : [],
+        features: Array.isArray(raw?.features) ? raw.features.map(String) : [],
         visual,
       };
   }
