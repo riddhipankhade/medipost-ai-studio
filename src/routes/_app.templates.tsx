@@ -1,8 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -12,19 +14,38 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Search, Heart, Crown, Sparkles, LayoutTemplate, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Search, Heart, Crown, Sparkles, LayoutTemplate, ChevronLeft, ChevronRight,
+  ArrowLeft, Loader2, Upload, ImageDown,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
-import { useBrandKit } from "@/lib/brand-kit";
+import { useBrandKit, fileToDataUrl } from "@/lib/brand-kit";
 import type { BrandKit } from "@/lib/brand-kit";
 import { contentCategories, workflows, type ContentCategory, type WorkflowKind } from "@/lib/mock-data";
+import { SpecialtySelect } from "@/components/specialty-select";
+import { AutoGrowTextarea } from "@/components/ui/auto-grow-textarea";
 import {
   templateFrames,
+  getTemplateFrame,
   TEMPLATE_SAMPLES,
   type TemplateFrameId,
 } from "@/components/template-frames";
-import { ExactScalePreview } from "@/routes/_app.generate";
+import {
+  ExactScalePreview,
+  CreativeActions,
+  AiImageButton,
+  PreviewToolbar,
+  CreativePreviewDialog,
+  useAiImage,
+  ImageLoadingOverlay,
+  SectionBlock,
+  MiniColor,
+  PhotoAdjustPanel,
+  savePng,
+  CREATIVE_DESIGN_WIDTH,
+} from "@/routes/_app.generate";
 import { getPostTemplate } from "@/components/post-templates";
 import { getCarouselTemplate } from "@/components/carousel-templates";
 import { getStoryTemplate } from "@/components/story-templates";
@@ -36,9 +57,32 @@ import {
   type CarouselSample,
   type StorySample,
 } from "@/lib/template-catalog-samples";
+import { generateContent, type TemplatePost } from "@/lib/api/generate.functions";
+import {
+  resolveTemplateColors, DEFAULT_TEMPLATE_IMAGE_OFFSET, type TemplateCustomization,
+} from "@/lib/post-customization";
+import { usePersistCustomization } from "@/hooks/usePersistCustomization";
+import { fetchStudioSessionRow } from "@/lib/studio-session";
+import { RemoveWatermarkRow } from "@/components/Watermark";
+import { ShareButtons } from "@/components/ShareButtons";
+import { isExportableNode } from "@/lib/export-filter";
+import { useIsPro, useGrowthTrialEligible } from "@/lib/use-subscription";
+import { growthHeadline, growthButtonLabel } from "@/lib/growth-trial-copy";
 
 export const Route = createFileRoute("/_app/templates")({
   head: () => ({ meta: [{ title: "Template Studio — Medipost AI" }] }),
+  // Poster-only in-place workflow (Phase 1): `templateId` identifies the
+  // selected catalog row, `rowId` identifies a completed generation
+  // (`content_generations.id`) once one exists. Both optional/loose-typed
+  // here, same convention _app.generate.tsx's own validateSearch uses --
+  // real validation (does templateId resolve to a published Poster row?)
+  // happens in the component, against the already-loaded catalog. Post/
+  // Carousel/Story templates do NOT use these params in this phase -- their
+  // "Use Template" still navigates to /generate exactly as before.
+  validateSearch: (search: Record<string, unknown>): { templateId?: string; rowId?: string } => ({
+    templateId: typeof search.templateId === "string" ? search.templateId : undefined,
+    rowId:      typeof search.rowId === "string" ? search.rowId : undefined,
+  }),
   component: TemplateStudioPage,
 });
 
@@ -226,10 +270,423 @@ function CatalogCardPreview({ t, brand, frameProps, slideIdx }: {
   }
 }
 
+/**
+ * Phase 1: Poster-only in-place creation workspace, rendered inside
+ * /templates instead of navigating to /generate. Deliberately reuses --
+ * never re-implements -- the existing generation backend, customization
+ * schema, and renderer registry:
+ *  - generateContent/generateImage (src/lib/api/generate.functions.ts) are
+ *    the SAME server functions Content Studio calls; same credit
+ *    deduction/refund path, same buildPrompt("template")/validateTemplateContent.
+ *  - TemplateCustomizationSchema/resolveTemplateColors/DEFAULT_TEMPLATE_IMAGE_OFFSET
+ *    (src/lib/post-customization.ts) are the SAME schema TemplatePreview
+ *    writes in Content Studio -- no second customization shape.
+ *  - getTemplateFrame(frameId) (src/components/template-frames.tsx) is the
+ *    SAME registry Content Studio's preview and Content History use --
+ *    frameId is fixed to the selected row's render_key and never changes
+ *    here (no FramePicker), so the template is structurally authoritative.
+ *  - fetchStudioSessionRow (src/lib/studio-session.ts) is the SAME by-id
+ *    re-fetch Studio's own session-restore uses -- no second persistence
+ *    system.
+ * PreviewToolbar/FitScaledPreview/CreativePreviewDialog/useAiImage/
+ * ImageLoadingOverlay/savePng/copyText/SectionBlock/MiniColor/
+ * PhotoAdjustPanel are the Phase 0 exports from _app.generate.tsx, reused
+ * as-is. Content Studio's FramePicker/StudioControls/dynamic-layout
+ * machinery is intentionally NOT imported here at all.
+ */
+function PosterWorkspace({ row, rowIdParam, onBack, onGenerated }: {
+  row: TemplateRow;
+  rowIdParam?: string;
+  onBack: () => void;
+  /** Called once generation succeeds, to push ?rowId= into the URL. The
+   *  caller navigates with `replace: true` so Back from a generated result
+   *  returns straight to the catalog, per spec. */
+  onGenerated: (rowId: string) => void;
+}) {
+  const { user } = useAuth();
+  const [brand] = useBrandKit();
+  const isPro = useIsPro(user?.id);
+  const trialEligible = useGrowthTrialEligible(user?.id);
+  const callGenerate = useServerFn(generateContent);
+
+  // hasPreviewData() already guarantees this resolves for any Poster row
+  // that reaches this component (see TemplateStudioPage below).
+  const entry = getTemplateFrame(row.render_key as TemplateFrameId);
+  const frameId = entry.id;
+  const sample = TEMPLATE_SAMPLES[entry.id];
+
+  const [specialty, setSpecialty] = useState(brand.specialty || "");
+  const specialtyTouchedRef = useRef(false);
+  useEffect(() => {
+    if (brand.specialty && !specialtyTouchedRef.current) setSpecialty(brand.specialty);
+  }, [brand.specialty]);
+
+  const [topic, setTopic] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [outOfCredits, setOutOfCredits] = useState(false);
+  const [result, setResult] = useState<TemplatePost | null>(null);
+  const [rowId, setRowId] = useState<string | null>(null);
+  // Whether the current result/customization came from a DB re-fetch (arrival
+  // via ?rowId=) rather than a fresh generation this session -- same role as
+  // TemplatePreview's `!!initialCustomization` passed into usePersistCustomization.
+  const [restored, setRestored] = useState(false);
+
+  const ai = useAiImage(rowId, null);
+
+  const [useBrandColors, setUseBrandColors] = useState(true);
+  const [primaryPick, setPrimaryPick] = useState<string | null>(null);
+  const [secondaryPick, setSecondaryPick] = useState<string | null>(null);
+  const [imageOffsetX, setImageOffsetX] = useState<number>(DEFAULT_TEMPLATE_IMAGE_OFFSET.x);
+  const [imageOffsetY, setImageOffsetY] = useState<number>(DEFAULT_TEMPLATE_IMAGE_OFFSET.y);
+  const [imageZoom, setImageZoom] = useState<number>(DEFAULT_TEMPLATE_IMAGE_OFFSET.zoom);
+
+  // Arrive with ?rowId= already set (refresh, back/forward, bookmark) --
+  // re-fetch the generated row exactly the way Studio's own session-restore
+  // does; no second persistence system, no duplicated fetch logic.
+  const restoringRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!rowIdParam || rowIdParam === rowId || restoringRef.current === rowIdParam) return;
+    restoringRef.current = rowIdParam;
+    let cancelled = false;
+    (async () => {
+      const restoredRow = await fetchStudioSessionRow(rowIdParam);
+      if (cancelled || !restoredRow || restoredRow.result.kind !== "template") return;
+      setResult(restoredRow.result);
+      setRowId(rowIdParam);
+      ai.setUrl(restoredRow.initialImageUrl);
+      const c = restoredRow.initialCustomization?.kind === "template" ? restoredRow.initialCustomization : null;
+      if (c) {
+        setUseBrandColors(c.useBrandColors);
+        setPrimaryPick(c.primaryColor);
+        setSecondaryPick(c.secondaryColor);
+        setImageOffsetX(c.imageOffsetX ?? DEFAULT_TEMPLATE_IMAGE_OFFSET.x);
+        setImageOffsetY(c.imageOffsetY ?? DEFAULT_TEMPLATE_IMAGE_OFFSET.y);
+        setImageZoom(c.imageZoom ?? DEFAULT_TEMPLATE_IMAGE_OFFSET.zoom);
+      }
+      setRestored(true);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    })();
+    return () => { cancelled = true; };
+  }, [rowIdParam, rowId]);
+
+  const palette = result?.visual.colors ?? [];
+  const colors = resolveTemplateColors({ useBrandColors, primaryColor: primaryPick, secondaryColor: secondaryPick }, brand, palette);
+  const hasManualColors = primaryPick !== null || secondaryPick !== null;
+  const resetManualColors = () => { setPrimaryPick(null); setSecondaryPick(null); };
+  const hasCustomPhotoAdjust = imageOffsetX !== DEFAULT_TEMPLATE_IMAGE_OFFSET.x || imageOffsetY !== DEFAULT_TEMPLATE_IMAGE_OFFSET.y || imageZoom !== DEFAULT_TEMPLATE_IMAGE_OFFSET.zoom;
+  const resetPhotoAdjust = () => {
+    setImageOffsetX(DEFAULT_TEMPLATE_IMAGE_OFFSET.x);
+    setImageOffsetY(DEFAULT_TEMPLATE_IMAGE_OFFSET.y);
+    setImageZoom(DEFAULT_TEMPLATE_IMAGE_OFFSET.zoom);
+  };
+
+  const customization: TemplateCustomization = useMemo(() => ({
+    v: 1, engine: "v1", kind: "template",
+    frameId, useBrandColors, primaryColor: primaryPick, secondaryColor: secondaryPick,
+    imageOffsetX, imageOffsetY, imageZoom,
+  }), [frameId, useBrandColors, primaryPick, secondaryPick, imageOffsetX, imageOffsetY, imageZoom]);
+  usePersistCustomization(rowId, customization, restored);
+
+  async function handleGenerate() {
+    if (!isPro) return; // button is replaced by an upgrade CTA below; defensive only
+    if (!topic.trim()) {
+      toast.error("Please enter a topic");
+      return;
+    }
+    setLoading(true);
+    setOutOfCredits(false);
+    try {
+      const out = await callGenerate({
+        data: {
+          kind: "template",
+          category: "clinic-promo",
+          specialty: specialty.trim() || "General Physician",
+          topic: topic.trim(),
+          tone: "Standard",
+          audience: "General Public",
+          language: "English",
+          brand: {
+            clinicName: brand.clinicName,
+            doctorName: brand.doctorName,
+            primaryColor: brand.primaryColor,
+            secondaryColor: brand.secondaryColor,
+            website: brand.website,
+            phone: brand.phone,
+            hasLogo: !!brand.logo,
+            hasDoctorPhoto: !!brand.doctorPhoto,
+            hasClinicPhoto: !!brand.clinicPhoto,
+          },
+          templateId: row.id,
+        },
+      });
+      const out2 = out as TemplatePost & { _rowId?: string };
+      const newRowId = out2._rowId ?? null;
+      setResult(out2);
+      setRowId(newRowId);
+      ai.setUrl(null);
+      setUseBrandColors(true);
+      setPrimaryPick(null);
+      setSecondaryPick(null);
+      setImageOffsetX(DEFAULT_TEMPLATE_IMAGE_OFFSET.x);
+      setImageOffsetY(DEFAULT_TEMPLATE_IMAGE_OFFSET.y);
+      setImageZoom(DEFAULT_TEMPLATE_IMAGE_OFFSET.zoom);
+      setRestored(false);
+      toast.success("Your poster is ready");
+      if (newRowId) onGenerated(newRowId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("INSUFFICIENT_CREDITS")) {
+        setOutOfCredits(true);
+        toast.error("You've used all your AI generations this period. Upgrade your plan to continue.");
+      } else if (msg.includes("SUBSCRIPTION_NOT_FOUND")) {
+        toast.error("No active subscription found. Visit the Subscription page to activate a plan.");
+      } else if (msg.includes("GEMINI") || msg.includes("503")) {
+        toast.error("AI service is busy — please try again in a moment.");
+      } else {
+        toast.error(msg || "Generation failed. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const captureRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  async function capturePng(): Promise<string | null> {
+    if (!captureRef.current) return null;
+    const { toPng } = await import("html-to-image");
+    return toPng(captureRef.current, { canvasWidth: 1080, canvasHeight: 1080, pixelRatio: 1, cacheBust: true, filter: isExportableNode });
+  }
+
+  async function downloadPoster() {
+    setDownloading(true);
+    try {
+      const png = await capturePng();
+      if (!png) return;
+      savePng(png, "medipost-template-post.png");
+      toast.success("Post downloaded (1080×1080)");
+    } catch (e) {
+      console.error("[PosterWorkspace] download failed:", e);
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function onUploadPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast.error("Please choose an image file"); return; }
+    try {
+      ai.setUrl(await fileToDataUrl(file));
+      toast.success("Photo added to the template");
+    } catch {
+      toast.error("Couldn't read that file. Please try another image.");
+    }
+  }
+
+  const content = result
+    ? { headline: result.headline, subline: result.subline, cta: result.cta, features: result.features }
+    : { headline: sample.headline, subline: sample.subline, cta: sample.cta, features: sample.features ?? [] };
+
+  const frameProps = {
+    ...content,
+    logo: brand.logo,
+    businessName: brand.clinicName,
+    phone: brand.phone,
+    doctorPhoto: brand.doctorPhoto,
+    doctorName: brand.doctorName,
+    colors,
+    imageUrl: ai.url,
+    imageOffsetX, imageOffsetY, imageZoom,
+    // Pre-generation, this is still a representative sample -- show the
+    // gallery's "Your Logo"/"Business Name" placeholder chips exactly like
+    // the catalog card/preview dialog do, instead of real (possibly empty) brand data.
+    placeholders: !result,
+  };
+
+  return (
+    <div className="space-y-4">
+      <button
+        type="button" onClick={onBack}
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" /> Back to Template Studio
+      </button>
+
+      <div className="grid gap-6 md:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <Card className="border-border/60">
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold">{entry.name}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{entry.tagline}</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Specialty</Label>
+                <SpecialtySelect value={specialty} onChange={(v) => { specialtyTouchedRef.current = true; setSpecialty(v); }} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Topic / Brief</Label>
+                <AutoGrowTextarea
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="e.g. New patient offer for root canal treatment"
+                  rows={3}
+                  disabled={loading}
+                />
+              </div>
+
+              {!isPro ? (
+                <div className="rounded-lg border border-[color:var(--teal)]/30 bg-[color:var(--teal)]/5 p-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">Template Studio's ready-made promo designs are a Growth feature.</p>
+                  <Button size="sm" className="w-full" onClick={() => window.location.href = "/subscription"}>
+                    {growthButtonLabel(trialEligible)}
+                  </Button>
+                </div>
+              ) : outOfCredits ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                  <p className="text-xs text-destructive">You've used all your AI generations this period.</p>
+                  <Button size="sm" className="w-full" onClick={() => window.location.href = "/subscription"}>
+                    {growthButtonLabel(trialEligible)}
+                  </Button>
+                </div>
+              ) : (
+                <Button onClick={handleGenerate} disabled={loading} className="w-full gap-2">
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {loading ? "Generating…" : result ? "Regenerate" : "Generate Poster"}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {result && (
+            <>
+              {entry.usesAiImage && ai.url && (
+                <PhotoAdjustPanel
+                  offsetX={imageOffsetX} offsetY={imageOffsetY} zoom={imageZoom}
+                  onOffsetXChange={setImageOffsetX} onOffsetYChange={setImageOffsetY} onZoomChange={setImageZoom}
+                  hasCustom={hasCustomPhotoAdjust} onReset={resetPhotoAdjust}
+                />
+              )}
+              <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">Colors</Label>
+                  <label className="flex items-center gap-2 text-xs cursor-pointer">
+                    <span>Use clinic brand colors</span>
+                    <input type="checkbox" checked={useBrandColors} className="accent-[color:var(--teal)]"
+                      onChange={(e) => { setUseBrandColors(e.target.checked); resetManualColors(); }} />
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <MiniColor label="Primary" value={colors.primary} onChange={setPrimaryPick} />
+                  <MiniColor label="Secondary" value={colors.secondary} onChange={setSecondaryPick} />
+                </div>
+                {hasManualColors && (
+                  <button type="button" onClick={resetManualColors} className="text-[11px] text-[color:var(--teal)] hover:underline">
+                    Reset to suggested colors
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <Card className="border-border/60">
+            <CardContent className="pt-6 space-y-4">
+              <PreviewToolbar title={result ? `Poster — ${entry.name}` : `Preview — ${entry.name}`} />
+              <div className="mx-auto w-full max-w-md">
+                <ExactScalePreview>
+                  <entry.Frame {...frameProps} imageLoading={ai.loading} loadingOverlay={<ImageLoadingOverlay />} />
+                </ExactScalePreview>
+
+                {result && (
+                  <>
+                    <CreativeActions className="mt-3">
+                      {entry.usesAiImage && (
+                        <>
+                          <AiImageButton
+                            loading={ai.loading} hasImage={!!ai.url}
+                            label={ai.url ? "Regenerate photo" : "Generate photo"}
+                            onClick={() => ai.run(result.visual.imagePrompt || result.visual.concept, result.visual.visualStyle)}
+                          />
+                          <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8"
+                            onClick={() => fileInputRef.current?.click()} disabled={ai.loading}>
+                            <Upload className="h-3.5 w-3.5" /> Upload photo
+                          </Button>
+                        </>
+                      )}
+                      <Button type="button" size="sm" variant="outline" className="gap-1.5 h-8 col-span-2"
+                        onClick={downloadPoster} disabled={downloading || ai.loading}>
+                        {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5" />}
+                        Download post
+                      </Button>
+                    </CreativeActions>
+                    <div className="mt-2">
+                      <CreativePreviewDialog title={`Poster — ${entry.name}`} naturalWidth={CREATIVE_DESIGN_WIDTH} triggerClassName="w-full">
+                        <entry.Frame {...frameProps} />
+                      </CreativePreviewDialog>
+                    </div>
+                    <RemoveWatermarkRow className="mt-2" />
+                    {entry.usesAiImage && (
+                      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onUploadPhoto} />
+                    )}
+                  </>
+                )}
+              </div>
+
+              {result && (
+                <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: CREATIVE_DESIGN_WIDTH }}>
+                  <div ref={captureRef}><entry.Frame {...frameProps} /></div>
+                </div>
+              )}
+
+              {!result && !loading && (
+                <p className="text-center text-xs text-muted-foreground">
+                  Sample content shown — fill in your brief and generate to create your own.
+                </p>
+              )}
+              {loading && (
+                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Generating your poster…
+                </div>
+              )}
+
+              {result && (
+                <>
+                  <SectionBlock title="Headline" body={result.headline} />
+                  <SectionBlock title="Supporting Line" body={result.subline} />
+                  <SectionBlock title="Call To Action" body={result.cta} />
+                  <SectionBlock title="Caption" body={result.caption} />
+                  <SectionBlock title="Hashtags" body={result.hashtags.join(" ")} />
+                  <div className="pt-3 border-t border-border/60">
+                    <ShareButtons
+                      text={[result.caption, result.cta, result.hashtags.join(" ")].filter(Boolean).join("\n\n")}
+                      imageUrl={ai.url}
+                      captureImage={capturePng}
+                    />
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const ALL = "__all__";
 
 function TemplateStudioPage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
   const { user } = useAuth();
   const [brand] = useBrandKit();
 
@@ -339,10 +796,12 @@ function TemplateStudioPage() {
     placeholders: true,
   };
 
-  // Poster rows go through /generate's ?frameId= path (unchanged since Step
-  // 2) -- render_key IS the frame there. Post/Carousel/Story rows go through
-  // ?kind=&renderKey=; renderKey is what makes the destination brief use the
-  // exact same bespoke template renderer this card just previewed (see
+  // Poster rows (format "template") stay on /templates -- Phase 1's in-place
+  // creation workspace, selected via ?templateId= (see PosterWorkspace below
+  // and this route's validateSearch). Post/Carousel/Story rows still go
+  // through /generate's ?kind=&renderKey= path unchanged (out of scope for
+  // this phase; renderKey is what makes the destination brief use the exact
+  // same bespoke template renderer this card just previewed (see
   // src/components/post-templates.tsx's getPostTemplate() -- Carousel/Story
   // don't have a resolvable render_key yet in this phase, so it's simply
   // undefined for them and SinglePostPreview's sibling components fall back
@@ -350,7 +809,8 @@ function TemplateStudioPage() {
   // slideCount so the brief opens with the same slide count this entry demonstrated.
   function useTemplate(t: TemplateRow) {
     if (t.format === "template") {
-      navigate({ to: "/generate", search: { frameId: t.render_key ?? undefined, templateId: t.id, category: t.category } });
+      setPreviewId(null); // close the preview dialog before entering the workspace
+      navigate({ to: "/templates", search: { templateId: t.id } });
       return;
     }
     const slideCount = t.format === "carousel" ? CAROUSEL_SAMPLES[t.id]?.slides.length : undefined;
@@ -374,6 +834,39 @@ function TemplateStudioPage() {
     // non-Carousel format, which ignores slideIdx entirely.
     setPreviewSlideIdx(1);
     setPreviewId(id);
+  }
+
+  // Phase 1: a selected Poster row (format === "template") renders the
+  // in-place creation workspace instead of the browse grid. A ?templateId=
+  // that resolves to a non-Poster row (or doesn't resolve yet/at all) falls
+  // through to the ordinary browse view -- Post/Carousel/Story never set
+  // this param in this phase (see useTemplate above), so that path is only
+  // reachable via a stale/hand-edited URL, and failing safe to browse is
+  // the right behavior for it.
+  const selectedRow = search.templateId ? resolvedTemplates.find((t) => t.id === search.templateId) ?? null : null;
+  const posterWorkspaceActive = !!selectedRow && selectedRow.format === "template";
+
+  if (search.templateId && templates === null) {
+    // Catalog still loading -- avoid a flash of the full browse grid/skeleton
+    // behind a template that's about to become the workspace.
+    return (
+      <div className="grid place-items-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (posterWorkspaceActive && selectedRow) {
+    return (
+      <PosterWorkspace
+        row={selectedRow}
+        rowIdParam={search.rowId}
+        onBack={() => navigate({ to: "/templates", search: {} })}
+        onGenerated={(newRowId) =>
+          navigate({ to: "/templates", search: { templateId: selectedRow.id, rowId: newRowId }, replace: true })
+        }
+      />
+    );
   }
 
   return (

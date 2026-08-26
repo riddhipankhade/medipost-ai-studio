@@ -1019,12 +1019,12 @@ function ResultPreview({ result, specialty, rowId, category, topic, templateFram
   }
 }
 
-function copyText(text: string, label = "Copied") {
+export function copyText(text: string, label = "Copied") {
   navigator.clipboard.writeText(text);
   toast.success(label);
 }
 
-function savePng(dataUrl: string, name: string) {
+export function savePng(dataUrl: string, name: string) {
   const link = document.createElement("a");
   link.download = name;
   link.href = dataUrl;
@@ -1033,7 +1033,7 @@ function savePng(dataUrl: string, name: string) {
   document.body.removeChild(link);
 }
 
-function PreviewToolbar({ onCopy, title }: { onCopy?: () => void; title: string }) {
+export function PreviewToolbar({ onCopy, title }: { onCopy?: () => void; title: string }) {
   return (
     <div className="flex items-center justify-between gap-3 mb-3">
       <p className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
@@ -1096,7 +1096,7 @@ export function ExactScalePreview({ children }: { children: React.ReactNode }) {
  * is a prop, so it fits any creative — square post, 9:16 story, festive card —
  * proportionally, showing a big, faithful copy of what downloads.
  */
-function FitScaledPreview({ naturalWidth, children, maxHeightVh = 80, maxScale = 3 }: {
+export function FitScaledPreview({ naturalWidth, children, maxHeightVh = 80, maxScale = 3 }: {
   naturalWidth: number; children: React.ReactNode; maxHeightVh?: number; maxScale?: number;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -1152,7 +1152,7 @@ function FitScaledPreview({ naturalWidth, children, maxHeightVh = 80, maxScale =
  * A "Preview" button that opens the creative full-size in a dialog, so a post
  * that renders small in the studio column can be inspected big and clearly.
  */
-function CreativePreviewDialog({ title, naturalWidth, triggerClassName = "", children }: {
+export function CreativePreviewDialog({ title, naturalWidth, triggerClassName = "", children }: {
   title: string; naturalWidth: number; triggerClassName?: string; children: React.ReactNode;
 }) {
   return (
@@ -1172,7 +1172,7 @@ function CreativePreviewDialog({ title, naturalWidth, triggerClassName = "", chi
   );
 }
 
-function useAiImage(contentId?: string | null, initialUrl?: string | null) {
+export function useAiImage(contentId?: string | null, initialUrl?: string | null) {
   const call = useServerFn(generateImage);
   const [url, setUrl] = useState<string | null>(initialUrl ?? null);
   const [loading, setLoading] = useState(false);
@@ -1790,7 +1790,7 @@ function StudioControls(props: {
   );
 }
 
-function MiniColor({ label, value, onChange }: { label: string; value: string; onChange: (v: string | null) => void }) {
+export function MiniColor({ label, value, onChange }: { label: string; value: string; onChange: (v: string | null) => void }) {
   return (
     <div>
       <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</Label>
@@ -1803,7 +1803,7 @@ function MiniColor({ label, value, onChange }: { label: string; value: string; o
  *  when the subject lands off-center or gets cropped by a frame's fixed shape. Sliders drive
  *  the same objectPosition/transform the preview already renders with, so the effect is
  *  visible live and identical to what downloads. */
-function PhotoAdjustPanel({
+export function PhotoAdjustPanel({
   offsetX, offsetY, zoom, onOffsetXChange, onOffsetYChange, onZoomChange, hasCustom, onReset,
 }: {
   offsetX: number; offsetY: number; zoom: number;
@@ -2440,7 +2440,7 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
 
 /* ============================ Shared bits ============================ */
 
-function SectionBlock({ title, body }: { title: string; body: string }) {
+export function SectionBlock({ title, body }: { title: string; body: string }) {
   if (!body) return null;
   return (
     <div>
@@ -2557,7 +2557,7 @@ function VisualField({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ImageLoadingOverlay() {
+export function ImageLoadingOverlay() {
   return (
     <div className="absolute inset-0 z-30 grid place-items-center bg-black/40 backdrop-blur-sm">
       <div className="flex flex-col items-center gap-2 text-white">

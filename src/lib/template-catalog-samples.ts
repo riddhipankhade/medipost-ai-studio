@@ -164,7 +164,7 @@ export const POST_SAMPLES: Record<string, PostSample> = {
   },
 };
 
-// ── Carousel (19–25) ─────────────────────────────────────────────────────────
+// ── Carousel (19–25) — 19 magazine-spread only, untouched ────────────────────
 export const CAROUSEL_SAMPLES: Record<string, CarouselSample> = {
   // 19 · Myth vs Fact Carousel
   "00000000-0000-4000-8000-000000000019": {
@@ -179,86 +179,77 @@ export const CAROUSEL_SAMPLES: Record<string, CarouselSample> = {
       { title: "Ask Before You Assume You Need Them", content: "Talk to your doctor about what actually helps you recover." },
     ],
   },
-  // 20 · Patient FAQ Carousel
+  // 20 · Blueprint Deck
   "00000000-0000-4000-8000-000000000020": {
-    specialty: "Physiotherapist",
-    topic: "Do I need a referral for physiotherapy?",
-    cta: "Book Your First Session",
+    specialty: "Orthopedic Surgeon",
+    topic: "Understanding your knee diagnosis",
+    cta: "Book an Assessment",
     slides: [
-      { title: "A Question We Hear Often", content: "Patients often ask whether they need a doctor's referral before starting physiotherapy." },
-      { title: "Do I Need a Referral?", content: "The answer isn't the same everywhere." },
-      { title: "It Depends On Where You Are", content: "Many places now allow direct access to physiotherapy without a referral." },
-      { title: "Rules Vary by Country & Insurer", content: "Your country, state, and insurance plan all affect what's required." },
-      { title: "We'll Tell You What Applies to You", content: "Ask us directly and we'll walk you through what you need." },
+      { title: "Understanding Your Knee Diagnosis", content: "A clear look at what's going on and what comes next." },
+      { title: "Imaging Findings", content: "An MRI or X-ray shows exactly where the wear or injury is located." },
+      { title: "What It Means Day to Day", content: "Most findings at this stage respond well to guided treatment, not surgery." },
+      { title: "Your Treatment Options", content: "Physiotherapy, bracing, and targeted strengthening are usually the first line of care." },
+      { title: "Let's Build Your Plan", content: "Book an assessment and we'll map out the right next step for you." },
     ],
   },
-  // 21 · Warning Signs Carousel
+  // 21 · Chart Deck
   "00000000-0000-4000-8000-000000000021": {
-    specialty: "ENT Specialist",
-    topic: "Signs a sore throat needs a doctor",
-    cta: "Book a Consultation",
+    specialty: "Physiotherapist",
+    topic: "How a recovery plan is structured",
+    cta: "Start Your Plan",
     slides: [
-      { title: "Don't Ignore These Signs", content: "A sore throat is usually harmless, but sometimes it's a signal to get checked." },
-      { title: "A High Fever That Won't Come Down", content: "Persistent fever alongside a sore throat is worth a visit." },
-      { title: "Difficulty Swallowing or Breathing", content: "This is never something to wait out." },
-      { title: "White Patches on the Tonsils", content: "Visible white patches can indicate an infection that needs treatment." },
-      { title: "Symptoms Lasting Over a Week", content: "A sore throat that lingers deserves a proper look." },
-      { title: "When in Doubt, Get Checked", content: "It's always better to ask than to assume." },
+      { title: "How Your Recovery Plan Is Structured", content: "Every plan moves through the same phases, paced to how you respond." },
+      { title: "Early Phase: Reduce & Protect", content: "The first goal is calming pain and protecting the area while it heals." },
+      { title: "Building Phase: Strength & Range", content: "Once pain settles, we rebuild strength and full range of motion." },
+      { title: "Ready When You Are", content: "Start your plan and we'll track your progress together." },
     ],
   },
-  // 22 · Prevention Habits Carousel
+  // 22 · Frame Stack
   "00000000-0000-4000-8000-000000000022": {
     specialty: "Dentist",
-    topic: "Preventing cavities in kids",
-    cta: "Book Your Child's Visit",
+    topic: "A look inside our clinic",
+    cta: "Book Your Visit",
     slides: [
-      { title: "Small Habits, Healthy Smiles", content: "A few consistent habits go a long way in preventing cavities." },
-      { title: "Brush Twice, Every Day", content: "Morning and night, no exceptions." },
-      { title: "Limit Sugary Snacks Between Meals", content: "Frequent snacking gives cavity-causing bacteria more chances to act." },
-      { title: "Don't Skip Regular Dental Check-Ups", content: "Routine visits catch problems early, before they grow." },
-      { title: "Book Your Child's Visit", content: "Start good habits early with a routine check-up." },
+      { title: "A Look Inside Our Clinic", content: "Patient Education Series." },
+      { title: "Our Consultation Room", content: "A calm space for your first conversation, before any treatment is planned." },
+      { title: "Modern Diagnostic Equipment", content: "Digital imaging gives us a precise, low-radiation view of your dental health." },
+      { title: "Our Sterilization Standards", content: "Every instrument is tracked and sterilized to strict clinical protocol." },
+      { title: "A Comfortable Recovery Area", content: "Time to rest and ask questions before you head home." },
+      { title: "Come See Us", content: "We'd love to show you around in person." },
     ],
   },
-  // 23 · Health Tips Carousel
+  // 23 · Swiss Grid Deck
   "00000000-0000-4000-8000-000000000023": {
-    specialty: "Nutritionist",
-    topic: "Simple habits for better digestion",
-    cta: "Save This & Share",
+    specialty: "Dermatologist",
+    topic: "The facts on sun protection",
+    cta: "Book a Skin Check",
     slides: [
-      { title: "6 Tips for Better Digestion", content: "Small daily changes can make a real difference." },
-      { title: "Chew Slowly", content: "Give your body time to properly break down food." },
-      { title: "Stay Hydrated", content: "Water supports every part of digestion." },
-      { title: "Add More Fiber Gradually", content: "Sudden changes can cause discomfort — ease into it." },
-      { title: "Move After Meals", content: "A short walk helps digestion along." },
-      { title: "Save This & Share", content: "Keep these tips handy for later." },
+      { title: "The Facts on Sun Protection", content: "A short, practical guide to protecting your skin every day." },
+      { title: "SPF Is a Daily Habit, Not a Summer One", content: "UV exposure adds up year-round, even on cloudy days and through windows." },
+      { title: "Book Your Annual Skin Check", content: "Early detection is still the single best tool we have." },
     ],
   },
-  // 24 · Your Recovery Journey
+  // 24 · Timeline Deck
   "00000000-0000-4000-8000-000000000024": {
     specialty: "Physiotherapist",
     topic: "What to expect after an ACL injury",
     cta: "Start Your Recovery Plan",
     slides: [
-      { title: "Recovering From an ACL Injury", content: "An ACL injury can feel overwhelming, but recovery is a structured process." },
-      { title: "The Belief: You Need Surgery Right Away", content: "Many patients assume surgery is the only path forward." },
-      { title: "The Reality: Many Cases Start With Rehab", content: "A structured rehab program is often the first step, not surgery." },
-      { title: "What I Recommend: A Structured Plan", content: "A tailored plan builds strength and stability before any other decision." },
-      { title: "Who Should Worry About Surgery", content: "Surgery becomes more relevant for specific instability patterns — we'll assess together." },
-      { title: "Start Your Recovery Plan", content: "Let's build your plan step by step." },
+      { title: "Recovering From an ACL Injury", content: "Your care journey, mapped out step by step." },
+      { title: "Initial Assessment", content: "We confirm the injury pattern and rule out other damage before planning treatment." },
+      { title: "Guided Rehabilitation", content: "A structured program rebuilds strength and stability without rushing the joint." },
+      { title: "Return to Movement", content: "Sport- or activity-specific training prepares you for a safe return." },
+      { title: "Start Your Recovery Plan", content: "Let's build your plan together, step by step." },
     ],
   },
-  // 25 · Know Your Heart Risk Factors
+  // 25 · Split Screen Deck
   "00000000-0000-4000-8000-000000000025": {
     specialty: "Cardiologist",
-    topic: "Heart disease risk factors you can control",
+    topic: "Heart risk factors you can control",
     cta: "Get Your Risk Assessed",
     slides: [
-      { title: "Know Your Risk Factors", content: "Several heart disease risk factors are within your control." },
-      { title: "High Blood Pressure", content: "One of the most common controllable risk factors." },
-      { title: "High Cholesterol", content: "Diet and lifestyle both play a role here." },
-      { title: "Smoking", content: "Quitting significantly lowers cardiovascular risk over time." },
-      { title: "Inactivity", content: "Regular movement supports long-term heart health." },
-      { title: "Get Your Risk Assessed", content: "A simple assessment tells you where you stand." },
+      { title: "Heart Risk: What You Can Control", content: "Small, consistent changes measurably lower your cardiovascular risk over time." },
+      { title: "Ready to Know Where You Stand?", content: "A simple assessment tells you exactly which factors matter most for you." },
     ],
   },
 };
