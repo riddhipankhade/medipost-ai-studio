@@ -40,3 +40,5 @@ dist-ssr
 
 
 android/keystore.properties
+android/app/medipost.keystore
+fix-image-gen.cjs
