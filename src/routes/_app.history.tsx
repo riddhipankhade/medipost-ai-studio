@@ -50,6 +50,12 @@ export const Route = createFileRoute("/_app/history")({
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+// Metadata-only row for the History list query. generated_image_url is
+// deliberately excluded here — it can hold base64 image data (a single
+// carousel row can embed up to 20 images), and fetching it for up to 200
+// rows was blowing up the list query's payload/duration. It's fetched
+// lazily, per-row, only when PostDetailDialog opens (see its image-fetch
+// effect below).
 type ContentRow = {
   id:                  string;
   workflow_kind:       string;
@@ -57,7 +63,6 @@ type ContentRow = {
   specialty:           string;
   topic:               string;
   generated_text:      string | null;
-  generated_image_url: string | null;
   customization:       unknown;
   hashtags:            string[];
   status:              string;
@@ -109,19 +114,14 @@ function bodyPreview(row: ContentRow): string {
   }
 }
 
-function parseSlideImages(row: ContentRow): (string | null)[] {
-  const u = row.generated_image_url;
+// Takes the raw generated_image_url value directly (rather than a row) since
+// callers now fetch it lazily instead of reading it off ContentRow.
+function parseSlideImages(u: string | null): (string | null)[] {
   if (!u?.startsWith("[")) return [];
   try {
     const arr = JSON.parse(u);
     return Array.isArray(arr) ? arr : [];
   } catch { return []; }
-}
-
-function rowHasImage(row: ContentRow): boolean {
-  const u = row.generated_image_url;
-  if (!u) return false;
-  return u.startsWith("[") ? parseSlideImages(row).some(Boolean) : true;
 }
 
 function fullCopyText(row: ContentRow): string {
@@ -218,12 +218,47 @@ function PostDetailDialog({
 
   const kind = row.workflow_kind;
 
-  const hasImage = !!row.generated_image_url && !row.generated_image_url.startsWith("[");
-  const directImageUrl = hasImage ? row.generated_image_url! : undefined;
+  // The list query never fetches generated_image_url (it can hold base64
+  // image data — a single carousel row can embed up to 20 images), so this
+  // dialog fetches it itself the moment it opens. RLS ("content_gen_owner_all",
+  // auth.uid() = user_id) already scopes rows to the signed-in user at the DB
+  // level for every request this client makes, so filtering by id alone is
+  // sufficient here — no separate getUser() round trip needed, which also
+  // avoids @supabase/ssr's cross-tab auth lock stalling this fetch.
+  const [rawImageUrl, setRawImageUrl] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setImageLoading(true);
+    supabase
+      .from("content_generations")
+      .select("generated_image_url")
+      .eq("id", row.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) { console.error("[PostDetailDialog] image fetch failed:", error.message); setImageLoading(false); return; }
+        setRawImageUrl(data?.generated_image_url ?? null);
+        setImageLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [row.id]);
+
+  // Shown over the preview area only while the lazy image fetch above is in
+  // flight — covers both "still loading" and "this post has no image" cases
+  // identically, since we can't tell which it is until the fetch resolves.
+  const imageLoadingOverlay = imageLoading ? (
+    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/60 backdrop-blur-[1px]">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  ) : null;
+
+  const hasImage = !!rawImageUrl && !rawImageUrl.startsWith("[");
+  const directImageUrl = hasImage ? rawImageUrl! : undefined;
 
   const slides: { title: string; content: string }[] = kind === "carousel" ? (p?.slides ?? []) : [];
   const [slideIdx, setSlideIdx] = useState(0);
-  const slideImages = kind === "carousel" ? parseSlideImages(row) : [];
+  const slideImages = kind === "carousel" ? parseSlideImages(rawImageUrl) : [];
 
   const isStory    = kind === "story";
   const isFestive  = kind === "festive";
@@ -335,10 +370,11 @@ function PostDetailDialog({
         {isCarousel && canvasProps && (
           <div className="space-y-3">
             <div className="flex justify-center overflow-auto max-h-[70vh]">
-              <div className="w-full max-w-md">
+              <div className="w-full max-w-md relative">
                 <ExactScalePreview>
                   <SlideCanvas {...canvasProps} />
                 </ExactScalePreview>
+                {imageLoadingOverlay}
               </div>
             </div>
             <div className="flex gap-2">
@@ -411,10 +447,11 @@ function PostDetailDialog({
 
         {isSingle && canvasProps && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
-            <div className="w-full max-w-md">
+            <div className="w-full max-w-md relative">
               <ExactScalePreview>
                 <SlideCanvas {...canvasProps} />
               </ExactScalePreview>
+              {imageLoadingOverlay}
             </div>
           </div>
         )}
@@ -429,27 +466,31 @@ function PostDetailDialog({
 
         {isStory && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
-            <StoryCard
-              ref={cardRef}
-              headline={p?.headline ?? row.topic}
-              message={p?.message ?? ""}
-              cta={p?.cta ?? ""}
-              colors={p?.visual?.colors ?? []}
-              brand={slideBrand}
-              specialty={row.specialty}
-              imageUrl={directImageUrl}
-              colorOverrides={storyCustom ? resolveStoryColors(storyCustom, slideBrand, p?.visual?.colors ?? []) : undefined}
-            />
+            <div className="relative">
+              <StoryCard
+                ref={cardRef}
+                headline={p?.headline ?? row.topic}
+                message={p?.message ?? ""}
+                cta={p?.cta ?? ""}
+                colors={p?.visual?.colors ?? []}
+                brand={slideBrand}
+                specialty={row.specialty}
+                imageUrl={directImageUrl}
+                colorOverrides={storyCustom ? resolveStoryColors(storyCustom, slideBrand, p?.visual?.colors ?? []) : undefined}
+              />
+              {imageLoadingOverlay}
+            </div>
           </div>
         )}
 
         {isTemplate && TemplateFrame && templateProps && (
           <>
             <div className="flex justify-center overflow-auto max-h-[70vh]">
-              <div className="w-full max-w-md">
+              <div className="w-full max-w-md relative">
                 <ExactScalePreview>
                   <TemplateFrame {...templateProps} />
                 </ExactScalePreview>
+                {imageLoadingOverlay}
               </div>
             </div>
             {/* offscreen full-size render — capture source for the PNG download */}
@@ -463,26 +504,29 @@ function PostDetailDialog({
 
         {isFestive && festiveCustom && (
           <div className="flex justify-center overflow-auto max-h-[70vh]">
-            <FestiveCard
-              ref={cardRef}
-              festival={p?.festival ?? row.topic}
-              greeting={p?.greeting ?? ""}
-              colors={p?.visual?.colors ?? []}
-              brand={{
-                doctorName:    brand.doctorName,
-                clinicName:    brand.clinicName,
-                phone:         brand.phone,
-                website:       brand.website,
-                address:       brand.address,
-                primaryColor:  brand.primaryColor,
-                secondaryColor: brand.secondaryColor,
-                logo:          brand.logo,
-                doctorPhoto:   brand.doctorPhoto,
-              }}
-              specialty={row.specialty}
-              imageUrl={directImageUrl}
-              colorOverrides={resolveFestiveColors(festiveCustom, slideBrand, p?.visual?.colors ?? [])}
-            />
+            <div className="relative">
+              <FestiveCard
+                ref={cardRef}
+                festival={p?.festival ?? row.topic}
+                greeting={p?.greeting ?? ""}
+                colors={p?.visual?.colors ?? []}
+                brand={{
+                  doctorName:    brand.doctorName,
+                  clinicName:    brand.clinicName,
+                  phone:         brand.phone,
+                  website:       brand.website,
+                  address:       brand.address,
+                  primaryColor:  brand.primaryColor,
+                  secondaryColor: brand.secondaryColor,
+                  logo:          brand.logo,
+                  doctorPhoto:   brand.doctorPhoto,
+                }}
+                specialty={row.specialty}
+                imageUrl={directImageUrl}
+                colorOverrides={resolveFestiveColors(festiveCustom, slideBrand, p?.visual?.colors ?? [])}
+              />
+              {imageLoadingOverlay}
+            </div>
           </div>
         )}
 
@@ -558,7 +602,7 @@ function History() {
         .from("content_generations")
         .select(
           "id, workflow_kind, content_category, specialty, topic, " +
-          "generated_text, generated_image_url, customization, hashtags, status, " +
+          "generated_text, customization, hashtags, status, " +
           "is_favorite, ai_model, created_at"
         )
         .eq("user_id", user.id)
@@ -660,12 +704,6 @@ function History() {
                       {c.content_category && (
                         <Badge variant="outline" className="capitalize">
                           {c.content_category.replace("-", " ")}
-                        </Badge>
-                      )}
-                      {rowHasImage(c) && (
-                        <Badge variant="outline" className="text-xs gap-1 text-emerald-600 border-emerald-200">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
-                          Has Image
                         </Badge>
                       )}
                       <span className="text-xs text-muted-foreground">
