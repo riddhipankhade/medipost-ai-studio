@@ -45,6 +45,9 @@ import {
   PhotoAdjustPanel,
   savePng,
   CREATIVE_DESIGN_WIDTH,
+  SinglePostPreview,
+  CarouselPreview,
+  StoryPreview,
 } from "@/routes/_app.generate";
 import { getPostTemplate } from "@/components/post-templates";
 import { getCarouselTemplate } from "@/components/carousel-templates";
@@ -57,12 +60,14 @@ import {
   type CarouselSample,
   type StorySample,
 } from "@/lib/template-catalog-samples";
-import { generateContent, type TemplatePost } from "@/lib/api/generate.functions";
+import {
+  generateContent, type TemplatePost, type SinglePost, type CarouselPost, type StoryPost,
+} from "@/lib/api/generate.functions";
 import {
   resolveTemplateColors, DEFAULT_TEMPLATE_IMAGE_OFFSET, type TemplateCustomization,
 } from "@/lib/post-customization";
 import { usePersistCustomization } from "@/hooks/usePersistCustomization";
-import { fetchStudioSessionRow } from "@/lib/studio-session";
+import { fetchStudioSessionRow, type StudioSessionRow } from "@/lib/studio-session";
 import { RemoveWatermarkRow } from "@/components/Watermark";
 import { ShareButtons } from "@/components/ShareButtons";
 import { isExportableNode } from "@/lib/export-filter";
@@ -71,14 +76,12 @@ import { growthHeadline, growthButtonLabel } from "@/lib/growth-trial-copy";
 
 export const Route = createFileRoute("/_app/templates")({
   head: () => ({ meta: [{ title: "Template Studio — Medipost AI" }] }),
-  // Poster-only in-place workflow (Phase 1): `templateId` identifies the
-  // selected catalog row, `rowId` identifies a completed generation
+  // In-place workflow, all four formats: `templateId` identifies the selected
+  // catalog row, `rowId` identifies a completed generation
   // (`content_generations.id`) once one exists. Both optional/loose-typed
   // here, same convention _app.generate.tsx's own validateSearch uses --
-  // real validation (does templateId resolve to a published Poster row?)
-  // happens in the component, against the already-loaded catalog. Post/
-  // Carousel/Story templates do NOT use these params in this phase -- their
-  // "Use Template" still navigates to /generate exactly as before.
+  // real validation (does templateId resolve to a published row with a real
+  // preview?) happens in the component, against the already-loaded catalog.
   validateSearch: (search: Record<string, unknown>): { templateId?: string; rowId?: string } => ({
     templateId: typeof search.templateId === "string" ? search.templateId : undefined,
     rowId:      typeof search.rowId === "string" ? search.rowId : undefined,
@@ -417,6 +420,7 @@ function PosterWorkspace({ row, rowIdParam, onBack, onGenerated }: {
             hasClinicPhoto: !!brand.clinicPhoto,
           },
           templateId: row.id,
+          renderKey: row.render_key ?? undefined,
         },
       });
       const out2 = out as TemplatePost & { _rowId?: string };
@@ -682,6 +686,567 @@ function PosterWorkspace({ row, rowIdParam, onBack, onGenerated }: {
   );
 }
 
+/**
+ * Shared shape for the Post/Carousel/Story in-place brief fields — every
+ * catalog row's category is fixed (never a user-facing picker, same "template
+ * is authoritative" rule Poster follows), so the only thing that varies by
+ * category is whether the "Did You Know" statistic+source fields are shown.
+ * generate.functions.ts's InputSchema.superRefine is the actual server-side
+ * guard; this mirrors it client-side for UX only, exactly like run() does in
+ * Content Studio.
+ */
+function StatisticFields({ statistic, setStatistic, statisticSource, setStatisticSource, statisticContext, setStatisticContext }: {
+  statistic: string; setStatistic: (v: string) => void;
+  statisticSource: string; setStatisticSource: (v: string) => void;
+  statisticContext: string; setStatisticContext: (v: string) => void;
+}) {
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Statistic (required)</Label>
+        <Input value={statistic} onChange={(e) => setStatistic(e.target.value)} placeholder="e.g. Nearly 1 in 3 adults have high blood pressure" />
+        <p className="text-[11px] text-muted-foreground">Medipost formats this for social media — it never invents or changes the number.</p>
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Source (required)</Label>
+        <Input value={statisticSource} onChange={(e) => setStatisticSource(e.target.value)} placeholder="e.g. WHO, 2023" />
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Additional context (optional)</Label>
+        <Input value={statisticContext} onChange={(e) => setStatisticContext(e.target.value)} placeholder="e.g. many don't know they have it" />
+      </div>
+    </>
+  );
+}
+
+function brandPayload(brand: BrandKit) {
+  return {
+    clinicName: brand.clinicName, doctorName: brand.doctorName,
+    primaryColor: brand.primaryColor, secondaryColor: brand.secondaryColor,
+    website: brand.website, phone: brand.phone,
+    hasLogo: !!brand.logo, hasDoctorPhoto: !!brand.doctorPhoto, hasClinicPhoto: !!brand.clinicPhoto,
+  };
+}
+
+function errorToastFor(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (msg.includes("INSUFFICIENT_CREDITS")) return "__INSUFFICIENT_CREDITS__";
+  if (msg.includes("SUBSCRIPTION_NOT_FOUND")) return "No active subscription found. Visit the Subscription page to activate a plan.";
+  if (msg.includes("GEMINI") || msg.includes("503")) return "AI service is busy — please try again in a moment.";
+  return msg || "Generation failed. Please try again.";
+}
+
+/**
+ * Post (kind "single") in-place creation workspace — same reuse philosophy as
+ * PosterWorkspace above, but the "generated result" side is the exported
+ * SinglePostPreview from Content Studio's generate route, unmodified: it
+ * already locks all customization to brand-only when a fixed renderKey is
+ * present (see its own internal `template` dispatch), already handles AI
+ * image generation, download, and persistence via usePersistCustomization.
+ * This workspace only owns the compact brief and the pre-generation sample.
+ */
+function PostWorkspace({ row, rowIdParam, onBack, onGenerated }: {
+  row: TemplateRow; rowIdParam?: string; onBack: () => void; onGenerated: (rowId: string) => void;
+}) {
+  const { user } = useAuth();
+  const [brand] = useBrandKit();
+  const trialEligible = useGrowthTrialEligible(user?.id);
+  const callGenerate = useServerFn(generateContent);
+  const sample = POST_SAMPLES[row.id];
+
+  const [specialty, setSpecialty] = useState(brand.specialty || "");
+  const specialtyTouchedRef = useRef(false);
+  useEffect(() => {
+    if (brand.specialty && !specialtyTouchedRef.current) setSpecialty(brand.specialty);
+  }, [brand.specialty]);
+
+  const [topic, setTopic] = useState("");
+  const [statistic, setStatistic] = useState("");
+  const [statisticSource, setStatisticSource] = useState("");
+  const [statisticContext, setStatisticContext] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [outOfCredits, setOutOfCredits] = useState(false);
+  const [result, setResult] = useState<SinglePost | null>(null);
+  const [rowId, setRowId] = useState<string | null>(null);
+  const [resultKey, setResultKey] = useState<string>("none");
+  const [sessionSeed, setSessionSeed] = useState<StudioSessionRow | null>(null);
+
+  const restoringRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!rowIdParam || rowIdParam === rowId || restoringRef.current === rowIdParam) return;
+    restoringRef.current = rowIdParam;
+    let cancelled = false;
+    (async () => {
+      const restored = await fetchStudioSessionRow(rowIdParam);
+      if (cancelled || !restored || restored.result.kind !== "single") return;
+      setResult(restored.result);
+      setRowId(rowIdParam);
+      setResultKey(rowIdParam);
+      setSessionSeed(restored);
+    })();
+    return () => { cancelled = true; };
+  }, [rowIdParam, rowId]);
+
+  async function handleGenerate() {
+    if (!topic.trim()) { toast.error("Please enter a topic"); return; }
+    if (row.category === "did-you-know" && (!statistic.trim() || !statisticSource.trim())) {
+      toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
+      return;
+    }
+    setLoading(true);
+    setOutOfCredits(false);
+    try {
+      const out = await callGenerate({
+        data: {
+          kind: "single", category: row.category,
+          specialty: specialty.trim() || "General Physician", topic: topic.trim(),
+          tone: "Standard", audience: "General Public",
+          brand: brandPayload(brand), templateId: row.id, renderKey: row.render_key ?? undefined,
+          statistic: statistic.trim() || undefined,
+          statisticSource: statisticSource.trim() || undefined,
+          statisticContext: statisticContext.trim() || undefined,
+        },
+      });
+      const out2 = out as SinglePost & { _rowId?: string };
+      const newRowId = out2._rowId ?? null;
+      setResult(out2);
+      setRowId(newRowId);
+      setResultKey(newRowId ?? `gen-${Date.now()}`);
+      setSessionSeed(null);
+      toast.success("Your post is ready");
+      if (newRowId) onGenerated(newRowId);
+    } catch (e) {
+      const msg = errorToastFor(e);
+      if (msg === "__INSUFFICIENT_CREDITS__") {
+        setOutOfCredits(true);
+        toast.error("You've used all your AI generations this period. Upgrade your plan to continue.");
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-4 w-4" /> Back to Template Studio
+      </button>
+
+      <div className="grid gap-6 md:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <Card className="border-border/60">
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold">{row.name}</h2>
+                {row.description && <p className="text-xs text-muted-foreground mt-0.5">{row.description}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Specialty</Label>
+                <SpecialtySelect value={specialty} onChange={(v) => { specialtyTouchedRef.current = true; setSpecialty(v); }} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Topic / Brief</Label>
+                <AutoGrowTextarea value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. New patient offer for root canal treatment" rows={3} disabled={loading} />
+              </div>
+              {row.category === "did-you-know" && (
+                <StatisticFields
+                  statistic={statistic} setStatistic={setStatistic}
+                  statisticSource={statisticSource} setStatisticSource={setStatisticSource}
+                  statisticContext={statisticContext} setStatisticContext={setStatisticContext}
+                />
+              )}
+              {outOfCredits ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                  <p className="text-xs text-destructive">You've used all your AI generations this period.</p>
+                  <Button size="sm" className="w-full" onClick={() => window.location.href = "/subscription"}>
+                    {growthButtonLabel(trialEligible)}
+                  </Button>
+                </div>
+              ) : (
+                <Button onClick={handleGenerate} disabled={loading} className="w-full gap-2">
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {loading ? "Generating…" : result ? "Regenerate" : "Generate Post"}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="min-w-0">
+          {result ? (
+            <SinglePostPreview
+              key={resultKey}
+              post={result} specialty={specialty} rowId={rowId} category={row.category} topic={topic}
+              initialImageUrl={sessionSeed?.initialImageUrl ?? null}
+              initialCustomization={sessionSeed?.initialCustomization?.kind === "single" ? sessionSeed.initialCustomization : null}
+              renderKey={row.render_key}
+            />
+          ) : (
+            <Card className="border-border/60">
+              <CardContent className="pt-6 space-y-4">
+                <PreviewToolbar title={`Preview — ${row.name}`} />
+                <div className="mx-auto w-full max-w-md">
+                  {sample && <PostPreviewCanvas sample={sample} brand={brand} renderKey={row.render_key} />}
+                </div>
+                {!loading ? (
+                  <p className="text-center text-xs text-muted-foreground">Sample content shown — fill in your brief and generate to create your own.</p>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Generating your post…
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Carousel (kind "carousel") in-place creation workspace — same reuse
+ * philosophy as PostWorkspace above; the generated deck renders via the
+ * exported CarouselPreview, which already dispatches every slide through the
+ * fixed carouselTemplates registry entry (renderKey) with per-slide AI image
+ * generation, download, and persistence built in.
+ */
+function CarouselWorkspace({ row, rowIdParam, onBack, onGenerated }: {
+  row: TemplateRow; rowIdParam?: string; onBack: () => void; onGenerated: (rowId: string) => void;
+}) {
+  const { user } = useAuth();
+  const [brand] = useBrandKit();
+  const trialEligible = useGrowthTrialEligible(user?.id);
+  const callGenerate = useServerFn(generateContent);
+  const sample = CAROUSEL_SAMPLES[row.id];
+
+  const [specialty, setSpecialty] = useState(brand.specialty || "");
+  const specialtyTouchedRef = useRef(false);
+  useEffect(() => {
+    if (brand.specialty && !specialtyTouchedRef.current) setSpecialty(brand.specialty);
+  }, [brand.specialty]);
+
+  const [topic, setTopic] = useState("");
+  const [slideCount, setSlideCount] = useState<number>(() => sample?.slides.length ?? 5);
+  const [statistic, setStatistic] = useState("");
+  const [statisticSource, setStatisticSource] = useState("");
+  const [statisticContext, setStatisticContext] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [outOfCredits, setOutOfCredits] = useState(false);
+  const [result, setResult] = useState<CarouselPost | null>(null);
+  const [rowId, setRowId] = useState<string | null>(null);
+  const [resultKey, setResultKey] = useState<string>("none");
+  const [sessionSeed, setSessionSeed] = useState<StudioSessionRow | null>(null);
+
+  const restoringRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!rowIdParam || rowIdParam === rowId || restoringRef.current === rowIdParam) return;
+    restoringRef.current = rowIdParam;
+    let cancelled = false;
+    (async () => {
+      const restored = await fetchStudioSessionRow(rowIdParam);
+      if (cancelled || !restored || restored.result.kind !== "carousel") return;
+      setResult(restored.result);
+      setRowId(rowIdParam);
+      setResultKey(rowIdParam);
+      setSessionSeed(restored);
+    })();
+    return () => { cancelled = true; };
+  }, [rowIdParam, rowId]);
+
+  async function handleGenerate() {
+    if (!topic.trim()) { toast.error("Please enter a topic"); return; }
+    if (row.category === "did-you-know" && (!statistic.trim() || !statisticSource.trim())) {
+      toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
+      return;
+    }
+    setLoading(true);
+    setOutOfCredits(false);
+    try {
+      const out = await callGenerate({
+        data: {
+          kind: "carousel", category: row.category,
+          specialty: specialty.trim() || "General Physician", topic: topic.trim(),
+          tone: "Standard", audience: "General Public", slideCount,
+          brand: brandPayload(brand), templateId: row.id, renderKey: row.render_key ?? undefined,
+          statistic: statistic.trim() || undefined,
+          statisticSource: statisticSource.trim() || undefined,
+          statisticContext: statisticContext.trim() || undefined,
+        },
+      });
+      const out2 = out as CarouselPost & { _rowId?: string };
+      const newRowId = out2._rowId ?? null;
+      setResult(out2);
+      setRowId(newRowId);
+      setResultKey(newRowId ?? `gen-${Date.now()}`);
+      setSessionSeed(null);
+      toast.success("Your carousel is ready");
+      if (newRowId) onGenerated(newRowId);
+    } catch (e) {
+      const msg = errorToastFor(e);
+      if (msg === "__INSUFFICIENT_CREDITS__") {
+        setOutOfCredits(true);
+        toast.error("You've used all your AI generations this period. Upgrade your plan to continue.");
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-4 w-4" /> Back to Template Studio
+      </button>
+
+      <div className="grid gap-6 md:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <Card className="border-border/60">
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold">{row.name}</h2>
+                {row.description && <p className="text-xs text-muted-foreground mt-0.5">{row.description}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Specialty</Label>
+                <SpecialtySelect value={specialty} onChange={(v) => { specialtyTouchedRef.current = true; setSpecialty(v); }} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Topic / Brief</Label>
+                <AutoGrowTextarea value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. New patient offer for root canal treatment" rows={3} disabled={loading} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Slides — {slideCount}</Label>
+                <input type="range" min={2} max={10} value={slideCount} onChange={(e) => setSlideCount(Number(e.target.value))} className="w-full accent-[color:var(--teal)]" disabled={loading} />
+              </div>
+              {row.category === "did-you-know" && (
+                <StatisticFields
+                  statistic={statistic} setStatistic={setStatistic}
+                  statisticSource={statisticSource} setStatisticSource={setStatisticSource}
+                  statisticContext={statisticContext} setStatisticContext={setStatisticContext}
+                />
+              )}
+              {outOfCredits ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                  <p className="text-xs text-destructive">You've used all your AI generations this period.</p>
+                  <Button size="sm" className="w-full" onClick={() => window.location.href = "/subscription"}>
+                    {growthButtonLabel(trialEligible)}
+                  </Button>
+                </div>
+              ) : (
+                <Button onClick={handleGenerate} disabled={loading} className="w-full gap-2">
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {loading ? "Generating…" : result ? "Regenerate" : "Generate Carousel"}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="min-w-0">
+          {result ? (
+            <CarouselPreview
+              key={resultKey}
+              post={result} specialty={specialty} rowId={rowId} category={row.category} topic={topic}
+              initialSlideImages={sessionSeed?.initialSlideImages ?? null}
+              initialCustomization={sessionSeed?.initialCustomization?.kind === "carousel" ? sessionSeed.initialCustomization : null}
+              renderKey={row.render_key}
+            />
+          ) : (
+            <Card className="border-border/60">
+              <CardContent className="pt-6 space-y-4">
+                <PreviewToolbar title={`Preview — ${row.name}`} />
+                <div className="mx-auto w-full max-w-md">
+                  {sample && <CarouselPreviewCanvas sample={sample} brand={brand} renderKey={row.render_key} slideIdx={Math.min(1, sample.slides.length - 1)} />}
+                </div>
+                {!loading ? (
+                  <p className="text-center text-xs text-muted-foreground">Sample content shown — fill in your brief and generate to create your own.</p>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Generating your carousel…
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Story (kind "story") in-place creation workspace — same reuse philosophy as
+ * PostWorkspace/CarouselWorkspace; the generated result renders via the
+ * exported StoryPreview, which already dispatches through the fixed
+ * storyTemplates registry entry (renderKey) with its own AI image generation,
+ * download (1080x1920), and persistence built in.
+ */
+function StoryWorkspace({ row, rowIdParam, onBack, onGenerated }: {
+  row: TemplateRow; rowIdParam?: string; onBack: () => void; onGenerated: (rowId: string) => void;
+}) {
+  const { user } = useAuth();
+  const [brand] = useBrandKit();
+  const trialEligible = useGrowthTrialEligible(user?.id);
+  const callGenerate = useServerFn(generateContent);
+  const sample = STORY_SAMPLES[row.id];
+
+  const [specialty, setSpecialty] = useState(brand.specialty || "");
+  const specialtyTouchedRef = useRef(false);
+  useEffect(() => {
+    if (brand.specialty && !specialtyTouchedRef.current) setSpecialty(brand.specialty);
+  }, [brand.specialty]);
+
+  const [topic, setTopic] = useState("");
+  const [statistic, setStatistic] = useState("");
+  const [statisticSource, setStatisticSource] = useState("");
+  const [statisticContext, setStatisticContext] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [outOfCredits, setOutOfCredits] = useState(false);
+  const [result, setResult] = useState<StoryPost | null>(null);
+  const [rowId, setRowId] = useState<string | null>(null);
+  const [resultKey, setResultKey] = useState<string>("none");
+  const [sessionSeed, setSessionSeed] = useState<StudioSessionRow | null>(null);
+
+  const restoringRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!rowIdParam || rowIdParam === rowId || restoringRef.current === rowIdParam) return;
+    restoringRef.current = rowIdParam;
+    let cancelled = false;
+    (async () => {
+      const restored = await fetchStudioSessionRow(rowIdParam);
+      if (cancelled || !restored || restored.result.kind !== "story") return;
+      setResult(restored.result);
+      setRowId(rowIdParam);
+      setResultKey(rowIdParam);
+      setSessionSeed(restored);
+    })();
+    return () => { cancelled = true; };
+  }, [rowIdParam, rowId]);
+
+  async function handleGenerate() {
+    if (!topic.trim()) { toast.error("Please enter a topic"); return; }
+    if (row.category === "did-you-know" && (!statistic.trim() || !statisticSource.trim())) {
+      toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
+      return;
+    }
+    setLoading(true);
+    setOutOfCredits(false);
+    try {
+      const out = await callGenerate({
+        data: {
+          kind: "story", category: row.category,
+          specialty: specialty.trim() || "General Physician", topic: topic.trim(),
+          tone: "Standard", audience: "General Public",
+          brand: brandPayload(brand), templateId: row.id, renderKey: row.render_key ?? undefined,
+          statistic: statistic.trim() || undefined,
+          statisticSource: statisticSource.trim() || undefined,
+          statisticContext: statisticContext.trim() || undefined,
+        },
+      });
+      const out2 = out as StoryPost & { _rowId?: string };
+      const newRowId = out2._rowId ?? null;
+      setResult(out2);
+      setRowId(newRowId);
+      setResultKey(newRowId ?? `gen-${Date.now()}`);
+      setSessionSeed(null);
+      toast.success("Your story is ready");
+      if (newRowId) onGenerated(newRowId);
+    } catch (e) {
+      const msg = errorToastFor(e);
+      if (msg === "__INSUFFICIENT_CREDITS__") {
+        setOutOfCredits(true);
+        toast.error("You've used all your AI generations this period. Upgrade your plan to continue.");
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-4 w-4" /> Back to Template Studio
+      </button>
+
+      <div className="grid gap-6 md:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <Card className="border-border/60">
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold">{row.name}</h2>
+                {row.description && <p className="text-xs text-muted-foreground mt-0.5">{row.description}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Specialty</Label>
+                <SpecialtySelect value={specialty} onChange={(v) => { specialtyTouchedRef.current = true; setSpecialty(v); }} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Topic / Brief</Label>
+                <AutoGrowTextarea value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. New patient offer for root canal treatment" rows={3} disabled={loading} />
+              </div>
+              {row.category === "did-you-know" && (
+                <StatisticFields
+                  statistic={statistic} setStatistic={setStatistic}
+                  statisticSource={statisticSource} setStatisticSource={setStatisticSource}
+                  statisticContext={statisticContext} setStatisticContext={setStatisticContext}
+                />
+              )}
+              {outOfCredits ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                  <p className="text-xs text-destructive">You've used all your AI generations this period.</p>
+                  <Button size="sm" className="w-full" onClick={() => window.location.href = "/subscription"}>
+                    {growthButtonLabel(trialEligible)}
+                  </Button>
+                </div>
+              ) : (
+                <Button onClick={handleGenerate} disabled={loading} className="w-full gap-2">
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {loading ? "Generating…" : result ? "Regenerate" : "Generate Story"}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="min-w-0">
+          {result ? (
+            <StoryPreview
+              key={resultKey}
+              post={result} specialty={specialty} rowId={rowId}
+              initialImageUrl={sessionSeed?.initialImageUrl ?? null}
+              initialCustomization={sessionSeed?.initialCustomization?.kind === "story" ? sessionSeed.initialCustomization : null}
+              renderKey={row.render_key}
+            />
+          ) : (
+            <Card className="border-border/60">
+              <CardContent className="pt-6 space-y-4">
+                <PreviewToolbar title={`Preview — ${row.name}`} />
+                <div className="mx-auto w-full max-w-xs">
+                  {sample && <StoryPreviewCanvas sample={sample} brand={brand} renderKey={row.render_key} />}
+                </div>
+                {!loading ? (
+                  <p className="text-center text-xs text-muted-foreground">Sample content shown — fill in your brief and generate to create your own.</p>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Generating your story…
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const ALL = "__all__";
 
 function TemplateStudioPage() {
@@ -796,32 +1361,17 @@ function TemplateStudioPage() {
     placeholders: true,
   };
 
-  // Poster rows (format "template") stay on /templates -- Phase 1's in-place
-  // creation workspace, selected via ?templateId= (see PosterWorkspace below
-  // and this route's validateSearch). Post/Carousel/Story rows still go
-  // through /generate's ?kind=&renderKey= path unchanged (out of scope for
-  // this phase; renderKey is what makes the destination brief use the exact
-  // same bespoke template renderer this card just previewed (see
-  // src/components/post-templates.tsx's getPostTemplate() -- Carousel/Story
-  // don't have a resolvable render_key yet in this phase, so it's simply
-  // undefined for them and SinglePostPreview's sibling components fall back
-  // to their current behavior unchanged). Carousel additionally passes
-  // slideCount so the brief opens with the same slide count this entry demonstrated.
+  // Every format's catalog row stays on /templates -- selecting any card (Poster,
+  // Post, Carousel, or Story) opens its in-place creation workspace via
+  // ?templateId=, never navigates to /generate. See PosterWorkspace/
+  // PostWorkspace/CarouselWorkspace/StoryWorkspace below and this route's
+  // validateSearch. Content Studio's own /generate route is untouched and still
+  // supports its ?kind=&renderKey= entry as latent infrastructure (the same
+  // SinglePostPreview/CarouselPreview/StoryPreview these workspaces reuse), it
+  // is simply no longer reachable from Template Studio's UI.
   function useTemplate(t: TemplateRow) {
-    if (t.format === "template") {
-      setPreviewId(null); // close the preview dialog before entering the workspace
-      navigate({ to: "/templates", search: { templateId: t.id } });
-      return;
-    }
-    const slideCount = t.format === "carousel" ? CAROUSEL_SAMPLES[t.id]?.slides.length : undefined;
-    navigate({
-      to: "/generate",
-      search: {
-        kind: t.format, templateId: t.id, category: t.category,
-        slideCount: slideCount ? String(slideCount) : undefined,
-        renderKey: t.render_key ?? undefined,
-      },
-    });
+    setPreviewId(null); // close the preview dialog before entering the workspace
+    navigate({ to: "/templates", search: { templateId: t.id } });
   }
 
   const previewTemplate = previewId ? resolvedTemplates.find((t) => t.id === previewId) ?? null : null;
@@ -836,15 +1386,10 @@ function TemplateStudioPage() {
     setPreviewId(id);
   }
 
-  // Phase 1: a selected Poster row (format === "template") renders the
-  // in-place creation workspace instead of the browse grid. A ?templateId=
-  // that resolves to a non-Poster row (or doesn't resolve yet/at all) falls
-  // through to the ordinary browse view -- Post/Carousel/Story never set
-  // this param in this phase (see useTemplate above), so that path is only
-  // reachable via a stale/hand-edited URL, and failing safe to browse is
-  // the right behavior for it.
+  // A selected row (any format) renders its in-place creation workspace
+  // instead of the browse grid. A ?templateId= that doesn't resolve yet/at
+  // all falls through to the ordinary browse view.
   const selectedRow = search.templateId ? resolvedTemplates.find((t) => t.id === search.templateId) ?? null : null;
-  const posterWorkspaceActive = !!selectedRow && selectedRow.format === "template";
 
   if (search.templateId && templates === null) {
     // Catalog still loading -- avoid a flash of the full browse grid/skeleton
@@ -856,17 +1401,16 @@ function TemplateStudioPage() {
     );
   }
 
-  if (posterWorkspaceActive && selectedRow) {
-    return (
-      <PosterWorkspace
-        row={selectedRow}
-        rowIdParam={search.rowId}
-        onBack={() => navigate({ to: "/templates", search: {} })}
-        onGenerated={(newRowId) =>
-          navigate({ to: "/templates", search: { templateId: selectedRow.id, rowId: newRowId }, replace: true })
-        }
-      />
-    );
+  if (selectedRow) {
+    const onBack = () => navigate({ to: "/templates", search: {} });
+    const onGenerated = (newRowId: string) =>
+      navigate({ to: "/templates", search: { templateId: selectedRow.id, rowId: newRowId }, replace: true });
+    switch (selectedRow.format) {
+      case "template": return <PosterWorkspace row={selectedRow} rowIdParam={search.rowId} onBack={onBack} onGenerated={onGenerated} />;
+      case "single":   return <PostWorkspace row={selectedRow} rowIdParam={search.rowId} onBack={onBack} onGenerated={onGenerated} />;
+      case "carousel": return <CarouselWorkspace row={selectedRow} rowIdParam={search.rowId} onBack={onBack} onGenerated={onGenerated} />;
+      case "story":    return <StoryWorkspace row={selectedRow} rowIdParam={search.rowId} onBack={onBack} onGenerated={onGenerated} />;
+    }
   }
 
   return (

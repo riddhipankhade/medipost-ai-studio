@@ -1205,7 +1205,7 @@ export function AiImageButton({ loading, hasImage, onClick, size = "sm", label }
   );
 }
 
-function SinglePostPreview({ post, specialty, rowId, category, topic, initialImageUrl, initialCustomization, renderKey }: {
+export function SinglePostPreview({ post, specialty, rowId, category, topic, initialImageUrl, initialCustomization, renderKey }: {
   post: SinglePost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string;
   initialImageUrl?: string | null; initialCustomization?: SingleCustomization | null;
   /** Set only when arriving via Template Studio's "Use Template" for a Post
@@ -1381,7 +1381,7 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
   );
 }
 
-function CarouselPreview({ post, specialty, rowId, category, topic, initialSlideImages, initialCustomization, renderKey }: {
+export function CarouselPreview({ post, specialty, rowId, category, topic, initialSlideImages, initialCustomization, renderKey }: {
   post: CarouselPost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string;
   initialSlideImages?: (string | null)[] | null; initialCustomization?: CarouselCustomization | null;
   /** Set only when arriving via Template Studio's "Use Template" for a
@@ -1842,7 +1842,7 @@ export function PhotoAdjustPanel({
   );
 }
 
-function StoryPreview({ post, specialty, rowId, initialImageUrl, initialCustomization, renderKey }: {
+export function StoryPreview({ post, specialty, rowId, initialImageUrl, initialCustomization, renderKey }: {
   post: StoryPost; specialty: string; rowId?: string | null;
   initialImageUrl?: string | null; initialCustomization?: StoryCustomization | null;
   /** Set only when arriving via Template Studio's "Use Template" for a Story

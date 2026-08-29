@@ -8,6 +8,7 @@ import { createServerClient, parseCookieHeader } from "@supabase/ssr";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import { PostCustomizationSchema, defaultCustomizationFor } from "@/lib/post-customization";
 import { validateTemplateContent } from "@/lib/template-content-schema";
+import { buildRenderKeyGuidance, rendererOverridesCategoryStructure } from "@/lib/template-generation-hints";
 
 function validateEnv(): { supabaseUrl: string; supabaseAnonKey: string; geminiApiKey: string } {
   const supabaseUrl     = process.env.SUPABASE_URL;
@@ -230,6 +231,15 @@ const InputSchema = z.object({
   // 20240001000014's comment on content_generations.template_id for why this
   // is allowed to diverge from the actual render/frame chosen.
   templateId: z.string().uuid().optional(),
+  // Which bespoke renderer (templateFrames/postTemplates/carouselTemplates/
+  // storyTemplates registry key) this generation's result will render
+  // through, if any -- set only via Template Studio's in-place workspaces.
+  // PROMPT HINT ONLY: read exclusively by buildPrompt() via
+  // template-generation-hints.ts to append/override a short render_key-
+  // specific guidance block. Never used for authorization, entitlement,
+  // credit, or any security decision -- a missing, stale, or unrecognized
+  // value degrades to "no hint", identical to today's generation.
+  renderKey: z.string().optional(),
   // "Did You Know" statistics are always supplied by the doctor, never
   // invented by Gemini -- see the superRefine below, which makes statistic +
   // statisticSource required whenever category === "did-you-know", for every
@@ -553,7 +563,10 @@ const TEMPLATE_VISUAL_BLOCK = `"visual": {
     "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words) for ONE clear photographic subject relevant to the condition/service — e.g. a patient showing the symptom, a doctor consulting, a treatment close-up. Single subject centered with generous space around it, clean soft neutral or softly blurred background, photorealistic, warm trustworthy healthcare-ad mood. The photo will be cropped into a shaped window on a designed poster, so NO text, NO watermark, NO logos, NO graphic overlays, subject must not touch the frame edges."
   }`;
 
-function buildPrompt(d: GenerateInput): { system: string; user: string } {
+/** Exported only so a standalone verification script can call it directly
+ *  with fixture inputs (no DB/network) to snapshot-diff render_key-aware
+ *  guidance against today's output -- see the implementation plan's §12. */
+export function buildPrompt(d: GenerateInput): { system: string; user: string } {
   const base = `BRIEF
 - Specialty: ${d.specialty}
 - Topic: ${d.topic}
@@ -572,14 +585,27 @@ ${SHARED_RULES}
 ${languageBlock(d.language)}`;
 
   switch (d.kind) {
-    case "single":
+    case "single": {
+      // Polaroid Stack (render_key "polaroid-stack") is the one render_key
+      // that OVERRIDES its category's structure text instead of appending
+      // after it -- see rendererOverridesCategoryStructure()'s doc comment.
+      // Every other flagged render_key composes with the category structure,
+      // never replaces it; a missing/unrecognized renderKey leaves
+      // structureText byte-identical to singleStructureFor(d.category) alone.
+      const categoryStructure = singleStructureFor(d.category);
+      const renderGuidance = buildRenderKeyGuidance(d.renderKey, "single");
+      const structureText = rendererOverridesCategoryStructure(d.renderKey, "single")
+        ? renderGuidance
+        : renderGuidance
+          ? `${categoryStructure}\n\n${renderGuidance}`
+          : categoryStructure;
       return {
         system: "You are Medipost AI, a healthcare social-media copywriter. Respond ONLY with strict JSON.",
         user: `${base}
 
 TASK: Generate ONE scroll-stopping single social media post about "${d.topic}".
 
-${singleStructureFor(d.category)}
+${structureText}
 
 Return STRICT JSON, no markdown:
 {
@@ -591,17 +617,20 @@ Return STRICT JSON, no markdown:
   ${VISUAL_BLOCK}
 }`,
       };
+    }
 
     case "carousel": {
       const n         = d.slideCount ?? 7;
       const structure = carouselStructureFor(d.category, n);
+      const renderGuidance = buildRenderKeyGuidance(d.renderKey, "carousel");
+      const zoneBudget = renderGuidance ? `\n\n${renderGuidance}` : "";
       return {
         system: "You are Medipost AI. You design educational carousel posts for clinicians. Respond ONLY with strict JSON.",
         user: `${base}
 
 TASK: Design an Instagram CAROUSEL with exactly ${n} slides on "${d.topic}".
 
-${structure}
+${structure}${zoneBudget}
 
 - Each slide title 3-7 words, body 20-40 words.
 - For each slide write an "imagePrompt": 40-80 word AI image prompt (real healthcare scene, no solid colors, no text-on-background). End each with "no text, no watermark, Instagram-ready, premium healthcare brand aesthetic".
@@ -621,14 +650,16 @@ Return STRICT JSON:
       };
     }
 
-    case "story":
+    case "story": {
+      const renderGuidance = buildRenderKeyGuidance(d.renderKey, "story");
+      const storyGuidance = renderGuidance ? `\n\n${renderGuidance}` : "";
       return {
         system: "You are Medipost AI. You write tight, vertical-format healthcare Instagram Stories. Respond ONLY with strict JSON.",
         user: `${base}
 
 TASK: Write ONE Instagram Story (9:16) about "${d.topic}". Max 25 words total.
 
-- cta: a short, direct action line (2-4 words, e.g. "Book Appointment", "Call Now", "DM to Book"). NOT a question, NOT a poll/tap-to-vote prompt.
+- cta: a short, direct action line (2-4 words, e.g. "Book Appointment", "Call Now", "DM to Book"). NOT a question, NOT a poll/tap-to-vote prompt.${storyGuidance}
 
 Return STRICT JSON:
 {
@@ -638,6 +669,7 @@ Return STRICT JSON:
   ${VISUAL_BLOCK}
 }`,
       };
+    }
 
     case "reel":
       return {
@@ -717,13 +749,15 @@ Return STRICT JSON:
       };
     }
 
-    case "template":
+    case "template": {
+      const renderGuidance = buildRenderKeyGuidance(d.renderKey, "template");
+      const templateGuidance = renderGuidance ? `\n\n${renderGuidance}` : "";
       return {
         system:
           "You are Medipost AI, a copywriter for poster-style local healthcare ads (clinic flyers, treatment-center promos). Respond ONLY with strict JSON.",
         user: `${base}
 
-TASK: Write the copy for ONE poster-style promo creative about "${d.topic}" — the kind of ad a local clinic prints or posts on social media: a bold service headline, a short benefit line, a contact-style CTA, and a short list of trust/benefit feature labels.
+TASK: Write the copy for ONE poster-style promo creative about "${d.topic}" — the kind of ad a local clinic prints or posts on social media: a bold service headline, a short benefit line, a contact-style CTA, and a short list of trust/benefit feature labels.${templateGuidance}
 
 Return STRICT JSON:
 {
@@ -736,6 +770,7 @@ Return STRICT JSON:
   ${TEMPLATE_VISUAL_BLOCK}
 }`,
       };
+    }
   }
 }
 
