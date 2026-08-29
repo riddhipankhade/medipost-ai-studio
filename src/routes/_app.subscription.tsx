@@ -206,6 +206,10 @@ function SubscriptionPage() {
   }
 
   async function handleUpgrade(planKey: string, startTrial = false) {
+    if (isPaid && !isCancelled) {
+      toast.info("You already have an active subscription. Please cancel it before switching plans.");
+      return;
+    }
     setPaying(planKey);
     try {
       const voucherCode = !startTrial && appliedVoucher?.applicablePlans.includes(planKey)
