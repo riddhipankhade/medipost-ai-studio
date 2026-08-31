@@ -120,6 +120,7 @@ import {
 import { resolveVisualStrategy, resolveSinglePostStrategy } from "@/lib/visual-strategy";
 import { useDownloadPost } from "@/hooks/useDownloadPost";
 import { usePersistCustomization } from "@/hooks/usePersistCustomization";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import {
   resolveTheme,
   resolveFestiveColors,
@@ -417,6 +418,7 @@ function GeneratePage() {
   }, []);
 
   const [loading, setLoading] = useState(false);
+  const generateGuard = useSubmitGuard();
   const [stage, setStage] = useState(0);
   const [result, setResult] = useState<GenerateOutput | null>(null);
   const [rowId,  setRowId]  = useState<string | null>(null);
@@ -513,32 +515,37 @@ function GeneratePage() {
   }
 
   async function run() {
-    if (kind === "template" && !isPro) {
-      setUpgradePrompt("Template Studio's ready-made promo designs are a Growth feature.");
-      return;
-    }
-    if (!isPro && (form.tone !== "Standard" || form.audience !== "General Public")) {
-      setUpgradePrompt("Custom tones and audience targeting are a Growth feature.");
-      return;
-    }
-    if (!form.topic.trim()) {
-      toast.error("Please enter a topic");
-      return;
-    }
-    // UX guard only — generate.functions.ts's InputSchema superRefine is the
-    // actual guard against an invented statistic, and runs server-side
-    // regardless of whether this check is ever bypassed.
-    if (category === "did-you-know" && (!form.statistic?.trim() || !form.statisticSource?.trim())) {
-      toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
-      return;
-    }
-    setLoading(true);
-    setStage(0);
-    setOutOfCredits(false);
-    const ticker = setInterval(() => {
-      setStage((s) => Math.min(s + 1, PROGRESS_STAGES.length - 1));
-    }, 900);
+    // Synchronous guard, checked before any state read -- see useSubmitGuard
+    // for why the `loading` state below isn't enough on its own to stop a
+    // second click that fires before React re-renders the disabled button.
+    if (!generateGuard.tryAcquire()) return;
+    let ticker: ReturnType<typeof setInterval> | undefined;
     try {
+      if (kind === "template" && !isPro) {
+        setUpgradePrompt("Template Studio's ready-made promo designs are a Growth feature.");
+        return;
+      }
+      if (!isPro && (form.tone !== "Standard" || form.audience !== "General Public")) {
+        setUpgradePrompt("Custom tones and audience targeting are a Growth feature.");
+        return;
+      }
+      if (!form.topic.trim()) {
+        toast.error("Please enter a topic");
+        return;
+      }
+      // UX guard only — generate.functions.ts's InputSchema superRefine is the
+      // actual guard against an invented statistic, and runs server-side
+      // regardless of whether this check is ever bypassed.
+      if (category === "did-you-know" && (!form.statistic?.trim() || !form.statisticSource?.trim())) {
+        toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
+        return;
+      }
+      setLoading(true);
+      setStage(0);
+      setOutOfCredits(false);
+      ticker = setInterval(() => {
+        setStage((s) => Math.min(s + 1, PROGRESS_STAGES.length - 1));
+      }, 900);
       const out = await callGenerate({
         data: {
           kind,
@@ -584,6 +591,7 @@ function GeneratePage() {
     } finally {
       clearInterval(ticker);
       setLoading(false);
+      generateGuard.release();
     }
   }
 

@@ -67,6 +67,7 @@ import {
   resolveTemplateColors, DEFAULT_TEMPLATE_IMAGE_OFFSET, type TemplateCustomization,
 } from "@/lib/post-customization";
 import { usePersistCustomization } from "@/hooks/usePersistCustomization";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import { fetchStudioSessionRow, type StudioSessionRow } from "@/lib/studio-session";
 import { RemoveWatermarkRow } from "@/components/Watermark";
 import { ShareButtons } from "@/components/ShareButtons";
@@ -139,9 +140,46 @@ function hasPreviewData(t: TemplateRow): boolean {
     // back to the per-slide dynamic engine / generic StoryCard, which is
     // exactly the behavior this architecture replaces.
     case "carousel":  return !!CAROUSEL_SAMPLES[t.id] && getCarouselTemplate(t.render_key) !== null;
-    case "story":     return !!STORY_SAMPLES[t.id] && getStoryTemplate(t.render_key) !== null;
+    // Story is temporarily out of Template Studio's scope (see the catalog
+    // query's own .neq("format", "story") above, which is the primary
+    // gate) -- this is a second, defensive layer: even if a Story row ever
+    // reached `templates` state some other way, it still could never
+    // resolve into `resolvedTemplates`, so `selectedRow` could never select
+    // one and the StoryWorkspace dispatch below stays unreachable. The
+    // Story renderer registry itself (getStoryTemplate/storyTemplates) is
+    // untouched -- Content Studio still uses it normally.
+    case "story":     return false;
     default:          return false;
   }
+}
+
+// ─── Growth entitlement UX (consistent across every workspace) ─────────────
+// Before this, PosterWorkspace pre-gated Generate on a blanket `!isPro`
+// check (correct only by coincidence, since every Poster row happens to be
+// premium), while Post/Carousel had no pre-gate at all -- a Free user could
+// click Generate on a Growth-only Post/Carousel row, and only find out via
+// the toast after generateContent's server-side rejection. This is UX only:
+// the authoritative check is generate.functions.ts's server-side
+// hasGrowthEntitlement(), which runs before deduct_credit regardless of
+// what this returns -- a stale/wrong client value here can make the UI
+// nag a Growth user unnecessarily or momentarily show Generate to a Free
+// user, but it can never bypass the server-side charge/entitlement.
+function needsGrowthUpgrade(row: TemplateRow, isPro: boolean): boolean {
+  return row.premium && !isPro;
+}
+
+/** One consistent "this template requires Growth" action, replacing the
+ *  Generate button (never disabling it) so a Free user has no way to
+ *  trigger generateContent for a Growth-only row from the UI. */
+function GrowthUpgradeCTA({ trialEligible }: { trialEligible: boolean }) {
+  return (
+    <div className="rounded-lg border border-[color:var(--teal)]/30 bg-[color:var(--teal)]/5 p-3 space-y-2">
+      <p className="text-xs text-muted-foreground">This template requires the Growth plan.</p>
+      <Button size="sm" className="w-full" onClick={() => window.location.href = "/subscription"}>
+        {growthButtonLabel(trialEligible)}
+      </Button>
+    </div>
+  );
 }
 
 /** Measures its own box and reports the width — same ResizeObserver pattern
@@ -311,6 +349,7 @@ function PosterWorkspace({ row, rowIdParam, onBack, onGenerated }: {
   const isPro = useIsPro(user?.id);
   const trialEligible = useGrowthTrialEligible(user?.id);
   const callGenerate = useServerFn(generateContent);
+  const generateGuard = useSubmitGuard();
 
   // hasPreviewData() already guarantees this resolves for any Poster row
   // that reaches this component (see TemplateStudioPage below).
@@ -391,14 +430,18 @@ function PosterWorkspace({ row, rowIdParam, onBack, onGenerated }: {
   usePersistCustomization(rowId, customization, restored);
 
   async function handleGenerate() {
-    if (!isPro) return; // button is replaced by an upgrade CTA below; defensive only
-    if (!topic.trim()) {
-      toast.error("Please enter a topic");
-      return;
-    }
-    setLoading(true);
-    setOutOfCredits(false);
+    // Synchronous guard, checked before any state read -- see useSubmitGuard
+    // for why the `loading` state below isn't enough on its own to stop a
+    // second click that fires before React re-renders the disabled button.
+    if (!generateGuard.tryAcquire()) return;
     try {
+      if (needsGrowthUpgrade(row, isPro)) return; // button is replaced by an upgrade CTA below; defensive only
+      if (!topic.trim()) {
+        toast.error("Please enter a topic");
+        return;
+      }
+      setLoading(true);
+      setOutOfCredits(false);
       const out = await callGenerate({
         data: {
           kind: "template",
@@ -451,6 +494,7 @@ function PosterWorkspace({ row, rowIdParam, onBack, onGenerated }: {
       }
     } finally {
       setLoading(false);
+      generateGuard.release();
     }
   }
 
@@ -546,13 +590,8 @@ function PosterWorkspace({ row, rowIdParam, onBack, onGenerated }: {
                 />
               </div>
 
-              {!isPro ? (
-                <div className="rounded-lg border border-[color:var(--teal)]/30 bg-[color:var(--teal)]/5 p-3 space-y-2">
-                  <p className="text-xs text-muted-foreground">Template Studio's ready-made promo designs are a Growth feature.</p>
-                  <Button size="sm" className="w-full" onClick={() => window.location.href = "/subscription"}>
-                    {growthButtonLabel(trialEligible)}
-                  </Button>
-                </div>
+              {needsGrowthUpgrade(row, isPro) ? (
+                <GrowthUpgradeCTA trialEligible={trialEligible} />
               ) : outOfCredits ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
                   <p className="text-xs text-destructive">You've used all your AI generations this period.</p>
@@ -750,8 +789,10 @@ function PostWorkspace({ row, rowIdParam, onBack, onGenerated }: {
 }) {
   const { user } = useAuth();
   const [brand] = useBrandKit();
+  const isPro = useIsPro(user?.id);
   const trialEligible = useGrowthTrialEligible(user?.id);
   const callGenerate = useServerFn(generateContent);
+  const generateGuard = useSubmitGuard();
   const sample = POST_SAMPLES[row.id];
 
   const [specialty, setSpecialty] = useState(brand.specialty || "");
@@ -788,14 +829,19 @@ function PostWorkspace({ row, rowIdParam, onBack, onGenerated }: {
   }, [rowIdParam, rowId]);
 
   async function handleGenerate() {
-    if (!topic.trim()) { toast.error("Please enter a topic"); return; }
-    if (row.category === "did-you-know" && (!statistic.trim() || !statisticSource.trim())) {
-      toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
-      return;
-    }
-    setLoading(true);
-    setOutOfCredits(false);
+    // Synchronous guard, checked before any state read -- see useSubmitGuard
+    // for why the `loading` state below isn't enough on its own to stop a
+    // second click that fires before React re-renders the disabled button.
+    if (!generateGuard.tryAcquire()) return;
     try {
+      if (needsGrowthUpgrade(row, isPro)) return; // button is replaced by an upgrade CTA below; defensive only
+      if (!topic.trim()) { toast.error("Please enter a topic"); return; }
+      if (row.category === "did-you-know" && (!statistic.trim() || !statisticSource.trim())) {
+        toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
+        return;
+      }
+      setLoading(true);
+      setOutOfCredits(false);
       const out = await callGenerate({
         data: {
           kind: "single", category: row.category,
@@ -825,6 +871,7 @@ function PostWorkspace({ row, rowIdParam, onBack, onGenerated }: {
       }
     } finally {
       setLoading(false);
+      generateGuard.release();
     }
   }
 
@@ -857,7 +904,9 @@ function PostWorkspace({ row, rowIdParam, onBack, onGenerated }: {
                   statisticContext={statisticContext} setStatisticContext={setStatisticContext}
                 />
               )}
-              {outOfCredits ? (
+              {needsGrowthUpgrade(row, isPro) ? (
+                <GrowthUpgradeCTA trialEligible={trialEligible} />
+              ) : outOfCredits ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
                   <p className="text-xs text-destructive">You've used all your AI generations this period.</p>
                   <Button size="sm" className="w-full" onClick={() => window.location.href = "/subscription"}>
@@ -918,8 +967,10 @@ function CarouselWorkspace({ row, rowIdParam, onBack, onGenerated }: {
 }) {
   const { user } = useAuth();
   const [brand] = useBrandKit();
+  const isPro = useIsPro(user?.id);
   const trialEligible = useGrowthTrialEligible(user?.id);
   const callGenerate = useServerFn(generateContent);
+  const generateGuard = useSubmitGuard();
   const sample = CAROUSEL_SAMPLES[row.id];
 
   const [specialty, setSpecialty] = useState(brand.specialty || "");
@@ -957,14 +1008,19 @@ function CarouselWorkspace({ row, rowIdParam, onBack, onGenerated }: {
   }, [rowIdParam, rowId]);
 
   async function handleGenerate() {
-    if (!topic.trim()) { toast.error("Please enter a topic"); return; }
-    if (row.category === "did-you-know" && (!statistic.trim() || !statisticSource.trim())) {
-      toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
-      return;
-    }
-    setLoading(true);
-    setOutOfCredits(false);
+    // Synchronous guard, checked before any state read -- see useSubmitGuard
+    // for why the `loading` state below isn't enough on its own to stop a
+    // second click that fires before React re-renders the disabled button.
+    if (!generateGuard.tryAcquire()) return;
     try {
+      if (needsGrowthUpgrade(row, isPro)) return; // button is replaced by an upgrade CTA below; defensive only
+      if (!topic.trim()) { toast.error("Please enter a topic"); return; }
+      if (row.category === "did-you-know" && (!statistic.trim() || !statisticSource.trim())) {
+        toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
+        return;
+      }
+      setLoading(true);
+      setOutOfCredits(false);
       const out = await callGenerate({
         data: {
           kind: "carousel", category: row.category,
@@ -994,6 +1050,7 @@ function CarouselWorkspace({ row, rowIdParam, onBack, onGenerated }: {
       }
     } finally {
       setLoading(false);
+      generateGuard.release();
     }
   }
 
@@ -1030,7 +1087,9 @@ function CarouselWorkspace({ row, rowIdParam, onBack, onGenerated }: {
                   statisticContext={statisticContext} setStatisticContext={setStatisticContext}
                 />
               )}
-              {outOfCredits ? (
+              {needsGrowthUpgrade(row, isPro) ? (
+                <GrowthUpgradeCTA trialEligible={trialEligible} />
+              ) : outOfCredits ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
                   <p className="text-xs text-destructive">You've used all your AI generations this period.</p>
                   <Button size="sm" className="w-full" onClick={() => window.location.href = "/subscription"}>
@@ -1093,6 +1152,7 @@ function StoryWorkspace({ row, rowIdParam, onBack, onGenerated }: {
   const [brand] = useBrandKit();
   const trialEligible = useGrowthTrialEligible(user?.id);
   const callGenerate = useServerFn(generateContent);
+  const generateGuard = useSubmitGuard();
   const sample = STORY_SAMPLES[row.id];
 
   const [specialty, setSpecialty] = useState(brand.specialty || "");
@@ -1129,14 +1189,18 @@ function StoryWorkspace({ row, rowIdParam, onBack, onGenerated }: {
   }, [rowIdParam, rowId]);
 
   async function handleGenerate() {
-    if (!topic.trim()) { toast.error("Please enter a topic"); return; }
-    if (row.category === "did-you-know" && (!statistic.trim() || !statisticSource.trim())) {
-      toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
-      return;
-    }
-    setLoading(true);
-    setOutOfCredits(false);
+    // Synchronous guard, checked before any state read -- see useSubmitGuard
+    // for why the `loading` state below isn't enough on its own to stop a
+    // second click that fires before React re-renders the disabled button.
+    if (!generateGuard.tryAcquire()) return;
     try {
+      if (!topic.trim()) { toast.error("Please enter a topic"); return; }
+      if (row.category === "did-you-know" && (!statistic.trim() || !statisticSource.trim())) {
+        toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
+        return;
+      }
+      setLoading(true);
+      setOutOfCredits(false);
       const out = await callGenerate({
         data: {
           kind: "story", category: row.category,
@@ -1166,6 +1230,7 @@ function StoryWorkspace({ row, rowIdParam, onBack, onGenerated }: {
       }
     } finally {
       setLoading(false);
+      generateGuard.release();
     }
   }
 
@@ -1275,6 +1340,13 @@ function TemplateStudioPage() {
         .from("templates")
         .select("id, render_key, name, description, category, specialty_tags, format, archetype, premium, sort_order")
         .eq("status", "published")
+        // Story is temporarily out of Template Studio's product scope (not
+        // deleted -- the renderers, catalog rows, and Content Studio's own
+        // Story flow are untouched). Excluding it at the query means it
+        // never enters `templates` state at all, so every downstream view
+        // (grid, filters, favorites, preview, workspace dispatch) is
+        // automatically Story-free with no separate exclusion needed there.
+        .neq("format", "story")
         .order("sort_order", { ascending: true });
       if (cancelled) return;
       if (error) { setLoadError(error.message); return; }

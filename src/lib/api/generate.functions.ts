@@ -9,6 +9,7 @@ import { getRequestHeader } from "@tanstack/react-start/server";
 import { PostCustomizationSchema, defaultCustomizationFor } from "@/lib/post-customization";
 import { validateTemplateContent } from "@/lib/template-content-schema";
 import { buildRenderKeyGuidance, rendererOverridesCategoryStructure } from "@/lib/template-generation-hints";
+import { PAID_PLANS } from "@/lib/constants";
 
 function validateEnv(): { supabaseUrl: string; supabaseAnonKey: string; geminiApiKey: string } {
   const supabaseUrl     = process.env.SUPABASE_URL;
@@ -72,7 +73,73 @@ function getPlanConfig(plan: string | null | undefined): PlanAiConfig {
   if (plan === "pro_clinic" || plan === "pro") return PLAN_AI_CONFIG.pro_clinic;
   return PLAN_AI_CONFIG.starter;
 }
+
+// Mirrors useIsPro()'s entitlement logic (src/lib/use-subscription.ts) --
+// same PAID_PLANS list, same plan_expires_at check -- but evaluated
+// server-side against the authoritative `subscriptions` row instead of
+// trusted from client state.
+function hasGrowthEntitlement(
+  plan:          string | null | undefined,
+  planExpiresAt: string | null | undefined,
+): boolean {
+  return (
+    !!plan &&
+    (PAID_PLANS as readonly string[]).includes(plan) &&
+    !!planExpiresAt &&
+    new Date(planExpiresAt) > new Date()
+  );
+}
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Credit refunds after a post-deduction failure ─────────────────────────
+// refund_credit's UPDATE (migration 20240001000008) has no idempotency key
+// or dedup guard -- each successful call unconditionally decrements
+// generations_used by 1. A failed RPC call cannot be reliably distinguished
+// from "the UPDATE committed server-side but the response was lost in
+// transit" (a dropped connection, a timeout), so retrying it is not safe:
+// the retry could double-decrement a user's usage count, silently giving
+// away a free credit -- a worse and harder-to-detect failure than the
+// original stuck charge. This deliberately does NOT retry; see
+// attemptRefund's own note below. Every refund_credit call in this file
+// goes through attemptRefund so this reasoning lives in one place.
+type RefundResult = { refunded: true } | { refunded: false };
+
+/**
+ * Calls refund_credit exactly once (no retry -- see the note above) and
+ * never swallows a failure: on error it logs enough to identify the
+ * affected user and the failure context for manual reconciliation, then
+ * reports back (rather than throwing itself) so the caller decides what to
+ * tell the user.
+ */
+async function attemptRefund(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  userId: string,
+  context: string,
+): Promise<RefundResult> {
+  try {
+    const { error } = await supabase.rpc("refund_credit", { p_user_id: userId });
+    if (error) throw error;
+    return { refunded: true };
+  } catch (refundErr: any) {
+    console.error(
+      `[generateContent][REFUND_FAILED] user_id=${userId} context="${context}" ` +
+      `refundError="${refundErr?.message ?? refundErr}"`,
+    );
+    return { refunded: false };
+  }
+}
+
+/**
+ * Builds the client-facing failure message from a refund attempt's outcome.
+ * Never claims a refund happened unless attemptRefund actually confirmed
+ * it, and never includes the raw refund RPC error -- that detail is only
+ * ever logged server-side by attemptRefund above.
+ */
+function refundAwareMessage(refund: RefundResult, base: string): string {
+  return refund.refunded
+    ? `${base} Your credit has been refunded.`
+    : `${base} We could not confirm your credit was refunded -- please check your remaining credits before trying again, or contact support if they look incorrect.`;
+}
 
 async function callGeminiText(
   system:     string,
@@ -892,6 +959,36 @@ export const generateContent = createServerFn({ method: "POST" })
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) throw new Error("Unauthorized. Please sign in to generate content.");
 
+      // Fetch the user's plan up front -- this is the same `subscriptions`
+      // row/columns used by useIsPro() and by deduct_credit's own lookup,
+      // just read once here so it can back both the entitlement check below
+      // and the AI quality tier further down.
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("plan, plan_expires_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      // Premium-template entitlement, enforced server-side. `templates.premium`
+      // is the authoritative flag (looked up here, never trusted from the
+      // client -- the client doesn't even send a premium value, only
+      // `templateId`), and entitlement is decided from the user's real
+      // subscription row, not client state like a UI isPro flag. This runs
+      // before deduct_credit so a rejected request consumes zero credits.
+      // Content Studio generations never set templateId, so this is a no-op
+      // for them.
+      if (data.templateId) {
+        const { data: template } = await supabase
+          .from("templates")
+          .select("premium")
+          .eq("id", data.templateId)
+          .maybeSingle();
+
+        if (template?.premium && !hasGrowthEntitlement(sub?.plan, sub?.plan_expires_at)) {
+          throw new Error("This is a Growth-plan template. Please upgrade your plan to generate it.");
+        }
+      }
+
       const { error: creditError } = await supabase.rpc("deduct_credit", { p_user_id: user.id });
       if (creditError) {
         if (creditError.message.includes("INSUFFICIENT_CREDITS"))
@@ -901,12 +998,6 @@ export const generateContent = createServerFn({ method: "POST" })
         throw new Error(`Credit processing failed: ${creditError.message}`);
       }
 
-      // Fetch plan to determine AI quality tier
-      const { data: sub } = await supabase
-        .from("subscriptions")
-        .select("plan")
-        .eq("user_id", user.id)
-        .maybeSingle();
       const aiConfig = getPlanConfig(sub?.plan);
 
       const { data: brandKit } = await supabase
@@ -957,17 +1048,21 @@ export const generateContent = createServerFn({ method: "POST" })
           try {
             result = await generateAndValidate();
           } catch (secondErr: any) {
-            try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
             console.error("[generateContent] template generation failed validation twice:", secondErr?.message);
-            throw new Error("We couldn't generate valid content for this template. Please try again.");
+            const refund = await attemptRefund(supabase, user.id, "template generation failed validation twice");
+            throw new Error(refundAwareMessage(refund, "We couldn't generate valid content for this template."));
           }
         } else {
           // Unchanged behavior for the other six kinds, extended to also
           // cover extractJson/normalize failures (previously only a raw
           // callGeminiText failure triggered a refund here -- a malformed-
-          // JSON response deducted a credit with no refund).
-          try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
-          throw firstErr;
+          // JSON response deducted a credit with no refund). When the
+          // refund succeeds, firstErr is rethrown unchanged -- identical to
+          // the pre-existing behavior. Only when the refund itself fails do
+          // we throw a different, refund-aware message instead.
+          const refund = await attemptRefund(supabase, user.id, `generation failed: ${firstErr?.message ?? "unknown error"}`);
+          if (refund.refunded) throw firstErr;
+          throw new Error(refundAwareMessage(refund, firstErr?.message || "Generation failed."));
         }
       }
 
@@ -981,28 +1076,50 @@ export const generateContent = createServerFn({ method: "POST" })
         console.error("[generateContent] default customization failed:", e);
       }
 
-      const { data: inserted, error: saveError } = await supabase
-        .from("content_generations")
-        .insert({
-          user_id:          user.id,
-          workflow_kind:    data.kind,
-          content_category: data.category,
-          specialty:        data.specialty,
-          tone:             data.tone,
-          topic:            data.topic.trim(),
-          generated_text:   JSON.stringify(result),
-          hashtags,
-          status:           "completed",
-          ai_model:         aiConfig.model,
-          customization,
-          template_id:      data.templateId ?? null,
-        })
-        .select("id")
-        .single();
+      // The generation itself succeeded at this point -- deduct_credit has
+      // already run. If this insert doesn't produce a usable row (a
+      // resolved {error}, or the call throwing outright -- e.g. a network
+      // failure -- both land here), there is nothing for the user to see:
+      // no History row, no contentId for generateImage to attach to, no
+      // _rowId for customization persistence. Silently returning success
+      // with _rowId: undefined previously left the user charged with
+      // content that vanishes on refresh. Treat this exactly like any other
+      // "credit spent, nothing usable produced" failure -- refund, then
+      // fail the request clearly, matching the retry-then-refund pattern
+      // used above for a Gemini/validation failure. A successful insert
+      // never reaches this catch, so a refund can never follow a
+      // successfully persisted generation.
+      let inserted: { id: string };
+      try {
+        const { data: insertedRow, error: saveError } = await supabase
+          .from("content_generations")
+          .insert({
+            user_id:          user.id,
+            workflow_kind:    data.kind,
+            content_category: data.category,
+            specialty:        data.specialty,
+            tone:             data.tone,
+            topic:            data.topic.trim(),
+            generated_text:   JSON.stringify(result),
+            hashtags,
+            status:           "completed",
+            ai_model:         aiConfig.model,
+            customization,
+            template_id:      data.templateId ?? null,
+          })
+          .select("id")
+          .single();
+        if (saveError) throw new Error(saveError.message);
+        inserted = insertedRow;
+      } catch (saveErr: any) {
+        console.error("[generateContent] DB save failed:", saveErr?.message ?? saveErr);
+        // Never unconditionally claim "you have not been charged" here --
+        // that was only true if the refund below actually succeeds.
+        const refund = await attemptRefund(supabase, user.id, "content_generations insert failed");
+        throw new Error(refundAwareMessage(refund, "Your content was generated but couldn't be saved."));
+      }
 
-      if (saveError) console.error("[generateContent] DB save failed:", saveError.message);
-
-      return { ...result, _rowId: inserted?.id ?? undefined } as typeof result & { _rowId?: string };
+      return { ...result, _rowId: inserted.id } as typeof result & { _rowId?: string };
     } catch (error: any) {
       console.error("FULL SERVER ERROR:", error);
       throw error;
