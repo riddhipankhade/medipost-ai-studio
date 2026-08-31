@@ -11,6 +11,7 @@ import { BrowserFrame } from "@/components/landing/browser-frame";
 import { ContentStudioShowcase } from "@/components/landing/content-studio-showcase";
 import { HeroShowcase } from "@/components/landing/hero-showcase";
 import { TrustBar } from "@/components/landing/trust-bar";
+import { ProductDemo } from "@/components/landing/product-demo";
 import { Testimonials } from "@/components/landing/testimonials";
 import { AnimatedNumber } from "@/components/landing/animated-number";
 import { LandingNav } from "@/components/landing/landing-nav";
@@ -83,6 +84,8 @@ function Landing() {
       </section>
 
       <TrustBar />
+
+      <ProductDemo />
 
       {/* ── Content Studio (interactive) ───────────────────────────────────── */}
       <section id="features" className="relative py-16 md:py-24 border-y border-border/60">
