@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Sparkles, History, CreditCard, LogOut, Palette, Settings, Menu } from "lucide-react";
+import { LayoutDashboard, Sparkles, History, CreditCard, LogOut, Palette, Settings, Menu, LayoutTemplate } from "lucide-react";
 import { motion } from "framer-motion";
 import { Brand } from "@/components/brand";
 import { ContactButton } from "@/components/contact-modal";
@@ -12,6 +12,7 @@ import { useSubscription, useIsPro } from "@/lib/use-subscription";
 const nav = [
   { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
   { to: "/generate",     label: "Content Studio",   icon: Sparkles },
+  { to: "/templates",    label: "Template Studio",  icon: LayoutTemplate },
   { to: "/brand",        label: "Brand Kit",        icon: Palette },
   { to: "/history",      label: "Content History",  icon: History },
   { to: "/subscription", label: "Subscription",     icon: CreditCard },

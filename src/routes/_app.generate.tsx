@@ -80,6 +80,9 @@ import {
   TEMPLATE_SAMPLES,
   type TemplateFrameId,
 } from "@/components/template-frames";
+import { getPostTemplate } from "@/components/post-templates";
+import { getCarouselTemplate } from "@/components/carousel-templates";
+import { getStoryTemplate } from "@/components/story-templates";
 import {
   carouselThemes,
   slideLayouts,
@@ -117,6 +120,7 @@ import {
 import { resolveVisualStrategy, resolveSinglePostStrategy } from "@/lib/visual-strategy";
 import { useDownloadPost } from "@/hooks/useDownloadPost";
 import { usePersistCustomization } from "@/hooks/usePersistCustomization";
+import { useSubmitGuard } from "@/hooks/useSubmitGuard";
 import {
   resolveTheme,
   resolveFestiveColors,
@@ -148,6 +152,19 @@ import {
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
+  // Populated by Template Studio's "Use Template" action (src/routes/_app.templates.tsx).
+  // All optional/loosely-typed here; validated for real (against templateFrames/
+  // contentCategories/known WorkflowKinds) where they're actually applied, below.
+  // frameId is Poster-only (a real render_key); kind+slideCount are for the
+  // Post/Carousel/Story catalog entries, which have no render_key to pass.
+  validateSearch: (search: Record<string, unknown>): { frameId?: string; templateId?: string; category?: string; kind?: string; slideCount?: string; renderKey?: string } => ({
+    frameId:    typeof search.frameId === "string" ? search.frameId : undefined,
+    templateId: typeof search.templateId === "string" ? search.templateId : undefined,
+    category:   typeof search.category === "string" ? search.category : undefined,
+    kind:       typeof search.kind === "string" ? search.kind : undefined,
+    slideCount: typeof search.slideCount === "string" ? search.slideCount : undefined,
+    renderKey:  typeof search.renderKey === "string" ? search.renderKey : undefined,
+  }),
   component: GeneratePage,
 });
 
@@ -171,6 +188,11 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 const CONTENT_LANGUAGES = [
   "English", "Hindi", "Marathi", "Kannada", "Tamil", "Telugu", "Bengali", "Gujarati", "Punjabi", "Malayalam",
 ];
+
+// The three catalog formats with no render_key (see migration
+// 20240001000015) that arrive at /generate via ?kind=&category=&slideCount=
+// instead of Poster's ?frameId=.
+const TEMPLATE_CATALOG_KINDS: readonly WorkflowKind[] = ["single", "carousel", "story"];
 
 const BRIEF_STORAGE_PREFIX = "medipost.studio-brief.v1";
 
@@ -205,10 +227,17 @@ const DEFAULT_BRIEF_FORM: Omit<GenerateInput, "kind"> = {
   festiveStyle: "Warm & Friendly",
   slideCount: 7,
   language: "English",
+  // Only meaningful when category === "did-you-know" -- see the "Statistic &
+  // source" field shown conditionally below, and the server-side requirement
+  // in generate.functions.ts's InputSchema superRefine.
+  statistic: "",
+  statisticSource: "",
+  statisticContext: "",
 };
 
 function GeneratePage() {
   const callGenerate = useServerFn(generateContent);
+  const search = Route.useSearch();
   const [brand] = useBrandKit();
   const brandKitPercent = brandKitCompleteness(brand).percent;
   const { user } = useAuth();
@@ -237,6 +266,65 @@ function GeneratePage() {
   const [category, setCategory] = useState<ContentCategory>(defaultCategoryFor("single"));
   const [form, setForm] = useState<Omit<GenerateInput, "kind">>(DEFAULT_BRIEF_FORM);
   const [templateFrame, setTemplateFrame] = useState<TemplateFrameId>("clinic-classic");
+  // Which `templates` catalog row (if any) the current brief started from —
+  // set only via the ?frameId=/?templateId= search params below, cleared on
+  // any manual workflow-tab switch since the association is only meaningful
+  // for the specific selection that navigated here. See generate.functions.ts's
+  // InputSchema.templateId and migration 20240001000014's comment on
+  // content_generations.template_id.
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  // Which fixed-design Post/Carousel/Story renderer (if any) this brief's
+  // template came with — set only via ?renderKey=, distinct from
+  // selectedTemplateId (which catalog row) since a template can exist
+  // without a finalized render yet. See src/components/post-templates.tsx.
+  const [selectedRenderKey, setSelectedRenderKey] = useState<string | null>(null);
+  const appliedTemplateSearchRef = useRef(false);
+
+  // Apply a Template Studio "Use Template" selection once, on arrival.
+  // Deliberately does not touch specialty/tone/audience/topic — the user
+  // still writes their own brief; only which template/category (and, for
+  // Post/Carousel/Story catalog entries, which kind/slideCount) this brief is
+  // for gets pre-selected. Poster entries arrive via ?frameId= (a real
+  // render_key); Post/Carousel/Story entries have no render_key (see
+  // migration 20240001000015) and arrive via ?kind=&category=&slideCount=
+  // instead.
+  useEffect(() => {
+    if (appliedTemplateSearchRef.current) return;
+
+    if (search.frameId) {
+      const validFrame = templateFrames.some((f) => f.id === search.frameId);
+      if (!validFrame) return;
+      appliedTemplateSearchRef.current = true;
+      setKind("template");
+      setTemplateFrame(search.frameId as TemplateFrameId);
+      setSelectedTemplateId(search.templateId ?? null);
+      if (search.category && contentCategories.some((c) => c.id === search.category)) {
+        const cat = search.category as ContentCategory;
+        setCategory(cat);
+        setForm((f) => ({ ...f, category: cat }));
+      }
+      return;
+    }
+
+    if (search.kind) {
+      const validKind = TEMPLATE_CATALOG_KINDS.includes(search.kind as WorkflowKind);
+      if (!validKind) return;
+      appliedTemplateSearchRef.current = true;
+      const nextKind = search.kind as WorkflowKind;
+      setKind(nextKind);
+      setSelectedTemplateId(search.templateId ?? null);
+      setSelectedRenderKey(search.renderKey ?? null);
+      if (search.category && contentCategories.some((c) => c.id === search.category)) {
+        const cat = search.category as ContentCategory;
+        setCategory(cat);
+        setForm((f) => ({ ...f, category: cat }));
+      }
+      const parsedSlides = search.slideCount ? Number(search.slideCount) : NaN;
+      if (nextKind === "carousel" && Number.isInteger(parsedSlides) && parsedSlides >= 2 && parsedSlides <= 10) {
+        setForm((f) => ({ ...f, slideCount: parsedSlides }));
+      }
+    }
+  }, [search.frameId, search.templateId, search.category, search.kind, search.slideCount, search.renderKey]);
 
   // Animated "e.g. ..." examples in the Topic/Prompt field — inspiration for a
   // doctor who isn't sure what to write. Freezes once they start typing.
@@ -330,6 +418,7 @@ function GeneratePage() {
   }, []);
 
   const [loading, setLoading] = useState(false);
+  const generateGuard = useSubmitGuard();
   const [stage, setStage] = useState(0);
   const [result, setResult] = useState<GenerateOutput | null>(null);
   const [rowId,  setRowId]  = useState<string | null>(null);
@@ -361,7 +450,11 @@ function GeneratePage() {
     let cancelled = false;
 
     (async () => {
-      const pointer = readStudioSessionPointer(userId);
+      // Arriving with an explicit template selection (Template Studio's "Use
+      // Template") takes priority over resuming whatever was last being
+      // edited — treat it as if there's no pointer to restore. Covers both
+      // Poster (?frameId=) and Post/Carousel/Story (?kind=) catalog entries.
+      const pointer = (search.frameId || search.kind) ? null : readStudioSessionPointer(userId);
       if (!pointer) { setSessionHydrated(true); return; }
 
       const row = await fetchStudioSessionRow(pointer.rowId);
@@ -386,7 +479,7 @@ function GeneratePage() {
     })();
 
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [userId, search.frameId, search.kind]);
 
   useEffect(() => {
     if (!userId || !sessionHydrated) return;
@@ -404,6 +497,8 @@ function GeneratePage() {
 
   function switchKind(next: WorkflowKind) {
     setKind(next);
+    setSelectedTemplateId(null);
+    setSelectedRenderKey(null);
     const nextCat = defaultCategoryFor(next);
     setCategory(nextCat);
     setForm((f) => ({ ...f, category: nextCat }));
@@ -420,31 +515,51 @@ function GeneratePage() {
   }
 
   async function run() {
-    if (kind === "template" && !isPro) {
-      setUpgradePrompt("Template Studio's ready-made promo designs are a Growth feature.");
-      return;
-    }
-    if (!isPro && (form.tone !== "Standard" || form.audience !== "General Public")) {
-      setUpgradePrompt("Custom tones and audience targeting are a Growth feature.");
-      return;
-    }
-    if (!form.topic.trim()) {
-      toast.error("Please enter a topic");
-      return;
-    }
-    setLoading(true);
-    setStage(0);
-    setOutOfCredits(false);
-    const ticker = setInterval(() => {
-      setStage((s) => Math.min(s + 1, PROGRESS_STAGES.length - 1));
-    }, 900);
+    // Synchronous guard, checked before any state read -- see useSubmitGuard
+    // for why the `loading` state below isn't enough on its own to stop a
+    // second click that fires before React re-renders the disabled button.
+    if (!generateGuard.tryAcquire()) return;
+    let ticker: ReturnType<typeof setInterval> | undefined;
     try {
+      if (kind === "template" && !isPro) {
+        setUpgradePrompt("Template Studio's ready-made promo designs are a Growth feature.");
+        return;
+      }
+      if (!isPro && (form.tone !== "Standard" || form.audience !== "General Public")) {
+        setUpgradePrompt("Custom tones and audience targeting are a Growth feature.");
+        return;
+      }
+      if (!form.topic.trim()) {
+        toast.error("Please enter a topic");
+        return;
+      }
+      // UX guard only — generate.functions.ts's InputSchema superRefine is the
+      // actual guard against an invented statistic, and runs server-side
+      // regardless of whether this check is ever bypassed.
+      if (category === "did-you-know" && (!form.statistic?.trim() || !form.statisticSource?.trim())) {
+        toast.error("Please add the statistic and its source — Medipost formats it, but never invents the number.");
+        return;
+      }
+      setLoading(true);
+      setStage(0);
+      setOutOfCredits(false);
+      ticker = setInterval(() => {
+        setStage((s) => Math.min(s + 1, PROGRESS_STAGES.length - 1));
+      }, 900);
       const out = await callGenerate({
         data: {
           kind,
           ...form,
           category,
           brand: supabaseBrand,
+          templateId: selectedTemplateId ?? undefined,
+          // "" (the default, kept for controlled-input purposes) must become
+          // undefined, not an empty string -- InputSchema's statistic/
+          // statisticSource use z.string().min(1), which an empty string
+          // fails even though the field itself is .optional().
+          statistic:        form.statistic?.trim() || undefined,
+          statisticSource:  form.statisticSource?.trim() || undefined,
+          statisticContext: form.statisticContext?.trim() || undefined,
         },
       });
       // Only replace the in-memory result once generation actually succeeds
@@ -476,6 +591,7 @@ function GeneratePage() {
     } finally {
       clearInterval(ticker);
       setLoading(false);
+      generateGuard.release();
     }
   }
 
@@ -564,6 +680,35 @@ function GeneratePage() {
             <Field label="Medical Specialty">
               <SpecialtySelect value={form.specialty} onChange={(v) => update("specialty", v)} />
             </Field>
+
+            {category === "did-you-know" && (
+              <>
+                <Field label="Statistic (required)">
+                  <Input
+                    value={form.statistic ?? ""}
+                    onChange={(e) => update("statistic", e.target.value)}
+                    placeholder="e.g. Nearly 1 in 3 adults have high blood pressure"
+                  />
+                  <p className="text-[11px] text-muted-foreground pt-1">
+                    Medipost formats this for social media — it never invents or changes the number.
+                  </p>
+                </Field>
+                <Field label="Source (required)">
+                  <Input
+                    value={form.statisticSource ?? ""}
+                    onChange={(e) => update("statisticSource", e.target.value)}
+                    placeholder="e.g. WHO, 2023"
+                  />
+                </Field>
+                <Field label="Additional context (optional)">
+                  <Input
+                    value={form.statisticContext ?? ""}
+                    onChange={(e) => update("statisticContext", e.target.value)}
+                    placeholder="e.g. many don't know they have it"
+                  />
+                </Field>
+              </>
+            )}
 
             {kind === "festive" ? (
               <>
@@ -777,6 +922,7 @@ function GeneratePage() {
                 result={result} specialty={form.specialty} rowId={rowId} category={resultCategory} topic={form.topic}
                 templateFrame={templateFrame} onTemplateFrameChange={setTemplateFrame}
                 sessionSeed={sessionSeed}
+                renderKey={selectedRenderKey}
               />
               <VisualConceptCard visual={result.visual} />
             </div>
@@ -851,21 +997,25 @@ function LoadingPanel({ stage }: { stage: number }) {
   );
 }
 
-function ResultPreview({ result, specialty, rowId, category, topic, templateFrame, onTemplateFrameChange, sessionSeed }: {
+function ResultPreview({ result, specialty, rowId, category, topic, templateFrame, onTemplateFrameChange, sessionSeed, renderKey }: {
   result: GenerateOutput; specialty: string; rowId: string | null; category: ContentCategory; topic: string;
   templateFrame: TemplateFrameId; onTemplateFrameChange: (id: TemplateFrameId) => void;
   sessionSeed: StudioSessionRow | null;
+  renderKey?: string | null;
 }) {
   switch (result.kind) {
     case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic}
                         initialImageUrl={sessionSeed?.initialImageUrl ?? null}
-                        initialCustomization={sessionSeed?.initialCustomization?.kind === "single" ? sessionSeed.initialCustomization : null} />;
+                        initialCustomization={sessionSeed?.initialCustomization?.kind === "single" ? sessionSeed.initialCustomization : null}
+                        renderKey={renderKey} />;
     case "carousel": return <CarouselPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic}
                         initialSlideImages={sessionSeed?.initialSlideImages ?? null}
-                        initialCustomization={sessionSeed?.initialCustomization?.kind === "carousel" ? sessionSeed.initialCustomization : null} />;
+                        initialCustomization={sessionSeed?.initialCustomization?.kind === "carousel" ? sessionSeed.initialCustomization : null}
+                        renderKey={renderKey} />;
     case "story":    return <StoryPreview post={result} specialty={specialty} rowId={rowId}
                         initialImageUrl={sessionSeed?.initialImageUrl ?? null}
-                        initialCustomization={sessionSeed?.initialCustomization?.kind === "story" ? sessionSeed.initialCustomization : null} />;
+                        initialCustomization={sessionSeed?.initialCustomization?.kind === "story" ? sessionSeed.initialCustomization : null}
+                        renderKey={renderKey} />;
     case "reel":     return <ReelPreview post={result} specialty={specialty} />;
     case "campaign": return <CampaignPreview plan={result} />;
     case "festive":  return <FestivePreview post={result} specialty={specialty} rowId={rowId}
@@ -877,12 +1027,12 @@ function ResultPreview({ result, specialty, rowId, category, topic, templateFram
   }
 }
 
-function copyText(text: string, label = "Copied") {
+export function copyText(text: string, label = "Copied") {
   navigator.clipboard.writeText(text);
   toast.success(label);
 }
 
-function savePng(dataUrl: string, name: string) {
+export function savePng(dataUrl: string, name: string) {
   const link = document.createElement("a");
   link.download = name;
   link.href = dataUrl;
@@ -891,7 +1041,7 @@ function savePng(dataUrl: string, name: string) {
   document.body.removeChild(link);
 }
 
-function PreviewToolbar({ onCopy, title }: { onCopy?: () => void; title: string }) {
+export function PreviewToolbar({ onCopy, title }: { onCopy?: () => void; title: string }) {
   return (
     <div className="flex items-center justify-between gap-3 mb-3">
       <p className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
@@ -954,7 +1104,7 @@ export function ExactScalePreview({ children }: { children: React.ReactNode }) {
  * is a prop, so it fits any creative — square post, 9:16 story, festive card —
  * proportionally, showing a big, faithful copy of what downloads.
  */
-function FitScaledPreview({ naturalWidth, children, maxHeightVh = 80, maxScale = 3 }: {
+export function FitScaledPreview({ naturalWidth, children, maxHeightVh = 80, maxScale = 3 }: {
   naturalWidth: number; children: React.ReactNode; maxHeightVh?: number; maxScale?: number;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -1010,7 +1160,7 @@ function FitScaledPreview({ naturalWidth, children, maxHeightVh = 80, maxScale =
  * A "Preview" button that opens the creative full-size in a dialog, so a post
  * that renders small in the studio column can be inspected big and clearly.
  */
-function CreativePreviewDialog({ title, naturalWidth, triggerClassName = "", children }: {
+export function CreativePreviewDialog({ title, naturalWidth, triggerClassName = "", children }: {
   title: string; naturalWidth: number; triggerClassName?: string; children: React.ReactNode;
 }) {
   return (
@@ -1030,7 +1180,7 @@ function CreativePreviewDialog({ title, naturalWidth, triggerClassName = "", chi
   );
 }
 
-function useAiImage(contentId?: string | null, initialUrl?: string | null) {
+export function useAiImage(contentId?: string | null, initialUrl?: string | null) {
   const call = useServerFn(generateImage);
   const [url, setUrl] = useState<string | null>(initialUrl ?? null);
   const [loading, setLoading] = useState(false);
@@ -1063,9 +1213,13 @@ export function AiImageButton({ loading, hasImage, onClick, size = "sm", label }
   );
 }
 
-function SinglePostPreview({ post, specialty, rowId, category, topic, initialImageUrl, initialCustomization }: {
+export function SinglePostPreview({ post, specialty, rowId, category, topic, initialImageUrl, initialCustomization, renderKey }: {
   post: SinglePost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string;
   initialImageUrl?: string | null; initialCustomization?: SingleCustomization | null;
+  /** Set only when arriving via Template Studio's "Use Template" for a Post
+   *  catalog entry (?renderKey=). Takes priority over initialCustomization's
+   *  own persisted value so a fresh "Use Template" navigation always wins. */
+  renderKey?: string | null;
 }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId, initialImageUrl);
@@ -1083,27 +1237,40 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
   const [downloading, setDownloading] = useState(false);
   const captureRef = useRef<HTMLDivElement>(null);
 
+  // A fixed-design Post template determines the composition entirely -- when
+  // set, resolveSinglePostStrategy() is never called (below) and none of the
+  // theme/layout controls above apply. renderKey (fresh "Use Template" nav)
+  // wins over whatever was previously persisted for this row.
+  const [templateRenderKeyState] = useState<string | null>(() => renderKey ?? initialCustomization?.templateRenderKey ?? null);
+  const template = getPostTemplate(templateRenderKeyState);
+
   const theme = resolveTheme(
     { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
     brand,
   );
 
-  const strategy = resolveSinglePostStrategy({ headline: post.headline, content: post.content }, category);
-  const effectiveLayout: SlideLayout = autoLayout ? strategy.archetype : layout;
+  const strategy = template ? null : resolveSinglePostStrategy({ headline: post.headline, content: post.content }, category);
+  const effectiveLayout: SlideLayout = strategy ? (autoLayout ? strategy.archetype : layout) : "hero-card";
 
   const canvasProps: Omit<SlideCanvasProps, "imageUrl" | "imageLoading"> = {
     slideTitle: post.headline, slideBody: post.content, slideIndex: 0, totalSlides: 1,
     isCta: true, cta: post.cta, specialty, theme, layout: effectiveLayout,
     fontScale, showIcons, brand,
-    topic, category, composition: strategy.composition,
+    topic, category, composition: strategy?.composition ?? "hero-left",
   };
+
+  const templateProps = { headline: post.headline, content: post.content, cta: post.cta, specialty, brand };
 
   const customization: SingleCustomization = useMemo(() => ({
     v: 1, engine: "v1", kind: "single",
     theme: { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
-    strategy: { layout: effectiveLayout, composition: strategy.composition },
+    // Placeholder strategy when a fixed template is active -- never read for
+    // rendering in that case (dispatch checks templateRenderKey first), kept
+    // only because the schema still requires the field for the non-template path.
+    strategy: strategy ? { layout: effectiveLayout, composition: strategy.composition } : { layout: "hero-card", composition: "hero-left" },
     autoLayout,
-  }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, effectiveLayout, strategy.composition, autoLayout]);
+    ...(template ? { templateRenderKey: template.id } : {}),
+  }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, effectiveLayout, strategy, autoLayout, template]);
   usePersistCustomization(rowId, customization, !!initialCustomization);
 
   async function captureSinglePostPng(): Promise<string | null> {
@@ -1136,15 +1303,19 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
           <div className="min-w-0">
             <div className="mx-auto w-full max-w-md">
               <ExactScalePreview>
-                <SlideCanvas {...canvasProps} imageUrl={ai.url} imageLoading={ai.loading} />
+                {template
+                  ? <template.Component {...templateProps} imageUrl={ai.url} imageLoading={ai.loading} loadingOverlay={<ImageLoadingOverlay />} />
+                  : <SlideCanvas {...canvasProps} imageUrl={ai.url} imageLoading={ai.loading} />}
               </ExactScalePreview>
             </div>
             <CreativeActions className="mt-3">
-              <AiImageButton
-                loading={ai.loading}
-                hasImage={!!ai.url}
-                onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
-              />
+              {(!template || template.usesImage) && (
+                <AiImageButton
+                  loading={ai.loading}
+                  hasImage={!!ai.url}
+                  onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+                />
+              )}
               <Button
                 type="button" size="sm" variant="outline" className="gap-1.5 h-8"
                 onClick={downloadPost} disabled={downloading || ai.loading}
@@ -1155,36 +1326,50 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
             </CreativeActions>
             <div className="mx-auto mt-2 w-full max-w-md">
               <CreativePreviewDialog title="Post preview" naturalWidth={CREATIVE_DESIGN_WIDTH} triggerClassName="w-full">
-                <SlideCanvas {...canvasProps} imageUrl={ai.url} />
+                {template
+                  ? <template.Component {...templateProps} imageUrl={ai.url} />
+                  : <SlideCanvas {...canvasProps} imageUrl={ai.url} />}
               </CreativePreviewDialog>
             </div>
             <RemoveWatermarkRow className="mt-2" />
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
               <div ref={captureRef}>
-                <SlideCanvas {...canvasProps} imageUrl={ai.url} />
+                {template
+                  ? <template.Component {...templateProps} imageUrl={ai.url} />
+                  : <SlideCanvas {...canvasProps} imageUrl={ai.url} />}
               </div>
             </div>
           </div>
 
-          <StudioControls
-            themeId={themeId}
-            setThemeId={(id) => {
-              setThemeId(id); setFontFamily(getTheme(id).fontFamily);
-              setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
-            }}
-            layout={effectiveLayout}
-            setLayout={(v) => { setAutoLayout(false); setLayout(v); }}
-            autoLayout={autoLayout}
-            setAutoLayout={setAutoLayout}
-            recommendedLayout={strategy.archetype}
-            fontFamily={fontFamily} setFontFamily={setFontFamily}
-            fontScale={fontScale} setFontScale={setFontScale}
-            headingColor={headingColor ?? theme.heading} setHeadingColor={setHeadingColor}
-            textColor={textColor ?? theme.text} setTextColor={setTextColor}
-            accentColor={accentColor ?? theme.accent} setAccentColor={setAccentColor}
-            useBrandColors={useBrandColors} setUseBrandColors={setUseBrandColors}
-            showIcons={showIcons} setShowIcons={setShowIcons}
-          />
+          {template ? (
+            <div className="rounded-xl border border-border bg-card p-4 space-y-2 text-sm h-fit">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Template</p>
+              <p className="font-semibold">{template.name}</p>
+              <p className="text-xs text-muted-foreground">
+                This post uses a fixed template design from Template Studio — layout and theme aren't adjustable here, only the brand kit's colors and contact details.
+              </p>
+            </div>
+          ) : strategy && (
+            <StudioControls
+              themeId={themeId}
+              setThemeId={(id) => {
+                setThemeId(id); setFontFamily(getTheme(id).fontFamily);
+                setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
+              }}
+              layout={effectiveLayout}
+              setLayout={(v) => { setAutoLayout(false); setLayout(v); }}
+              autoLayout={autoLayout}
+              setAutoLayout={setAutoLayout}
+              recommendedLayout={strategy.archetype}
+              fontFamily={fontFamily} setFontFamily={setFontFamily}
+              fontScale={fontScale} setFontScale={setFontScale}
+              headingColor={headingColor ?? theme.heading} setHeadingColor={setHeadingColor}
+              textColor={textColor ?? theme.text} setTextColor={setTextColor}
+              accentColor={accentColor ?? theme.accent} setAccentColor={setAccentColor}
+              useBrandColors={useBrandColors} setUseBrandColors={setUseBrandColors}
+              showIcons={showIcons} setShowIcons={setShowIcons}
+            />
+          )}
         </div>
 
         <SectionBlock title="Headline" body={post.headline} />
@@ -1204,11 +1389,22 @@ function SinglePostPreview({ post, specialty, rowId, category, topic, initialIma
   );
 }
 
-function CarouselPreview({ post, specialty, rowId, category, topic, initialSlideImages, initialCustomization }: {
+export function CarouselPreview({ post, specialty, rowId, category, topic, initialSlideImages, initialCustomization, renderKey }: {
   post: CarouselPost; specialty: string; rowId?: string | null; category: ContentCategory; topic: string;
   initialSlideImages?: (string | null)[] | null; initialCustomization?: CarouselCustomization | null;
+  /** Set only when arriving via Template Studio's "Use Template" for a
+   *  Carousel catalog entry (?renderKey=). Takes priority over
+   *  initialCustomization's own persisted value so a fresh "Use Template"
+   *  navigation always wins. */
+  renderKey?: string | null;
 }) {
   const [brand] = useBrandKit();
+  // A fixed-design Carousel template determines every slide's composition --
+  // when set, resolveVisualStrategy() below is still computed (the schema
+  // still requires `slides`) but never used for rendering; dispatch checks
+  // templateRenderKey first, exactly mirroring SinglePostPreview.
+  const [templateRenderKeyState] = useState<string | null>(() => renderKey ?? initialCustomization?.templateRenderKey ?? null);
+  const template = getCarouselTemplate(templateRenderKeyState);
   const callImage = useServerFn(generateImage);
   const savedTheme = initialCustomization?.theme;
   const [idx, setIdx] = useState(0);
@@ -1320,7 +1516,8 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
     v: 1, engine: "v1", kind: "carousel",
     theme: { themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons },
     autoLayout: layoutOverrides.every((v) => v == null), slides: slidesStrategy,
-  }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, layoutOverrides, slidesStrategy]);
+    ...(template ? { templateRenderKey: template.id } : {}),
+  }), [themeId, useBrandColors, headingColor, textColor, accentColor, fontFamily, fontScale, showIcons, layoutOverrides, slidesStrategy, template]);
   usePersistCustomization(rowId, customization, !!initialCustomization);
 
   if (!slide) return null;
@@ -1328,6 +1525,8 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
   const strategy = resolveVisualStrategy(slide, category, { slideIndex: idx, totalSlides: total, isCta: idx === total - 1 });
   const currentOverride = layoutOverrides[idx] ?? null;
   const effectiveLayout: SlideLayout = currentOverride ?? strategy.archetype;
+
+  const templateSlideProps = { slideTitle: slide.title, slideBody: slide.content, slideIndex: idx, totalSlides: total, cta: post.cta, specialty, brand };
 
   return (
     <Card className="border-border/60">
@@ -1338,13 +1537,15 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
           <div className="min-w-0">
             <div className="relative mx-auto w-full max-w-md">
               <ExactScalePreview>
-                <SlideCanvas
-                  slideTitle={slide.title} slideBody={slide.content} slideIndex={idx} totalSlides={total}
-                  isCta={idx === total - 1} cta={post.cta} specialty={specialty} theme={theme} layout={effectiveLayout}
-                  fontScale={fontScale} showIcons={showIcons} brand={brand}
-                  imageUrl={slideImages[idx]} imageLoading={loadingSlide === idx}
-                  topic={topic} category={category} composition={strategy.composition}
-                />
+                {template
+                  ? <template.Component {...templateSlideProps} imageUrl={slideImages[idx]} imageLoading={loadingSlide === idx} loadingOverlay={<ImageLoadingOverlay />} />
+                  : <SlideCanvas
+                      slideTitle={slide.title} slideBody={slide.content} slideIndex={idx} totalSlides={total}
+                      isCta={idx === total - 1} cta={post.cta} specialty={specialty} theme={theme} layout={effectiveLayout}
+                      fontScale={fontScale} showIcons={showIcons} brand={brand}
+                      imageUrl={slideImages[idx]} imageLoading={loadingSlide === idx}
+                      topic={topic} category={category} composition={strategy.composition}
+                    />}
               </ExactScalePreview>
               <button onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={idx === 0}
                 className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 h-10 w-10 grid place-items-center rounded-full bg-background border border-border shadow disabled:opacity-40">
@@ -1357,10 +1558,12 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
             </div>
 
             <CreativeActions className="mt-3">
-              <AiImageButton
-                loading={loadingSlide === idx} hasImage={!!slideImages[idx]} onClick={() => genSlideImage(idx)}
-                label={slideImages[idx] ? "Regenerate visual" : "Generate visual"}
-              />
+              {(!template || template.usesImageForSlide(idx, total)) && (
+                <AiImageButton
+                  loading={loadingSlide === idx} hasImage={!!slideImages[idx]} onClick={() => genSlideImage(idx)}
+                  label={slideImages[idx] ? "Regenerate visual" : "Generate visual"}
+                />
+              )}
               <Button type="button" size="sm" variant="secondary" className="gap-1.5 h-8"
                 disabled={bulkLoading || loadingSlide !== null} onClick={genAll}>
                 {bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand className="h-3.5 w-3.5" />}
@@ -1379,19 +1582,31 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
             </CreativeActions>
             <div className="mx-auto mt-2 w-full max-w-md">
               <CreativePreviewDialog title={`Slide ${idx + 1} of ${total}`} naturalWidth={CREATIVE_DESIGN_WIDTH} triggerClassName="w-full">
-                <SlideCanvas
-                  slideTitle={slide.title} slideBody={slide.content} slideIndex={idx} totalSlides={total}
-                  isCta={idx === total - 1} cta={post.cta} specialty={specialty} theme={theme} layout={effectiveLayout}
-                  fontScale={fontScale} showIcons={showIcons} brand={brand}
-                  imageUrl={slideImages[idx]}
-                  topic={topic} category={category} composition={strategy.composition}
-                />
+                {template
+                  ? <template.Component {...templateSlideProps} imageUrl={slideImages[idx]} />
+                  : <SlideCanvas
+                      slideTitle={slide.title} slideBody={slide.content} slideIndex={idx} totalSlides={total}
+                      isCta={idx === total - 1} cta={post.cta} specialty={specialty} theme={theme} layout={effectiveLayout}
+                      fontScale={fontScale} showIcons={showIcons} brand={brand}
+                      imageUrl={slideImages[idx]}
+                      topic={topic} category={category} composition={strategy.composition}
+                    />}
               </CreativePreviewDialog>
             </div>
             <RemoveWatermarkRow className="mt-2" />
 
             <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: 540 }}>
               {post.slides.map((s, i) => {
+                if (template) {
+                  return (
+                    <div key={i} ref={(el) => { thumbCaptureRefs.current[i] = el; }}>
+                      <template.Component
+                        slideTitle={s.title} slideBody={s.content} slideIndex={i} totalSlides={total}
+                        cta={post.cta} specialty={specialty} brand={brand} imageUrl={slideImages[i]}
+                      />
+                    </div>
+                  );
+                }
                 const st = resolveVisualStrategy(s, category, { slideIndex: i, totalSlides: total, isCta: i === total - 1 });
                 const captureLayout: SlideLayout = layoutOverrides[i] ?? st.archetype;
                 return (
@@ -1409,25 +1624,35 @@ function CarouselPreview({ post, specialty, rowId, category, topic, initialSlide
             </div>
           </div>
 
-          <StudioControls
-            themeId={themeId}
-            setThemeId={(id) => {
-              setThemeId(id); setFontFamily(getTheme(id).fontFamily);
-              setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
-            }}
-            layout={effectiveLayout}
-            setLayout={(v) => setLayoutOverrides((arr) => { const next = [...arr]; next[idx] = v; return next; })}
-            autoLayout={currentOverride == null}
-            setAutoLayout={(v) => { if (v) setLayoutOverrides((arr) => { const next = [...arr]; next[idx] = null; return next; }); }}
-            recommendedLayout={strategy.archetype}
-            fontFamily={fontFamily} setFontFamily={setFontFamily}
-            fontScale={fontScale} setFontScale={setFontScale}
-            headingColor={headingColor ?? theme.heading} setHeadingColor={setHeadingColor}
-            textColor={textColor ?? theme.text} setTextColor={setTextColor}
-            accentColor={accentColor ?? theme.accent} setAccentColor={setAccentColor}
-            useBrandColors={useBrandColors} setUseBrandColors={setUseBrandColors}
-            showIcons={showIcons} setShowIcons={setShowIcons}
-          />
+          {template ? (
+            <div className="rounded-xl border border-border bg-card p-4 space-y-2 text-sm h-fit">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Template</p>
+              <p className="font-semibold">{template.name}</p>
+              <p className="text-xs text-muted-foreground">
+                This carousel uses a fixed template system from Template Studio — every slide shares one visual identity and layout/theme aren't adjustable here, only the brand kit's colors and contact details.
+              </p>
+            </div>
+          ) : (
+            <StudioControls
+              themeId={themeId}
+              setThemeId={(id) => {
+                setThemeId(id); setFontFamily(getTheme(id).fontFamily);
+                setUseBrandColors(false); setHeadingColor(null); setTextColor(null); setAccentColor(null);
+              }}
+              layout={effectiveLayout}
+              setLayout={(v) => setLayoutOverrides((arr) => { const next = [...arr]; next[idx] = v; return next; })}
+              autoLayout={currentOverride == null}
+              setAutoLayout={(v) => { if (v) setLayoutOverrides((arr) => { const next = [...arr]; next[idx] = null; return next; }); }}
+              recommendedLayout={strategy.archetype}
+              fontFamily={fontFamily} setFontFamily={setFontFamily}
+              fontScale={fontScale} setFontScale={setFontScale}
+              headingColor={headingColor ?? theme.heading} setHeadingColor={setHeadingColor}
+              textColor={textColor ?? theme.text} setTextColor={setTextColor}
+              accentColor={accentColor ?? theme.accent} setAccentColor={setAccentColor}
+              useBrandColors={useBrandColors} setUseBrandColors={setUseBrandColors}
+              showIcons={showIcons} setShowIcons={setShowIcons}
+            />
+          )}
         </div>
 
         <SectionBlock title="Hashtags" body={post.hashtags.join(" ")} />
@@ -1573,7 +1798,7 @@ function StudioControls(props: {
   );
 }
 
-function MiniColor({ label, value, onChange }: { label: string; value: string; onChange: (v: string | null) => void }) {
+export function MiniColor({ label, value, onChange }: { label: string; value: string; onChange: (v: string | null) => void }) {
   return (
     <div>
       <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</Label>
@@ -1586,7 +1811,7 @@ function MiniColor({ label, value, onChange }: { label: string; value: string; o
  *  when the subject lands off-center or gets cropped by a frame's fixed shape. Sliders drive
  *  the same objectPosition/transform the preview already renders with, so the effect is
  *  visible live and identical to what downloads. */
-function PhotoAdjustPanel({
+export function PhotoAdjustPanel({
   offsetX, offsetY, zoom, onOffsetXChange, onOffsetYChange, onZoomChange, hasCustom, onReset,
 }: {
   offsetX: number; offsetY: number; zoom: number;
@@ -1625,14 +1850,24 @@ function PhotoAdjustPanel({
   );
 }
 
-function StoryPreview({ post, specialty, rowId, initialImageUrl, initialCustomization }: {
+export function StoryPreview({ post, specialty, rowId, initialImageUrl, initialCustomization, renderKey }: {
   post: StoryPost; specialty: string; rowId?: string | null;
   initialImageUrl?: string | null; initialCustomization?: StoryCustomization | null;
+  /** Set only when arriving via Template Studio's "Use Template" for a Story
+   *  catalog entry (?renderKey=). Takes priority over initialCustomization's
+   *  own persisted value so a fresh "Use Template" navigation always wins. */
+  renderKey?: string | null;
 }) {
   const [brand] = useBrandKit();
   const ai = useAiImage(rowId, initialImageUrl);
   const storyRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
+
+  // A fixed-design Story template determines the composition entirely --
+  // when set, none of the color knobs below apply. renderKey (fresh
+  // "Use Template" nav) wins over whatever was previously persisted.
+  const [templateRenderKeyState] = useState<string | null>(() => renderKey ?? initialCustomization?.templateRenderKey ?? null);
+  const template = getStoryTemplate(templateRenderKeyState);
 
   const [useBrandColors, setUseBrandColors] = useState(() => initialCustomization?.useBrandColors ?? true);
   const [primaryColor, setPrimaryColor] = useState<string | null>(() => initialCustomization?.primaryColor ?? null);
@@ -1646,7 +1881,8 @@ function StoryPreview({ post, specialty, rowId, initialImageUrl, initialCustomiz
   const customization: StoryCustomization = useMemo(() => ({
     v: 1, engine: "v1", kind: "story",
     useBrandColors, primaryColor, secondaryColor, tertiaryColor,
-  }), [useBrandColors, primaryColor, secondaryColor, tertiaryColor]);
+    ...(template ? { templateRenderKey: template.id } : {}),
+  }), [useBrandColors, primaryColor, secondaryColor, tertiaryColor, template]);
   usePersistCustomization(rowId, customization, !!initialCustomization);
 
   async function captureStoryPng(): Promise<string | null> {
@@ -1679,19 +1915,26 @@ function StoryPreview({ post, specialty, rowId, initialImageUrl, initialCustomiz
     <Card className="border-border/60">
       <CardContent className="pt-6 space-y-5">
         <PreviewToolbar title="Story (9:16) Preview" />
-        <StoryCard
-          ref={storyRef}
-          headline={post.headline}
-          message={post.message}
-          cta={post.cta}
-          colors={post.visual.colors}
-          brand={brand}
-          specialty={specialty}
-          imageUrl={ai.url}
-          imageLoading={ai.loading}
-          loadingOverlay={<ImageLoadingOverlay />}
-          colorOverrides={cardColors}
-        />
+        {template
+          ? <template.Component
+              ref={storyRef}
+              headline={post.headline} message={post.message} cta={post.cta}
+              specialty={specialty} brand={brand}
+              imageUrl={ai.url} imageLoading={ai.loading} loadingOverlay={<ImageLoadingOverlay />}
+            />
+          : <StoryCard
+              ref={storyRef}
+              headline={post.headline}
+              message={post.message}
+              cta={post.cta}
+              colors={post.visual.colors}
+              brand={brand}
+              specialty={specialty}
+              imageUrl={ai.url}
+              imageLoading={ai.loading}
+              loadingOverlay={<ImageLoadingOverlay />}
+              colorOverrides={cardColors}
+            />}
         <div className="space-y-2">
           <div className="flex flex-wrap justify-center gap-2">
             <AiImageButton loading={ai.loading} hasImage={!!ai.url}
@@ -1701,41 +1944,53 @@ function StoryPreview({ post, specialty, rowId, initialImageUrl, initialCustomiz
               Download story
             </Button>
             <CreativePreviewDialog title="Story preview (9:16)" naturalWidth={270}>
-              <StoryCard
-                headline={post.headline}
-                message={post.message}
-                cta={post.cta}
-                colors={post.visual.colors}
-                brand={brand}
-                specialty={specialty}
-                imageUrl={ai.url}
-                colorOverrides={cardColors}
-              />
+              {template
+                ? <template.Component headline={post.headline} message={post.message} cta={post.cta} specialty={specialty} brand={brand} imageUrl={ai.url} />
+                : <StoryCard
+                    headline={post.headline}
+                    message={post.message}
+                    cta={post.cta}
+                    colors={post.visual.colors}
+                    brand={brand}
+                    specialty={specialty}
+                    imageUrl={ai.url}
+                    colorOverrides={cardColors}
+                  />}
             </CreativePreviewDialog>
           </div>
           <RemoveWatermarkRow />
         </div>
 
-        <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Card colors</Label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <span>Use clinic brand colors</span>
-              <input type="checkbox" checked={useBrandColors} className="accent-[color:var(--teal)]"
-                onChange={(e) => { setUseBrandColors(e.target.checked); resetManualColors(); }} />
-            </label>
+        {template ? (
+          <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-4 space-y-2 text-sm">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Template</p>
+            <p className="font-semibold">{template.name}</p>
+            <p className="text-xs text-muted-foreground">
+              This story uses a fixed template design from Template Studio — its color treatment isn't adjustable here, only the brand kit's colors and contact details.
+            </p>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <MiniColor label="Top" value={cardColors.primary} onChange={setPrimaryColor} />
-            <MiniColor label="Middle" value={cardColors.secondary} onChange={setSecondaryColor} />
-            <MiniColor label="Bottom" value={cardColors.tertiary} onChange={setTertiaryColor} />
+        ) : (
+          <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Card colors</Label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <span>Use clinic brand colors</span>
+                <input type="checkbox" checked={useBrandColors} className="accent-[color:var(--teal)]"
+                  onChange={(e) => { setUseBrandColors(e.target.checked); resetManualColors(); }} />
+              </label>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <MiniColor label="Top" value={cardColors.primary} onChange={setPrimaryColor} />
+              <MiniColor label="Middle" value={cardColors.secondary} onChange={setSecondaryColor} />
+              <MiniColor label="Bottom" value={cardColors.tertiary} onChange={setTertiaryColor} />
+            </div>
+            {hasManualColors && (
+              <button type="button" onClick={resetManualColors} className="text-[11px] text-[color:var(--teal)] hover:underline">
+                Reset to suggested colors
+              </button>
+            )}
           </div>
-          {hasManualColors && (
-            <button type="button" onClick={resetManualColors} className="text-[11px] text-[color:var(--teal)] hover:underline">
-              Reset to suggested colors
-            </button>
-          )}
-        </div>
+        )}
 
         <SectionBlock title="Headline" body={post.headline} />
         <SectionBlock title="Short Message" body={post.message} />
@@ -2054,15 +2309,26 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
   }), [frameId, useBrandColors, primaryPick, secondaryPick, imageOffsetX, imageOffsetY, imageZoom]);
   usePersistCustomization(rowId, customization, !!initialCustomization);
 
-  const entry = getTemplateFrame(frameId);
+  // frameId is normally always a valid templateFrames id (FramePicker only
+  // offers ids from that same array; a restored session seeds it from a
+  // persisted frameId -- see the restore effect above). The ?? fallback and
+  // warning are a defensive backstop only, never expected to fire.
+  const resolvedEntry = getTemplateFrame(frameId);
+  if (!resolvedEntry) {
+    console.error(`[TemplatePreview] Unknown template frame id "${frameId}" -- falling back to the default frame.`);
+  }
+  const entry = resolvedEntry ?? templateFrames[0];
   const Frame = entry.Frame;
   const frameProps = {
     headline: post.headline,
     subline: post.subline,
     cta: post.cta,
+    features: post.features,
     logo: brand.logo,
     businessName: brand.clinicName,
     phone: brand.phone,
+    doctorPhoto: brand.doctorPhoto,
+    doctorName: brand.doctorName,
     colors,
     imageUrl: ai.url,
     imageOffsetX, imageOffsetY, imageZoom,
@@ -2099,17 +2365,21 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
             <Frame {...frameProps} imageLoading={ai.loading} loadingOverlay={<ImageLoadingOverlay />} />
           </ExactScalePreview>
           <CreativeActions className="mt-3">
-            <AiImageButton
-              loading={ai.loading} hasImage={!!ai.url}
-              label={ai.url ? "Regenerate photo" : "Generate photo"}
-              onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
-            />
-            <Button
-              type="button" size="sm" variant="outline" className="gap-1.5 h-8"
-              onClick={() => fileInputRef.current?.click()} disabled={ai.loading}
-            >
-              <Upload className="h-3.5 w-3.5" /> Upload photo
-            </Button>
+            {entry.usesAiImage && (
+              <>
+                <AiImageButton
+                  loading={ai.loading} hasImage={!!ai.url}
+                  label={ai.url ? "Regenerate photo" : "Generate photo"}
+                  onClick={() => ai.run(post.visual.imagePrompt || post.visual.concept, post.visual.visualStyle)}
+                />
+                <Button
+                  type="button" size="sm" variant="outline" className="gap-1.5 h-8"
+                  onClick={() => fileInputRef.current?.click()} disabled={ai.loading}
+                >
+                  <Upload className="h-3.5 w-3.5" /> Upload photo
+                </Button>
+              </>
+            )}
             <Button
               type="button" size="sm" variant="outline" className="gap-1.5 h-8 col-span-2"
               onClick={downloadPost} disabled={downloading || ai.loading}
@@ -2124,7 +2394,9 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
             </CreativePreviewDialog>
           </div>
           <RemoveWatermarkRow className="mt-2" />
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onUploadPhoto} />
+          {entry.usesAiImage && (
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onUploadPhoto} />
+          )}
         </div>
         <div aria-hidden className="fixed pointer-events-none" style={{ left: -10000, top: 0, width: CREATIVE_DESIGN_WIDTH }}>
           <div ref={captureRef}>
@@ -2132,7 +2404,7 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
           </div>
         </div>
 
-        {ai.url && (
+        {entry.usesAiImage && ai.url && (
           <PhotoAdjustPanel
             offsetX={imageOffsetX} offsetY={imageOffsetY} zoom={imageZoom}
             onOffsetXChange={setImageOffsetX} onOffsetYChange={setImageOffsetY} onZoomChange={setImageZoom}
@@ -2184,7 +2456,7 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
 
 /* ============================ Shared bits ============================ */
 
-function SectionBlock({ title, body }: { title: string; body: string }) {
+export function SectionBlock({ title, body }: { title: string; body: string }) {
   if (!body) return null;
   return (
     <div>
@@ -2301,7 +2573,7 @@ function VisualField({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ImageLoadingOverlay() {
+export function ImageLoadingOverlay() {
   return (
     <div className="absolute inset-0 z-30 grid place-items-center bg-black/40 backdrop-blur-sm">
       <div className="flex flex-col items-center gap-2 text-white">

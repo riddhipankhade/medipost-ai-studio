@@ -7,6 +7,9 @@ import { z } from "zod";
 import { createServerClient, parseCookieHeader } from "@supabase/ssr";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import { PostCustomizationSchema, defaultCustomizationFor } from "@/lib/post-customization";
+import { validateTemplateContent } from "@/lib/template-content-schema";
+import { buildRenderKeyGuidance, rendererOverridesCategoryStructure } from "@/lib/template-generation-hints";
+import { PAID_PLANS } from "@/lib/constants";
 
 function validateEnv(): { supabaseUrl: string; supabaseAnonKey: string; geminiApiKey: string } {
   const supabaseUrl     = process.env.SUPABASE_URL;
@@ -70,7 +73,73 @@ function getPlanConfig(plan: string | null | undefined): PlanAiConfig {
   if (plan === "pro_clinic" || plan === "pro") return PLAN_AI_CONFIG.pro_clinic;
   return PLAN_AI_CONFIG.starter;
 }
+
+// Mirrors useIsPro()'s entitlement logic (src/lib/use-subscription.ts) --
+// same PAID_PLANS list, same plan_expires_at check -- but evaluated
+// server-side against the authoritative `subscriptions` row instead of
+// trusted from client state.
+function hasGrowthEntitlement(
+  plan:          string | null | undefined,
+  planExpiresAt: string | null | undefined,
+): boolean {
+  return (
+    !!plan &&
+    (PAID_PLANS as readonly string[]).includes(plan) &&
+    !!planExpiresAt &&
+    new Date(planExpiresAt) > new Date()
+  );
+}
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Credit refunds after a post-deduction failure ─────────────────────────
+// refund_credit's UPDATE (migration 20240001000008) has no idempotency key
+// or dedup guard -- each successful call unconditionally decrements
+// generations_used by 1. A failed RPC call cannot be reliably distinguished
+// from "the UPDATE committed server-side but the response was lost in
+// transit" (a dropped connection, a timeout), so retrying it is not safe:
+// the retry could double-decrement a user's usage count, silently giving
+// away a free credit -- a worse and harder-to-detect failure than the
+// original stuck charge. This deliberately does NOT retry; see
+// attemptRefund's own note below. Every refund_credit call in this file
+// goes through attemptRefund so this reasoning lives in one place.
+type RefundResult = { refunded: true } | { refunded: false };
+
+/**
+ * Calls refund_credit exactly once (no retry -- see the note above) and
+ * never swallows a failure: on error it logs enough to identify the
+ * affected user and the failure context for manual reconciliation, then
+ * reports back (rather than throwing itself) so the caller decides what to
+ * tell the user.
+ */
+async function attemptRefund(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  userId: string,
+  context: string,
+): Promise<RefundResult> {
+  try {
+    const { error } = await supabase.rpc("refund_credit", { p_user_id: userId });
+    if (error) throw error;
+    return { refunded: true };
+  } catch (refundErr: any) {
+    console.error(
+      `[generateContent][REFUND_FAILED] user_id=${userId} context="${context}" ` +
+      `refundError="${refundErr?.message ?? refundErr}"`,
+    );
+    return { refunded: false };
+  }
+}
+
+/**
+ * Builds the client-facing failure message from a refund attempt's outcome.
+ * Never claims a refund happened unless attemptRefund actually confirmed
+ * it, and never includes the raw refund RPC error -- that detail is only
+ * ever logged server-side by attemptRefund above.
+ */
+function refundAwareMessage(refund: RefundResult, base: string): string {
+  return refund.refunded
+    ? `${base} Your credit has been refunded.`
+    : `${base} We could not confirm your credit was refunded -- please check your remaining credits before trying again, or contact support if they look incorrect.`;
+}
 
 async function callGeminiText(
   system:     string,
@@ -223,6 +292,47 @@ const InputSchema = z.object({
   slideCount: z.number().int().min(2).max(10).optional(),
   language:   z.string().max(40).optional(),
   brand:      BrandSchema,
+  // Which `templates` catalog row this generation started from, if the user
+  // arrived via Template Studio's "Use Template" action. Optional and
+  // independent of `data.kind`/frame choice below -- see migration
+  // 20240001000014's comment on content_generations.template_id for why this
+  // is allowed to diverge from the actual render/frame chosen.
+  templateId: z.string().uuid().optional(),
+  // Which bespoke renderer (templateFrames/postTemplates/carouselTemplates/
+  // storyTemplates registry key) this generation's result will render
+  // through, if any -- set only via Template Studio's in-place workspaces.
+  // PROMPT HINT ONLY: read exclusively by buildPrompt() via
+  // template-generation-hints.ts to append/override a short render_key-
+  // specific guidance block. Never used for authorization, entitlement,
+  // credit, or any security decision -- a missing, stale, or unrecognized
+  // value degrades to "no hint", identical to today's generation.
+  renderKey: z.string().optional(),
+  // "Did You Know" statistics are always supplied by the doctor, never
+  // invented by Gemini -- see the superRefine below, which makes statistic +
+  // statisticSource required whenever category === "did-you-know", for every
+  // kind, not just Template Studio's Stat Spotlight entry. Frontend fields
+  // mirror this for UX; this schema-level check is the actual guard, and it
+  // runs inside `.validator()` -- before deduct_credit is ever called.
+  statistic:        z.string().min(1).max(300).optional(),
+  statisticSource:  z.string().min(1).max(200).optional(),
+  statisticContext: z.string().max(300).optional(),
+}).superRefine((data, ctx) => {
+  if (data.category === "did-you-know") {
+    if (!data.statistic?.trim()) {
+      ctx.addIssue({
+        code:    z.ZodIssueCode.custom,
+        path:    ["statistic"],
+        message: "A statistic is required for the \"Did You Know\" category -- Medipost formats it, but never invents the number.",
+      });
+    }
+    if (!data.statisticSource?.trim()) {
+      ctx.addIssue({
+        code:    z.ZodIssueCode.custom,
+        path:    ["statisticSource"],
+        message: "A source is required for the \"Did You Know\" category.",
+      });
+    }
+  }
 });
 
 export type GenerateInput = z.infer<typeof InputSchema>;
@@ -298,6 +408,12 @@ export type TemplatePost = {
   cta:      string;
   caption:  string;
   hashtags: string[];
+  // Short (1-3 word) benefit/feature labels, e.g. "Expert Doctors",
+  // "Advanced Care" -- optional per-frame content; only Poster frames with a
+  // feature-row slot (currently just Benefit Grid) render these. Every other
+  // frame ignores the field entirely, matching how `subline`/`cta` already
+  // work (some frames use them, none require every field to be non-empty).
+  features: string[];
   visual:   Visual;
 };
 
@@ -404,8 +520,10 @@ Paragraph 1 starts with "Myth: " — the common belief in 1-2 short sentences.
 Paragraph 2 starts with "Fact: " — the evidence-based truth + 1-line why, 2-3 short sentences.`;
     case "did-you-know":
       return `CONTENT STRUCTURE (strict — rendered as a big-number poster):
-"content" MUST open with the single most surprising concrete statistic (e.g. "70%…", "1 in 4…", "3x…"),
-followed by ONE supporting line. 25-45 words total. "headline" is the curiosity hook.`;
+"content" MUST open with the SUPPLIED STATISTIC given above, verbatim (see the SUPPLIED STATISTIC block),
+followed by ONE supporting line that cites the source naturally. 25-45 words total. "headline" is the curiosity hook.
+Do NOT substitute a different number and do NOT invent one if that block is somehow missing -- in that
+case, use a qualitative surprising fact or mechanism instead, with no invented statistic.`;
     case "patient-faq":
       return `CONTENT STRUCTURE (strict — rendered as a question/answer chat exchange):
 "headline" MUST be the patient's question, ending with "?".
@@ -444,6 +562,27 @@ You MUST write ALL text content in ${l} using its native script. Do NOT write in
 - EXCEPTION 1: Every field inside "visual" (concept, style, composition, imagePrompt, visualStyle, layout) MUST stay in English — this goes to an image-generation model that only understands English.
 - EXCEPTION 2: Structural CONTENT STRUCTURE markers (e.g. "Myth: " and "Fact: " prefixes) stay in English exactly as specified — only the text after the marker is in ${l}.
 If any content field is in English instead of ${l}, the output is wrong. Write in ${l}.`;
+}
+
+/**
+ * Placed in buildPrompt()'s shared `base` block (not just the "single" case)
+ * so the no-invented-statistic rule applies to every kind that can carry
+ * category === "did-you-know" -- carousel, story, etc, not only single posts
+ * or Template Studio's Stat Spotlight entry. Returns "" for every other
+ * category, and also "" if statistic is somehow absent (the InputSchema
+ * superRefine is what actually prevents that for did-you-know).
+ */
+function statisticBlock(d: GenerateInput): string {
+  if (d.category !== "did-you-know" || !d.statistic) return "";
+  return `
+SUPPLIED STATISTIC — MANDATORY, VERBATIM (non-negotiable)
+You MUST use this exact statistic, unchanged: "${d.statistic}"
+Source (cite naturally in the supporting line, do not just append "(Source)"): ${d.statisticSource ?? "not provided"}
+${d.statisticContext ? `Additional context supplied: ${d.statisticContext}` : ""}
+- Do NOT alter this number, round it, or restate it differently.
+- Do NOT introduce any second, different numeric/statistical claim anywhere in the output.
+- Your job is only to rewrite the surrounding copy for social media, add one supporting explanatory
+  line, and write the caption/CTA -- never to invent or adjust the figure itself.`;
 }
 
 function brandBlock(b: GenerateInput["brand"]): string {
@@ -491,7 +630,10 @@ const TEMPLATE_VISUAL_BLOCK = `"visual": {
     "imagePrompt": "FULL ready-to-send image generation prompt (60-120 words) for ONE clear photographic subject relevant to the condition/service — e.g. a patient showing the symptom, a doctor consulting, a treatment close-up. Single subject centered with generous space around it, clean soft neutral or softly blurred background, photorealistic, warm trustworthy healthcare-ad mood. The photo will be cropped into a shaped window on a designed poster, so NO text, NO watermark, NO logos, NO graphic overlays, subject must not touch the frame edges."
   }`;
 
-function buildPrompt(d: GenerateInput): { system: string; user: string } {
+/** Exported only so a standalone verification script can call it directly
+ *  with fixture inputs (no DB/network) to snapshot-diff render_key-aware
+ *  guidance against today's output -- see the implementation plan's §12. */
+export function buildPrompt(d: GenerateInput): { system: string; user: string } {
   const base = `BRIEF
 - Specialty: ${d.specialty}
 - Topic: ${d.topic}
@@ -501,6 +643,7 @@ function buildPrompt(d: GenerateInput): { system: string; user: string } {
 
 CATEGORY GUIDANCE
 ${CATEGORY_HINTS[d.category]}
+${statisticBlock(d)}
 
 ${brandBlock(d.brand)}
 
@@ -509,14 +652,27 @@ ${SHARED_RULES}
 ${languageBlock(d.language)}`;
 
   switch (d.kind) {
-    case "single":
+    case "single": {
+      // Polaroid Stack (render_key "polaroid-stack") is the one render_key
+      // that OVERRIDES its category's structure text instead of appending
+      // after it -- see rendererOverridesCategoryStructure()'s doc comment.
+      // Every other flagged render_key composes with the category structure,
+      // never replaces it; a missing/unrecognized renderKey leaves
+      // structureText byte-identical to singleStructureFor(d.category) alone.
+      const categoryStructure = singleStructureFor(d.category);
+      const renderGuidance = buildRenderKeyGuidance(d.renderKey, "single");
+      const structureText = rendererOverridesCategoryStructure(d.renderKey, "single")
+        ? renderGuidance
+        : renderGuidance
+          ? `${categoryStructure}\n\n${renderGuidance}`
+          : categoryStructure;
       return {
         system: "You are Medipost AI, a healthcare social-media copywriter. Respond ONLY with strict JSON.",
         user: `${base}
 
 TASK: Generate ONE scroll-stopping single social media post about "${d.topic}".
 
-${singleStructureFor(d.category)}
+${structureText}
 
 Return STRICT JSON, no markdown:
 {
@@ -528,17 +684,20 @@ Return STRICT JSON, no markdown:
   ${VISUAL_BLOCK}
 }`,
       };
+    }
 
     case "carousel": {
       const n         = d.slideCount ?? 7;
       const structure = carouselStructureFor(d.category, n);
+      const renderGuidance = buildRenderKeyGuidance(d.renderKey, "carousel");
+      const zoneBudget = renderGuidance ? `\n\n${renderGuidance}` : "";
       return {
         system: "You are Medipost AI. You design educational carousel posts for clinicians. Respond ONLY with strict JSON.",
         user: `${base}
 
 TASK: Design an Instagram CAROUSEL with exactly ${n} slides on "${d.topic}".
 
-${structure}
+${structure}${zoneBudget}
 
 - Each slide title 3-7 words, body 20-40 words.
 - For each slide write an "imagePrompt": 40-80 word AI image prompt (real healthcare scene, no solid colors, no text-on-background). End each with "no text, no watermark, Instagram-ready, premium healthcare brand aesthetic".
@@ -558,14 +717,16 @@ Return STRICT JSON:
       };
     }
 
-    case "story":
+    case "story": {
+      const renderGuidance = buildRenderKeyGuidance(d.renderKey, "story");
+      const storyGuidance = renderGuidance ? `\n\n${renderGuidance}` : "";
       return {
         system: "You are Medipost AI. You write tight, vertical-format healthcare Instagram Stories. Respond ONLY with strict JSON.",
         user: `${base}
 
 TASK: Write ONE Instagram Story (9:16) about "${d.topic}". Max 25 words total.
 
-- cta: a short, direct action line (2-4 words, e.g. "Book Appointment", "Call Now", "DM to Book"). NOT a question, NOT a poll/tap-to-vote prompt.
+- cta: a short, direct action line (2-4 words, e.g. "Book Appointment", "Call Now", "DM to Book"). NOT a question, NOT a poll/tap-to-vote prompt.${storyGuidance}
 
 Return STRICT JSON:
 {
@@ -575,6 +736,7 @@ Return STRICT JSON:
   ${VISUAL_BLOCK}
 }`,
       };
+    }
 
     case "reel":
       return {
@@ -654,24 +816,28 @@ Return STRICT JSON:
       };
     }
 
-    case "template":
+    case "template": {
+      const renderGuidance = buildRenderKeyGuidance(d.renderKey, "template");
+      const templateGuidance = renderGuidance ? `\n\n${renderGuidance}` : "";
       return {
         system:
           "You are Medipost AI, a copywriter for poster-style local healthcare ads (clinic flyers, treatment-center promos). Respond ONLY with strict JSON.",
         user: `${base}
 
-TASK: Write the copy for ONE poster-style promo creative about "${d.topic}" — the kind of ad a local clinic prints or posts on social media: a bold service headline, a short benefit line, and a contact-style CTA.
+TASK: Write the copy for ONE poster-style promo creative about "${d.topic}" — the kind of ad a local clinic prints or posts on social media: a bold service headline, a short benefit line, a contact-style CTA, and a short list of trust/benefit feature labels.${templateGuidance}
 
 Return STRICT JSON:
 {
   "headline": "3-6 word poster headline naming the service/condition center or promise (e.g. 'Hernia Treatment Center', 'Are You Suffering From Piles?')",
   "subline": "1-2 short benefit/action lines, 8-16 words total, specific and reassuring (e.g. 'Get checked here, treat it early')",
   "cta": "2-4 word action line (e.g. 'Contact Now', 'Book Appointment')",
+  "features": ["1-3 word benefit/trust labels for this exact specialty and topic, e.g. 'Expert Doctors', 'Advanced Care', 'Painless Procedure', 'Proven Results' — exactly 4, each genuinely relevant to \\"${d.topic}\\", never generic filler unrelated to this specialty"],
   "caption": "1-2 sentence social caption",
   "hashtags": ["#tag1","... 8-12 hashtags"],
   ${TEMPLATE_VISUAL_BLOCK}
 }`,
       };
+    }
   }
 }
 
@@ -777,6 +943,7 @@ function normalize(kind: GenerateInput["kind"], raw: any): GenerateOutput {
         cta:      String(raw?.cta ?? ""),
         caption:  String(raw?.caption ?? ""),
         hashtags: Array.isArray(raw?.hashtags) ? raw.hashtags.map(String) : [],
+        features: Array.isArray(raw?.features) ? raw.features.map(String) : [],
         visual,
       };
   }
@@ -792,6 +959,36 @@ export const generateContent = createServerFn({ method: "POST" })
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) throw new Error("Unauthorized. Please sign in to generate content.");
 
+      // Fetch the user's plan up front -- this is the same `subscriptions`
+      // row/columns used by useIsPro() and by deduct_credit's own lookup,
+      // just read once here so it can back both the entitlement check below
+      // and the AI quality tier further down.
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("plan, plan_expires_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      // Premium-template entitlement, enforced server-side. `templates.premium`
+      // is the authoritative flag (looked up here, never trusted from the
+      // client -- the client doesn't even send a premium value, only
+      // `templateId`), and entitlement is decided from the user's real
+      // subscription row, not client state like a UI isPro flag. This runs
+      // before deduct_credit so a rejected request consumes zero credits.
+      // Content Studio generations never set templateId, so this is a no-op
+      // for them.
+      if (data.templateId) {
+        const { data: template } = await supabase
+          .from("templates")
+          .select("premium")
+          .eq("id", data.templateId)
+          .maybeSingle();
+
+        if (template?.premium && !hasGrowthEntitlement(sub?.plan, sub?.plan_expires_at)) {
+          throw new Error("This is a Growth-plan template. Please upgrade your plan to generate it.");
+        }
+      }
+
       const { error: creditError } = await supabase.rpc("deduct_credit", { p_user_id: user.id });
       if (creditError) {
         if (creditError.message.includes("INSUFFICIENT_CREDITS"))
@@ -801,12 +998,6 @@ export const generateContent = createServerFn({ method: "POST" })
         throw new Error(`Credit processing failed: ${creditError.message}`);
       }
 
-      // Fetch plan to determine AI quality tier
-      const { data: sub } = await supabase
-        .from("subscriptions")
-        .select("plan")
-        .eq("user_id", user.id)
-        .maybeSingle();
       const aiConfig = getPlanConfig(sub?.plan);
 
       const { data: brandKit } = await supabase
@@ -833,16 +1024,47 @@ export const generateContent = createServerFn({ method: "POST" })
 
       const { system, user: userPrompt } = buildPrompt({ ...data, brand: mergedBrand });
 
-      let rawText: string;
-      try {
-        rawText = await callGeminiText(system, userPrompt, geminiApiKey, aiConfig);
-      } catch (geminiErr: any) {
-        try { await supabase.rpc("refund_credit", { p_user_id: user.id }); } catch {}
-        throw geminiErr;
+      // Runs the full Gemini call -> parse -> normalize -> (for `template`
+      // only) schema-validate pipeline once. Thrown errors here (a Gemini
+      // call failure, malformed JSON, or -- template kind only -- a missing
+      // required slot) are handled by the retry/refund logic below, not here.
+      async function generateAndValidate(): Promise<GenerateOutput> {
+        const rawText = await callGeminiText(system, userPrompt, geminiApiKey, aiConfig);
+        const parsed = extractJson(rawText);
+        const generated = normalize(data.kind, parsed);
+        return generated.kind === "template" ? validateTemplateContent(generated) : generated;
       }
 
-      const parsed = extractJson(rawText);
-      const result = normalize(data.kind, parsed);
+      let result: GenerateOutput;
+      try {
+        result = await generateAndValidate();
+      } catch (firstErr: any) {
+        if (data.kind === "template") {
+          // Template content is schema-validated (see template-content-schema.ts).
+          // A failure here is worth one automatic, uncharged retry before
+          // giving up -- no second credit is deducted, since deduct_credit
+          // already ran once above for this whole request.
+          console.warn("[generateContent] template generation failed validation, retrying once:", firstErr?.message);
+          try {
+            result = await generateAndValidate();
+          } catch (secondErr: any) {
+            console.error("[generateContent] template generation failed validation twice:", secondErr?.message);
+            const refund = await attemptRefund(supabase, user.id, "template generation failed validation twice");
+            throw new Error(refundAwareMessage(refund, "We couldn't generate valid content for this template."));
+          }
+        } else {
+          // Unchanged behavior for the other six kinds, extended to also
+          // cover extractJson/normalize failures (previously only a raw
+          // callGeminiText failure triggered a refund here -- a malformed-
+          // JSON response deducted a credit with no refund). When the
+          // refund succeeds, firstErr is rethrown unchanged -- identical to
+          // the pre-existing behavior. Only when the refund itself fails do
+          // we throw a different, refund-aware message instead.
+          const refund = await attemptRefund(supabase, user.id, `generation failed: ${firstErr?.message ?? "unknown error"}`);
+          if (refund.refunded) throw firstErr;
+          throw new Error(refundAwareMessage(refund, firstErr?.message || "Generation failed."));
+        }
+      }
 
       const hashtags =
         "hashtags" in result && Array.isArray(result.hashtags) ? result.hashtags : [];
@@ -854,27 +1076,50 @@ export const generateContent = createServerFn({ method: "POST" })
         console.error("[generateContent] default customization failed:", e);
       }
 
-      const { data: inserted, error: saveError } = await supabase
-        .from("content_generations")
-        .insert({
-          user_id:          user.id,
-          workflow_kind:    data.kind,
-          content_category: data.category,
-          specialty:        data.specialty,
-          tone:             data.tone,
-          topic:            data.topic.trim(),
-          generated_text:   JSON.stringify(result),
-          hashtags,
-          status:           "completed",
-          ai_model:         aiConfig.model,
-          customization,
-        })
-        .select("id")
-        .single();
+      // The generation itself succeeded at this point -- deduct_credit has
+      // already run. If this insert doesn't produce a usable row (a
+      // resolved {error}, or the call throwing outright -- e.g. a network
+      // failure -- both land here), there is nothing for the user to see:
+      // no History row, no contentId for generateImage to attach to, no
+      // _rowId for customization persistence. Silently returning success
+      // with _rowId: undefined previously left the user charged with
+      // content that vanishes on refresh. Treat this exactly like any other
+      // "credit spent, nothing usable produced" failure -- refund, then
+      // fail the request clearly, matching the retry-then-refund pattern
+      // used above for a Gemini/validation failure. A successful insert
+      // never reaches this catch, so a refund can never follow a
+      // successfully persisted generation.
+      let inserted: { id: string };
+      try {
+        const { data: insertedRow, error: saveError } = await supabase
+          .from("content_generations")
+          .insert({
+            user_id:          user.id,
+            workflow_kind:    data.kind,
+            content_category: data.category,
+            specialty:        data.specialty,
+            tone:             data.tone,
+            topic:            data.topic.trim(),
+            generated_text:   JSON.stringify(result),
+            hashtags,
+            status:           "completed",
+            ai_model:         aiConfig.model,
+            customization,
+            template_id:      data.templateId ?? null,
+          })
+          .select("id")
+          .single();
+        if (saveError) throw new Error(saveError.message);
+        inserted = insertedRow;
+      } catch (saveErr: any) {
+        console.error("[generateContent] DB save failed:", saveErr?.message ?? saveErr);
+        // Never unconditionally claim "you have not been charged" here --
+        // that was only true if the refund below actually succeeds.
+        const refund = await attemptRefund(supabase, user.id, "content_generations insert failed");
+        throw new Error(refundAwareMessage(refund, "Your content was generated but couldn't be saved."));
+      }
 
-      if (saveError) console.error("[generateContent] DB save failed:", saveError.message);
-
-      return { ...result, _rowId: inserted?.id ?? undefined } as typeof result & { _rowId?: string };
+      return { ...result, _rowId: inserted.id } as typeof result & { _rowId?: string };
     } catch (error: any) {
       console.error("FULL SERVER ERROR:", error);
       throw error;

@@ -1,0 +1,21 @@
+-- Migration 016: render_key column comment update (Post/Carousel/Story
+-- template renderer architecture)
+--
+-- Supersedes migration 015's comment. render_key is now a real, code-owned
+-- lookup key for EVERY format, not Poster-only:
+--
+--   Poster:   render_key -> getTemplateFrame()  (src/components/template-frames.tsx)
+--   Post:     render_key -> getPostTemplate()   (src/components/post-templates.tsx)
+--   Carousel: render_key -> (not yet built -- remains NULL until its phase ships)
+--   Story:    render_key -> (not yet built -- remains NULL until its phase ships)
+--
+-- A NULL render_key means "this catalog row's bespoke design hasn't shipped
+-- yet" -- such rows are excluded from Template Studio's grid (see
+-- hasPreviewData() in src/routes/_app.templates.tsx), never silently
+-- rendered through a generic fallback. The column stays nullable (migration
+-- 015 already dropped NOT NULL) -- that remains the correct type for a row
+-- awaiting its design, not something this migration reverts.
+--
+-- No DDL change -- comment only.
+
+COMMENT ON COLUMN public.templates.render_key IS 'Real, code-owned lookup key for EVERY format: Poster -> getTemplateFrame() (src/components/template-frames.tsx), Post -> getPostTemplate() (src/components/post-templates.tsx), Carousel/Story -> their own registries once built. Never a dynamic import or executable value. NULL means this row''s bespoke template design has not shipped yet -- such rows are excluded from Template Studio''s catalog grid rather than falling back to a generic renderer.';

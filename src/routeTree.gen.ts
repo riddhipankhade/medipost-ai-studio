@@ -25,6 +25,7 @@ import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
 import { Route as AdminPlansRouteImport } from './routes/admin.plans'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin.analytics'
+import { Route as AppTemplatesRouteImport } from './routes/_app.templates'
 import { Route as AppSubscriptionRouteImport } from './routes/_app.subscription'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppHistoryRouteImport } from './routes/_app.history'
@@ -111,6 +112,11 @@ const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
   path: '/admin/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppTemplatesRoute = AppTemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSubscriptionRoute = AppSubscriptionRouteImport.update({
   id: '/subscription',
   path: '/subscription',
@@ -157,6 +163,7 @@ export interface FileRoutesByFullPath {
   '/history': typeof AppHistoryRoute
   '/settings': typeof AppSettingsRoute
   '/subscription': typeof AppSubscriptionRoute
+  '/templates': typeof AppTemplatesRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/plans': typeof AdminPlansRoute
@@ -180,6 +187,7 @@ export interface FileRoutesByTo {
   '/history': typeof AppHistoryRoute
   '/settings': typeof AppSettingsRoute
   '/subscription': typeof AppSubscriptionRoute
+  '/templates': typeof AppTemplatesRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/plans': typeof AdminPlansRoute
@@ -205,6 +213,7 @@ export interface FileRoutesById {
   '/_app/history': typeof AppHistoryRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/subscription': typeof AppSubscriptionRoute
+  '/_app/templates': typeof AppTemplatesRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/plans': typeof AdminPlansRoute
@@ -230,6 +239,7 @@ export interface FileRouteTypes {
     | '/history'
     | '/settings'
     | '/subscription'
+    | '/templates'
     | '/admin/analytics'
     | '/admin/login'
     | '/admin/plans'
@@ -253,6 +263,7 @@ export interface FileRouteTypes {
     | '/history'
     | '/settings'
     | '/subscription'
+    | '/templates'
     | '/admin/analytics'
     | '/admin/login'
     | '/admin/plans'
@@ -277,6 +288,7 @@ export interface FileRouteTypes {
     | '/_app/history'
     | '/_app/settings'
     | '/_app/subscription'
+    | '/_app/templates'
     | '/admin/analytics'
     | '/admin/login'
     | '/admin/plans'
@@ -419,6 +431,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/templates': {
+      id: '/_app/templates'
+      path: '/templates'
+      fullPath: '/templates'
+      preLoaderRoute: typeof AppTemplatesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/subscription': {
       id: '/_app/subscription'
       path: '/subscription'
@@ -471,6 +490,7 @@ interface AppRouteChildren {
   AppHistoryRoute: typeof AppHistoryRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppSubscriptionRoute: typeof AppSubscriptionRoute
+  AppTemplatesRoute: typeof AppTemplatesRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -480,6 +500,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppHistoryRoute: AppHistoryRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppSubscriptionRoute: AppSubscriptionRoute,
+  AppTemplatesRoute: AppTemplatesRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

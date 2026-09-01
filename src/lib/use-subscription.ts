@@ -58,15 +58,36 @@ export function useSubscription(userId: string | undefined) {
   });
 }
 
-/** Returns true if the user currently has an active paid subscription */
-export function useIsPro(userId: string | undefined): boolean {
-  const { data } = useSubscription(userId);
+function computeIsPro(data: SubscriptionWithPlan | undefined): boolean {
   if (!data) return false;
   return (
     (PAID_PLANS as readonly string[]).includes(data.plan) &&
     !!data.plan_expires_at &&
     new Date(data.plan_expires_at) > new Date()
   );
+}
+
+/** Returns true if the user currently has an active paid subscription */
+export function useIsPro(userId: string | undefined): boolean {
+  const { data } = useSubscription(userId);
+  return computeIsPro(data);
+}
+
+/**
+ * Same entitlement check as useIsPro(), but also exposes whether the
+ * subscription is still loading -- useIsPro() alone can't be told apart from
+ * "confirmed not entitled" while the query is in flight (it returns `false`
+ * either way), which is exactly wrong for UI that gates on entitlement: a
+ * real Growth user would flash an "upgrade" prompt for a moment on every
+ * fresh page load, even though they never actually lack entitlement. Callers
+ * that show a premium-gated CTA (e.g. Template Studio's Growth upgrade
+ * prompt) should hold off rendering either the CTA or the gated action until
+ * `isLoading` is false, rather than default to treating "unknown" as "not
+ * entitled."
+ */
+export function useIsProState(userId: string | undefined): { isPro: boolean; isLoading: boolean } {
+  const { data, isLoading } = useSubscription(userId);
+  return { isPro: computeIsPro(data), isLoading: !!userId && isLoading };
 }
 export function useShowWatermark(userId: string | undefined): boolean {
   return !useIsPro(userId);

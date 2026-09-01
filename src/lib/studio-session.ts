@@ -65,6 +65,13 @@ export type StudioSessionRow = {
   initialImageUrl: string | null;
   initialSlideImages: (string | null)[];
   initialCustomization: PostCustomization | null;
+  // Which `templates` catalog row this generation was created from, if any --
+  // callers restoring into a specific catalog row's workspace (Template
+  // Studio) should discard a restored row whose templateId doesn't match the
+  // one currently selected, rather than mix one generation's content with a
+  // different template's design. null for rows generated outside Template
+  // Studio (e.g. plain Content Studio use).
+  templateId: string | null;
 };
 
 /**
@@ -78,7 +85,7 @@ export type StudioSessionRow = {
 export async function fetchStudioSessionRow(rowId: string): Promise<StudioSessionRow | null> {
   const { data, error } = await supabase
     .from("content_generations")
-    .select("id, workflow_kind, generated_text, generated_image_url, customization")
+    .select("id, workflow_kind, generated_text, generated_image_url, customization, template_id")
     .eq("id", rowId)
     .single();
 
@@ -101,5 +108,6 @@ export async function fetchStudioSessionRow(rowId: string): Promise<StudioSessio
     initialImageUrl: isSlideArray ? null : imageUrl,
     initialSlideImages: isSlideArray ? parseSlideImageArray(imageUrl) : [],
     initialCustomization: parseCustomization(data.customization, result.kind),
+    templateId: (data.template_id as string | null) ?? null,
   };
 }
