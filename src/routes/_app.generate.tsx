@@ -2309,7 +2309,15 @@ function TemplatePreview({ post, rowId, frameId, onFrameChange, initialImageUrl,
   }), [frameId, useBrandColors, primaryPick, secondaryPick, imageOffsetX, imageOffsetY, imageZoom]);
   usePersistCustomization(rowId, customization, !!initialCustomization);
 
-  const entry = getTemplateFrame(frameId);
+  // frameId is normally always a valid templateFrames id (FramePicker only
+  // offers ids from that same array; a restored session seeds it from a
+  // persisted frameId -- see the restore effect above). The ?? fallback and
+  // warning are a defensive backstop only, never expected to fire.
+  const resolvedEntry = getTemplateFrame(frameId);
+  if (!resolvedEntry) {
+    console.error(`[TemplatePreview] Unknown template frame id "${frameId}" -- falling back to the default frame.`);
+  }
+  const entry = resolvedEntry ?? templateFrames[0];
   const Frame = entry.Frame;
   const frameProps = {
     headline: post.headline,

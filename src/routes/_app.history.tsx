@@ -295,8 +295,14 @@ function PostDetailDialog({
     : null;
 
   // Template frame choice now comes from persisted customization (falls back
-  // to the default frame for older rows that never saved one).
-  const TemplateFrame = isTemplate && templateCustom ? getTemplateFrame(templateCustom.frameId).Frame : null;
+  // to the default frame for older rows that never saved one). getTemplateFrame
+  // fails CLOSED (null) if frameId doesn't match any current templateFrames
+  // entry -- e.g. a frame renamed/removed since this row was generated --
+  // rather than silently substituting a different design; see
+  // templateFrameUnavailable below for the fallback UI this produces.
+  const templateFrameEntry = isTemplate && templateCustom ? getTemplateFrame(templateCustom.frameId) : null;
+  const TemplateFrame = templateFrameEntry?.Frame ?? null;
+  const templateFrameUnavailable = isTemplate && !!templateCustom && !templateFrameEntry;
   const templateProps = isTemplate && templateCustom
     ? {
         headline: p?.headline ?? row.topic,
@@ -602,6 +608,12 @@ function PostDetailDialog({
               </div>
             </div>
           </>
+        )}
+
+        {templateFrameUnavailable && (
+          <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            This poster's original design is no longer available. Your generated text below is unaffected.
+          </div>
         )}
 
         {isFestive && festiveCustom && (

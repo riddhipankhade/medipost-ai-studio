@@ -72,7 +72,7 @@ import { fetchStudioSessionRow, type StudioSessionRow } from "@/lib/studio-sessi
 import { RemoveWatermarkRow } from "@/components/Watermark";
 import { ShareButtons } from "@/components/ShareButtons";
 import { isExportableNode } from "@/lib/export-filter";
-import { useIsPro, useGrowthTrialEligible } from "@/lib/use-subscription";
+import { useIsProState, useGrowthTrialEligible } from "@/lib/use-subscription";
 import { growthHeadline, growthButtonLabel } from "@/lib/growth-trial-copy";
 
 export const Route = createFileRoute("/_app/templates")({
@@ -346,14 +346,20 @@ function PosterWorkspace({ row, rowIdParam, onBack, onGenerated }: {
 }) {
   const { user } = useAuth();
   const [brand] = useBrandKit();
-  const isPro = useIsPro(user?.id);
+  const { isPro, isLoading: isProLoading } = useIsProState(user?.id);
   const trialEligible = useGrowthTrialEligible(user?.id);
   const callGenerate = useServerFn(generateContent);
   const generateGuard = useSubmitGuard();
 
   // hasPreviewData() already guarantees this resolves for any Poster row
-  // that reaches this component (see TemplateStudioPage below).
-  const entry = getTemplateFrame(row.render_key as TemplateFrameId);
+  // that reaches this component (see TemplateStudioPage below) -- the ??
+  // fallback and warning below are a defensive backstop only, never expected
+  // to fire in normal operation.
+  const resolvedEntry = getTemplateFrame(row.render_key as TemplateFrameId);
+  if (!resolvedEntry) {
+    console.error(`[PosterWorkspace] Unknown render_key "${row.render_key}" for template ${row.id} -- falling back to the default frame.`);
+  }
+  const entry = resolvedEntry ?? templateFrames[0];
   const frameId = entry.id;
   const sample = TEMPLATE_SAMPLES[entry.id];
 
@@ -392,7 +398,11 @@ function PosterWorkspace({ row, rowIdParam, onBack, onGenerated }: {
     let cancelled = false;
     (async () => {
       const restoredRow = await fetchStudioSessionRow(rowIdParam);
-      if (cancelled || !restoredRow || restoredRow.result.kind !== "template") return;
+      // A mismatched pair (stale/edited URL, an old bookmark, or forward/back
+      // across two different templates) would otherwise render this row's
+      // content under the currently-selected row's design/renderKey -- treat
+      // it the same as "restore not available" rather than mixing the two.
+      if (cancelled || !restoredRow || restoredRow.result.kind !== "template" || restoredRow.templateId !== row.id) return;
       setResult(restoredRow.result);
       setRowId(rowIdParam);
       ai.setUrl(restoredRow.initialImageUrl);
@@ -590,7 +600,11 @@ function PosterWorkspace({ row, rowIdParam, onBack, onGenerated }: {
                 />
               </div>
 
-              {needsGrowthUpgrade(row, isPro) ? (
+              {isProLoading ? (
+                <Button disabled className="w-full gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                </Button>
+              ) : needsGrowthUpgrade(row, isPro) ? (
                 <GrowthUpgradeCTA trialEligible={trialEligible} />
               ) : outOfCredits ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
@@ -789,7 +803,7 @@ function PostWorkspace({ row, rowIdParam, onBack, onGenerated }: {
 }) {
   const { user } = useAuth();
   const [brand] = useBrandKit();
-  const isPro = useIsPro(user?.id);
+  const { isPro, isLoading: isProLoading } = useIsProState(user?.id);
   const trialEligible = useGrowthTrialEligible(user?.id);
   const callGenerate = useServerFn(generateContent);
   const generateGuard = useSubmitGuard();
@@ -819,7 +833,9 @@ function PostWorkspace({ row, rowIdParam, onBack, onGenerated }: {
     let cancelled = false;
     (async () => {
       const restored = await fetchStudioSessionRow(rowIdParam);
-      if (cancelled || !restored || restored.result.kind !== "single") return;
+      // See PosterWorkspace's identical guard above -- discard a restored
+      // row that wasn't generated from the currently-selected template.
+      if (cancelled || !restored || restored.result.kind !== "single" || restored.templateId !== row.id) return;
       setResult(restored.result);
       setRowId(rowIdParam);
       setResultKey(rowIdParam);
@@ -904,7 +920,11 @@ function PostWorkspace({ row, rowIdParam, onBack, onGenerated }: {
                   statisticContext={statisticContext} setStatisticContext={setStatisticContext}
                 />
               )}
-              {needsGrowthUpgrade(row, isPro) ? (
+              {isProLoading ? (
+                <Button disabled className="w-full gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                </Button>
+              ) : needsGrowthUpgrade(row, isPro) ? (
                 <GrowthUpgradeCTA trialEligible={trialEligible} />
               ) : outOfCredits ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
@@ -967,7 +987,7 @@ function CarouselWorkspace({ row, rowIdParam, onBack, onGenerated }: {
 }) {
   const { user } = useAuth();
   const [brand] = useBrandKit();
-  const isPro = useIsPro(user?.id);
+  const { isPro, isLoading: isProLoading } = useIsProState(user?.id);
   const trialEligible = useGrowthTrialEligible(user?.id);
   const callGenerate = useServerFn(generateContent);
   const generateGuard = useSubmitGuard();
@@ -998,7 +1018,9 @@ function CarouselWorkspace({ row, rowIdParam, onBack, onGenerated }: {
     let cancelled = false;
     (async () => {
       const restored = await fetchStudioSessionRow(rowIdParam);
-      if (cancelled || !restored || restored.result.kind !== "carousel") return;
+      // See PosterWorkspace's identical guard above -- discard a restored
+      // row that wasn't generated from the currently-selected template.
+      if (cancelled || !restored || restored.result.kind !== "carousel" || restored.templateId !== row.id) return;
       setResult(restored.result);
       setRowId(rowIdParam);
       setResultKey(rowIdParam);
@@ -1087,7 +1109,11 @@ function CarouselWorkspace({ row, rowIdParam, onBack, onGenerated }: {
                   statisticContext={statisticContext} setStatisticContext={setStatisticContext}
                 />
               )}
-              {needsGrowthUpgrade(row, isPro) ? (
+              {isProLoading ? (
+                <Button disabled className="w-full gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                </Button>
+              ) : needsGrowthUpgrade(row, isPro) ? (
                 <GrowthUpgradeCTA trialEligible={trialEligible} />
               ) : outOfCredits ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
@@ -1179,7 +1205,9 @@ function StoryWorkspace({ row, rowIdParam, onBack, onGenerated }: {
     let cancelled = false;
     (async () => {
       const restored = await fetchStudioSessionRow(rowIdParam);
-      if (cancelled || !restored || restored.result.kind !== "story") return;
+      // See PosterWorkspace's identical guard above -- discard a restored
+      // row that wasn't generated from the currently-selected template.
+      if (cancelled || !restored || restored.result.kind !== "story" || restored.templateId !== row.id) return;
       setResult(restored.result);
       setRowId(rowIdParam);
       setResultKey(rowIdParam);
@@ -1488,9 +1516,12 @@ function TemplateStudioPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-2">
+        <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-2 flex-wrap">
           <LayoutTemplate className="h-7 w-7 text-[color:var(--teal)]" />
           Template Studio
+          <Badge variant="outline" className="py-0 text-[10px] font-semibold uppercase tracking-wide align-middle">
+            Beta
+          </Badge>
         </h1>
         <p className="text-muted-foreground mt-1">
           Ready-made promo designs, already shaped to your brand. Pick one and Medipost writes the copy.

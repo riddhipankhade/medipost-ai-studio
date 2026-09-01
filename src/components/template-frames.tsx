@@ -963,6 +963,15 @@ export const templateFrames: {
   { id: "doctor-authority", name: "Doctor Authority", tagline: "Clinician photo + credential badge", usesAiImage: false, Frame: DoctorAuthority },
 ];
 
+// Fails CLOSED (returns null on no match) -- same contract as
+// getPostTemplate/getCarouselTemplate/getStoryTemplate. A caller that needs a
+// guaranteed frame (e.g. a picker whose `value` only ever comes from this
+// same array) should fall back to `templateFrames[0]` explicitly at the call
+// site with a logged warning, rather than have this function silently
+// substitute a different design for an id it doesn't recognize -- an id
+// persisted from an old generation can go stale if a frame is ever
+// renamed/removed, and rendering the wrong template for that row is worse
+// than rendering nothing.
 export function getTemplateFrame(id: string | null | undefined) {
-  return templateFrames.find((f) => f.id === id) ?? templateFrames[0];
+  return templateFrames.find((f) => f.id === id) ?? null;
 }
