@@ -169,6 +169,26 @@ export type WorkflowKind =
   | "festive"
   | "template";
 
+// A campaign's per-day `format` (see the `weeklySchedule` entries in
+// generate.functions.ts's Campaign type) is free text the AI writes — e.g.
+// "Carousel", "Single Post", "Reel" — not a WorkflowKind, and it's never
+// validated against one. This maps it to a real WorkflowKind only when it
+// clearly matches one of the "Create Now" targets (Poster/Post/Carousel);
+// anything else (Reel, Story, unrecognized) returns null so no Create Now
+// action is offered for that day. Check "poster"/"template" before
+// "single"/"post" since "poster" contains "post" as a substring. Shared by
+// Content Studio's own per-day Create Now (src/routes/_app.generate.tsx,
+// CampaignPreview) and Content History's campaign detail view
+// (src/routes/_app.history.tsx) so the two stay in sync.
+export function mapCampaignFormatToKind(format: string): WorkflowKind | null {
+  const f = format.trim().toLowerCase();
+  if (!f) return null;
+  if (f.includes("carousel")) return "carousel";
+  if (f.includes("poster") || f.includes("template")) return "template";
+  if (f.includes("single") || f.includes("post")) return "single";
+  return null;
+}
+
 export const workflows: {
   kind: WorkflowKind;
   title: string;

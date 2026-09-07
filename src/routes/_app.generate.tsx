@@ -56,6 +56,7 @@ import {
   type WorkflowKind,
   contentCategories,
   defaultCategoryFor,
+  mapCampaignFormatToKind,
   type ContentCategory,
 } from "@/lib/mock-data";
 import { getTopicExamples } from "@/lib/topic-suggestions";
@@ -157,13 +158,29 @@ export const Route = createFileRoute("/_app/generate")({
   // contentCategories/known WorkflowKinds) where they're actually applied, below.
   // frameId is Poster-only (a real render_key); kind+slideCount are for the
   // Post/Carousel/Story catalog entries, which have no render_key to pass.
-  validateSearch: (search: Record<string, unknown>): { frameId?: string; templateId?: string; category?: string; kind?: string; slideCount?: string; renderKey?: string } => ({
+  //
+  // prefillKind/prefillTopic/etc are a separate mechanism: Content History's
+  // per-day "Create Now" on a Campaign's weekly schedule (PostDetailDialog's
+  // isCampaign block in src/routes/_app.history.tsx) linking in that one
+  // day's idea/format plus the parent campaign's specialty/tone. Distinct
+  // from frameId/kind above because that mechanism deliberately never
+  // touches topic/specialty/tone (see the effect that applies it, below) —
+  // this one exists specifically to carry those.
+  validateSearch: (search: Record<string, unknown>): {
+    frameId?: string; templateId?: string; category?: string; kind?: string; slideCount?: string; renderKey?: string;
+    prefillKind?: string; prefillTopic?: string; prefillSpecialty?: string; prefillTone?: string; prefillCategory?: string;
+  } => ({
     frameId:    typeof search.frameId === "string" ? search.frameId : undefined,
     templateId: typeof search.templateId === "string" ? search.templateId : undefined,
     category:   typeof search.category === "string" ? search.category : undefined,
     kind:       typeof search.kind === "string" ? search.kind : undefined,
     slideCount: typeof search.slideCount === "string" ? search.slideCount : undefined,
     renderKey:  typeof search.renderKey === "string" ? search.renderKey : undefined,
+    prefillKind:       typeof search.prefillKind === "string" ? search.prefillKind : undefined,
+    prefillTopic:      typeof search.prefillTopic === "string" ? search.prefillTopic : undefined,
+    prefillSpecialty:  typeof search.prefillSpecialty === "string" ? search.prefillSpecialty : undefined,
+    prefillTone:       typeof search.prefillTone === "string" ? search.prefillTone : undefined,
+    prefillCategory:   typeof search.prefillCategory === "string" ? search.prefillCategory : undefined,
   }),
   component: GeneratePage,
 });
@@ -326,6 +343,43 @@ function GeneratePage() {
     }
   }, [search.frameId, search.templateId, search.category, search.kind, search.slideCount, search.renderKey]);
 
+  const appliedHistoryPrefillRef = useRef(false);
+  const hasIncomingHistoryPrefill = Boolean(search.prefillKind && search.prefillTopic);
+
+  // Apply Content History's "Create Now" prefill once, on arrival. Content
+  // History shows this only on a Campaign's individual weekly-schedule days
+  // (src/routes/_app.history.tsx, PostDetailDialog's isCampaign block) — the
+  // exact same day-level action as Content Studio's own CampaignPreview
+  // (mapCampaignFormatToKind decides which days qualify; both live in
+  // src/lib/mock-data.ts so they can't drift apart), just reached from a
+  // different route. So this only ever arrives as single/carousel/template,
+  // carrying that day's idea as topic and the parent campaign's
+  // specialty/tone — never a category (Content Studio picks its own
+  // per-kind default, same as the in-page version does via switchKind).
+  // Never calls run(); the user still reviews and clicks Generate.
+  useEffect(() => {
+    if (appliedHistoryPrefillRef.current) return;
+    if (!hasIncomingHistoryPrefill) return;
+    const validKind = search.prefillKind === "single" || search.prefillKind === "carousel" || search.prefillKind === "template";
+    if (!validKind) return;
+    appliedHistoryPrefillRef.current = true;
+
+    const nextKind = search.prefillKind as WorkflowKind;
+    const nextCategory = search.prefillCategory && contentCategories.some((c) => c.id === search.prefillCategory)
+      ? (search.prefillCategory as ContentCategory)
+      : defaultCategoryFor(nextKind);
+
+    setKind(nextKind);
+    setCategory(nextCategory);
+    setForm((f) => ({
+      ...f,
+      category: nextCategory,
+      topic: search.prefillTopic ?? f.topic,
+      specialty: search.prefillSpecialty || f.specialty,
+      tone: search.prefillTone || f.tone,
+    }));
+  }, [hasIncomingHistoryPrefill, search.prefillKind, search.prefillTopic, search.prefillSpecialty, search.prefillTone, search.prefillCategory]);
+
   // Animated "e.g. ..." examples in the Topic/Prompt field — inspiration for a
   // doctor who isn't sure what to write. Freezes once they start typing.
   const topicExamples = useMemo(() => getTopicExamples(kind, form.specialty), [kind, form.specialty]);
@@ -354,7 +408,11 @@ function GeneratePage() {
       if (!user || cancelled) return;
 
       setUserId(user.id);
-      const persistedBrief = readPersistedBrief(user.id);
+      // An incoming Create Now prefill (from Content History) takes priority
+      // over resuming the last locally-saved brief — otherwise this restore
+      // (which resolves after the synchronous prefill effect above, since it
+      // waits on getUser()) would silently overwrite it.
+      const persistedBrief = hasIncomingHistoryPrefill ? null : readPersistedBrief(user.id);
       if (persistedBrief) {
         setKind(persistedBrief.kind);
         setCategory(persistedBrief.category);
@@ -375,7 +433,7 @@ function GeneratePage() {
       const signupSpecialty = (user.user_metadata?.specialty as string) ?? "";
       const kitSpecialty = data ? ((data as unknown as Record<string, unknown>).specialty as string) ?? "" : "";
       const specialty = kitSpecialty || signupSpecialty;
-      if (specialty && !persistedBrief && !specialtyAppliedRef.current) {
+      if (specialty && !persistedBrief && !specialtyAppliedRef.current && !hasIncomingHistoryPrefill) {
         specialtyAppliedRef.current = true;
         setForm((f) => ({ ...f, specialty }));
       }
@@ -451,10 +509,11 @@ function GeneratePage() {
 
     (async () => {
       // Arriving with an explicit template selection (Template Studio's "Use
-      // Template") takes priority over resuming whatever was last being
-      // edited — treat it as if there's no pointer to restore. Covers both
-      // Poster (?frameId=) and Post/Carousel/Story (?kind=) catalog entries.
-      const pointer = (search.frameId || search.kind) ? null : readStudioSessionPointer(userId);
+      // Template") or a Content History "Create Now" prefill takes priority
+      // over resuming whatever was last being edited — treat it as if
+      // there's no pointer to restore. Covers Poster (?frameId=),
+      // Post/Carousel/Story (?kind=), and the prefillKind/prefillTopic pair.
+      const pointer = (search.frameId || search.kind || hasIncomingHistoryPrefill) ? null : readStudioSessionPointer(userId);
       if (!pointer) { setSessionHydrated(true); return; }
 
       const row = await fetchStudioSessionRow(pointer.rowId);
@@ -479,7 +538,7 @@ function GeneratePage() {
     })();
 
     return () => { cancelled = true; };
-  }, [userId, search.frameId, search.kind]);
+  }, [userId, search.frameId, search.kind, hasIncomingHistoryPrefill]);
 
   useEffect(() => {
     if (!userId || !sessionHydrated) return;
@@ -507,6 +566,23 @@ function GeneratePage() {
     // was generated under the tab you're leaving. It reappears if you switch
     // back (see the `result.kind === kind` check below); it's only actually
     // replaced when Generate succeeds for the new kind.
+  }
+
+  // "Create Now" on a campaign's weekly-schedule day. Campaign is generated
+  // in-place here in Content Studio (there's no separate Campaign page), so
+  // this just reuses switchKind() to hop to the target format's tab and
+  // seeds its topic from the day's idea — specialty/tone are already
+  // whatever's in `form` (the same brief that produced this campaign, since
+  // switchKind never touches them). Nothing here calls run(); the user still
+  // has to review the brief and click Generate themselves.
+  function handleCampaignCreateNow(day: { day: string; format: string; idea: string }) {
+    const nextKind = mapCampaignFormatToKind(day.format);
+    if (!nextKind) return;
+    switchKind(nextKind);
+    setForm((f) => ({ ...f, topic: day.idea }));
+    const title = workflows.find((w) => w.kind === nextKind)?.title ?? nextKind;
+    toast.success(`Switched to ${title} — review the brief and click Generate when ready.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function pickCategory(next: ContentCategory) {
@@ -923,6 +999,7 @@ function GeneratePage() {
                 templateFrame={templateFrame} onTemplateFrameChange={setTemplateFrame}
                 sessionSeed={sessionSeed}
                 renderKey={selectedRenderKey}
+                onCampaignCreateNow={handleCampaignCreateNow}
               />
               <VisualConceptCard visual={result.visual} />
             </div>
@@ -997,11 +1074,12 @@ function LoadingPanel({ stage }: { stage: number }) {
   );
 }
 
-function ResultPreview({ result, specialty, rowId, category, topic, templateFrame, onTemplateFrameChange, sessionSeed, renderKey }: {
+function ResultPreview({ result, specialty, rowId, category, topic, templateFrame, onTemplateFrameChange, sessionSeed, renderKey, onCampaignCreateNow }: {
   result: GenerateOutput; specialty: string; rowId: string | null; category: ContentCategory; topic: string;
   templateFrame: TemplateFrameId; onTemplateFrameChange: (id: TemplateFrameId) => void;
   sessionSeed: StudioSessionRow | null;
   renderKey?: string | null;
+  onCampaignCreateNow: (day: { day: string; format: string; idea: string }) => void;
 }) {
   switch (result.kind) {
     case "single":   return <SinglePostPreview post={result} specialty={specialty} rowId={rowId} category={category} topic={topic}
@@ -1017,7 +1095,7 @@ function ResultPreview({ result, specialty, rowId, category, topic, templateFram
                         initialCustomization={sessionSeed?.initialCustomization?.kind === "story" ? sessionSeed.initialCustomization : null}
                         renderKey={renderKey} />;
     case "reel":     return <ReelPreview post={result} specialty={specialty} />;
-    case "campaign": return <CampaignPreview plan={result} />;
+    case "campaign": return <CampaignPreview plan={result} onCreateNow={onCampaignCreateNow} />;
     case "festive":  return <FestivePreview post={result} specialty={specialty} rowId={rowId}
                         initialImageUrl={sessionSeed?.initialImageUrl ?? null}
                         initialCustomization={sessionSeed?.initialCustomization?.kind === "festive" ? sessionSeed.initialCustomization : null} />;
@@ -2055,7 +2133,7 @@ function ScriptRow({ label, time, text, accent }: { label: string; time: string;
   );
 }
 
-function CampaignPreview({ plan }: { plan: Campaign }) {
+function CampaignPreview({ plan, onCreateNow }: { plan: Campaign; onCreateNow: (day: { day: string; format: string; idea: string }) => void }) {
   const fullText = `Theme: ${plan.theme}\nObjective: ${plan.objective}\n\nPost ideas:\n` +
     plan.postIdeas.map((p, i) => `${i + 1}. ${p}`).join("\n") + `\n\nWeekly schedule:\n` +
     plan.weeklySchedule.map((d) => `${d.day} · ${d.format} — ${d.idea}`).join("\n") + `\n\nCTAs:\n` +
@@ -2083,15 +2161,26 @@ function CampaignPreview({ plan }: { plan: Campaign }) {
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Suggested Weekly Schedule</p>
           <div className="grid gap-2">
-            {plan.weeklySchedule.map((d, i) => (
-              <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
-                <div className="h-10 w-10 shrink-0 rounded-lg bg-[color:var(--teal)]/10 text-[color:var(--teal)] grid place-items-center font-semibold text-sm">{d.day.slice(0, 3)}</div>
-                <div className="min-w-0">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{d.format}</p>
-                  <p className="text-sm mt-0.5">{d.idea}</p>
+            {plan.weeklySchedule.map((d, i) => {
+              const createKind = mapCampaignFormatToKind(d.format);
+              return (
+                <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
+                  <div className="h-10 w-10 shrink-0 rounded-lg bg-[color:var(--teal)]/10 text-[color:var(--teal)] grid place-items-center font-semibold text-sm">{d.day.slice(0, 3)}</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{d.format}</p>
+                    <p className="text-sm mt-0.5">{d.idea}</p>
+                  </div>
+                  {createKind && (
+                    <Button
+                      variant="outline" size="sm" className="shrink-0 gap-1.5"
+                      onClick={() => onCreateNow(d)}
+                    >
+                      <Wand2 className="h-3.5 w-3.5" /> Create Now
+                    </Button>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
         <div>

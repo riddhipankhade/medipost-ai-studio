@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useCallback, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, Copy, Loader2, Star, ImageDown, Eye } from "lucide-react";
+import { Search, Copy, Loader2, Star, ImageDown, Eye, Wand2 } from "lucide-react";
 import { isExportableNode } from "@/lib/export-filter";
 import { RemoveWatermarkRow } from "@/components/Watermark";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ import FestiveCard from "@/components/FestiveCard";
 import { SlideCanvas, ExactScalePreview, CREATIVE_DESIGN_WIDTH } from "@/routes/_app.generate";
 import { useBrandKit } from "@/lib/brand-kit";
 import type { ContentCategory } from "@/lib/mock-data";
+import { mapCampaignFormatToKind } from "@/lib/mock-data";
 import type { SlideCanvasProps } from "@/components/carousel-layouts";
 import { getTemplateFrame } from "@/components/template-frames";
 import { getPostTemplate, type PostTemplateProps } from "@/components/post-templates";
@@ -64,6 +65,7 @@ type ContentRow = {
   workflow_kind:       string;
   content_category:    string;
   specialty:           string;
+  tone:                string;
   topic:               string;
   generated_text:      string | null;
   customization:       unknown;
@@ -101,6 +103,30 @@ const KIND_LABELS: Record<string, string> = {
 function parsePost(text: string | null): Record<string, any> | null {
   if (!text) return null;
   try { return JSON.parse(text); } catch { return null; }
+}
+
+// Create Now lives on each weekly-schedule DAY inside a campaign's detail
+// view (PostDetailDialog's isCampaign block below), not on the History card
+// itself — a normal single/carousel/template post created directly in
+// Content Studio gets no such action, and neither does the campaign as a
+// whole. Mirrors Content Studio's own per-day Create Now on CampaignPreview
+// (src/routes/_app.generate.tsx): mapCampaignFormatToKind decides whether
+// this day even gets a button (Poster/Post/Carousel only — Reel/Story
+// don't), the day's own `idea` becomes the topic, and specialty/tone are
+// inherited from the campaign row itself since weeklySchedule days don't
+// carry their own (see the Campaign/GenerateInput shapes in
+// generate.functions.ts). No category is passed, same as the in-page
+// version — Content Studio falls back to its own per-kind default.
+function buildDayCreateNowSearch(row: ContentRow, day: { day: string; format: string; idea: string }): Record<string, string> | null {
+  const kind = mapCampaignFormatToKind(day.format);
+  if (!kind) return null;
+  const search: Record<string, string> = {
+    prefillKind: kind,
+    prefillTopic: day.idea,
+  };
+  if (row.specialty) search.prefillSpecialty = row.specialty;
+  if (row.tone) search.prefillTone = row.tone;
+  return search;
 }
 
 function bodyPreview(row: ContentRow): string {
@@ -509,13 +535,23 @@ function PostDetailDialog({
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Weekly Schedule</p>
                 <div className="space-y-1.5">
-                  {(p?.weeklySchedule ?? []).map((d: any, i: number) => (
-                    <div key={i} className="flex gap-2 items-start rounded-lg border bg-muted/20 p-2.5 text-sm">
-                      <span className="w-8 font-bold text-primary flex-shrink-0">{d.day}</span>
-                      <span className="text-xs bg-secondary text-secondary-foreground rounded px-1.5 py-0.5 flex-shrink-0">{d.format}</span>
-                      <span className="text-muted-foreground leading-snug">{d.idea}</span>
-                    </div>
-                  ))}
+                  {(p?.weeklySchedule ?? []).map((d: any, i: number) => {
+                    const daySearch = buildDayCreateNowSearch(row, d);
+                    return (
+                      <div key={i} className="flex gap-2 items-start rounded-lg border bg-muted/20 p-2.5 text-sm">
+                        <span className="w-8 font-bold text-primary flex-shrink-0">{d.day}</span>
+                        <span className="text-xs bg-secondary text-secondary-foreground rounded px-1.5 py-0.5 flex-shrink-0">{d.format}</span>
+                        <span className="text-muted-foreground leading-snug flex-1">{d.idea}</span>
+                        {daySearch && (
+                          <Button asChild variant="outline" size="sm" className="gap-1.5 flex-shrink-0">
+                            <Link to="/generate" search={daySearch}>
+                              <Wand2 className="h-3.5 w-3.5" /> Create Now
+                            </Link>
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -715,7 +751,7 @@ function History() {
       const { data, error: dbErr } = await supabase
         .from("content_generations")
         .select(
-          "id, workflow_kind, content_category, specialty, topic, " +
+          "id, workflow_kind, content_category, specialty, tone, topic, " +
           "generated_text, customization, hashtags, status, " +
           "is_favorite, ai_model, created_at"
         )
