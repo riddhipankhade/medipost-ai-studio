@@ -1,7 +1,6 @@
 import type { CapacitorConfig } from '@capacitor/cli';
-
 const config: CapacitorConfig = {
-  appId: 'com.medipost.ai',
+  appId: 'com.medipostai.app',
   appName: 'Medipost AI',
   webDir: 'dist',
   server: {
@@ -9,5 +8,4 @@ const config: CapacitorConfig = {
     cleartext: false,
   },
 };
-
-export default config;
+export default config;                                                                                                                            
