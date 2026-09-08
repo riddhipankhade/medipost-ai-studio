@@ -73,7 +73,7 @@ jobs:
             -archivePath $RUNNER_TEMP/App.xcarchive \
             DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
             CODE_SIGN_STYLE="Manual" \
-            PROVISIONING_PROFILE_SPECIFIER="Medipost AI AppStore" \
+            PROVISIONING_PROFILE_SPECIFIER="Medipost AI AppStore New" \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             archive
 
@@ -94,8 +94,8 @@ jobs:
             <string>manual</string>
             <key>provisioningProfiles</key>
             <dict>
-              <key>com.medipost.ai</key>
-              <string>Medipost AI AppStore</string>
+              <key>com.medipostai.app</key>
+              <string>Medipost AI AppStore New</string>
             </dict>
             <key>uploadSymbols</key>
             <true/>
