@@ -1,4 +1,4 @@
-package com.medipost.ai;
+package com.medipostai.app;
 
 import com.getcapacitor.BridgeActivity;
 

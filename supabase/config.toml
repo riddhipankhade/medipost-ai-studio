@@ -40,3 +40,25 @@ enable_confirmations = false   # Set true in production
 #[seed]
 #enabled = true
 #sql_paths = ["./seed/*.sql"]
+
+[functions.send-renewal-reminders]
+enabled = true
+verify_jwt = false
+import_map = "./functions/send-renewal-reminders/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/send-renewal-reminders/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/send-renewal-reminders/*.html" ]
+
+[functions.process-renewals]
+enabled = true
+verify_jwt = false
+import_map = "./functions/process-renewals/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/process-renewals/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/process-renewals/*.html" ]
