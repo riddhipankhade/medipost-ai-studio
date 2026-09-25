@@ -23,6 +23,11 @@ import { growthButtonLabel, GROWTH_TRIAL_SUPPORTING_TEXT } from "@/lib/growth-tr
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 
+function pushEvent(event: string, params: Record<string, unknown> = {}) {
+  (window as any).dataLayer = (window as any).dataLayer || [];
+  (window as any).dataLayer.push({ event, ...params });
+}
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", {
     day: "numeric", month: "long", year: "numeric",
@@ -61,7 +66,7 @@ function loadBoltScript(): Promise<void> {
   });
 }
 
-const PAID_PLANS = ["growth", "pro_clinic", "pro"];
+const PAID_PLANS = ["growth", "pro_clinic"];
 
 const PLANS = [
   {
@@ -206,9 +211,8 @@ function SubscriptionPage() {
   }
 
   async function handleUpgrade(planKey: string, startTrial = false) {
-    if (isPaid && !isCancelled) {
-      toast.info("You already have an active subscription. Please cancel it before switching plans.");
-      return;
+    if (planKey === "growth") {
+      pushEvent("growth_plan_initiated", { start_trial: startTrial });
     }
     setPaying(planKey);
     try {

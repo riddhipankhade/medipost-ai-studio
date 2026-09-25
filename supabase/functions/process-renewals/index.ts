@@ -114,6 +114,40 @@ Deno.serve(async (_req) => {
 
     console.log(`[process-renewals] Done. Success: ${successCount}, Failed: ${failCount}`);
 
+    // Downgrade expired subscriptions that won't auto-renew
+    const { data: expired } = await supabase
+      .from("subscriptions")
+      .select("user_id")
+      .in("plan", ["growth", "pro_clinic"])
+      .lte("plan_expires_at", now)
+      .or("auto_renew.eq.false,payu_subid.is.null");
+
+    if (expired?.length) {
+      const { data: starterPlan } = await supabase
+        .from("plans")
+        .select("id")
+        .eq("name", "starter")
+        .single();
+
+      for (const sub of expired) {
+        await supabase
+          .from("subscriptions")
+          .update({
+            plan:            "starter",
+            plan_id:         starterPlan?.id,
+            plan_expires_at: null,
+            auto_renew:      false,
+            status:          "active",
+            updated_at:      now,
+          })
+          .eq("user_id", sub.user_id);
+
+        console.log(`[process-renewals] Downgraded expired user ${sub.user_id} to starter`);
+      }
+
+      console.log(`[process-renewals] Downgraded ${expired.length} expired subscription(s).`);
+    }
+
     return new Response(
       JSON.stringify({ success: true, processed: due.length, successCount, failCount }),
       { headers: { "Content-Type": "application/json" } }
