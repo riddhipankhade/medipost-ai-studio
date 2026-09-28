@@ -5,7 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { RotateCcw } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { RotateCcw, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
@@ -25,20 +33,21 @@ function Settings() {
   const [clinic, setClinic]     = useState("");
   const [origEmail, setOrigEmail] = useState("");
 
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting]                 = useState(false);
+
   // ── Load current user data on mount ────────────────────────────────────────
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Name from profiles table
       const { data: profile } = await supabase
         .from("profiles")
         .select("full_name")
         .eq("id", user.id)
         .single();
 
-      // Clinic from brand_kits table
       const { data: brand } = await supabase
         .from("brand_kits")
         .select("clinic_name")
@@ -61,20 +70,17 @@ function Settings() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // 1. Update full_name in profiles
       const { error: profileError } = await supabase
         .from("profiles")
         .update({ full_name: name.trim() })
         .eq("id", user.id);
       if (profileError) throw profileError;
 
-      // 2. Update clinic_name in brand_kits (upsert in case row doesn't exist yet)
       const { error: brandError } = await supabase
         .from("brand_kits")
         .upsert({ user_id: user.id, clinic_name: clinic.trim() }, { onConflict: "user_id" });
       if (brandError) throw brandError;
 
-      // 3. Update email only if changed — triggers confirmation email
       if (email.trim() !== origEmail) {
         const { error: emailError } = await supabase.auth.updateUser({ email: email.trim() });
         if (emailError) throw emailError;
@@ -89,6 +95,26 @@ function Settings() {
       toast.error("Could not save", { description: msg });
     } finally {
       setSaving(false);
+    }
+  }
+
+  // ── Delete account handler ──────────────────────────────────────────────────
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { error } = await supabase.functions.invoke("delete-account", {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (error) throw error;
+      await supabase.auth.signOut();
+      navigate({ to: "/", replace: true });
+    } catch (err: any) {
+      toast.error("Could not delete account", {
+        description: err?.message ?? "Please contact support.",
+      });
+      setDeleting(false);
+      setDeleteDialogOpen(false);
     }
   }
 
@@ -254,6 +280,60 @@ function Settings() {
           </Accordion>
         </CardContent>
       </Card>
+
+      {/* Danger Zone */}
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Permanently delete your account and all associated data. This action cannot be undone.
+          </p>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="gap-2"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete Account
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={(open) => !deleting && setDeleteDialogOpen(open)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete your account?</DialogTitle>
+            <DialogDescription className="space-y-2">
+              <span className="block">
+                This will permanently delete your account, all generated content, brand kit, and subscription data.
+              </span>
+              <span className="block font-medium text-foreground">This cannot be undone.</span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:flex-col sm:justify-stretch sm:space-x-0 gap-2">
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={deleting}
+              className="w-full"
+            >
+              {deleting ? <><Loader2 className="h-4 w-4 animate-spin" /> Deleting...</> : "Yes, delete my account"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+              className="w-full"
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
