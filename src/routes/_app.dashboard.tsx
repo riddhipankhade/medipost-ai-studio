@@ -213,10 +213,12 @@ function Dashboard() {
                 <span className="text-2xl font-semibold tracking-tight">{planName}</span>
               )}
               <p className="text-xs text-muted-foreground mt-2">
-                {isCancelling
+                {isPro
+                  ? isCancelling
                   ? cancelsDate ? `Cancels ${cancelsDate} — no further charges` : "Cancels at period end"
-                  : renewDate ? `Renews ${renewDate}` : "—"}
-                {!isCancelling && price ? ` · ₹${price.toLocaleString("en-IN")}/mo` : ""}
+                  : renewDate ? `Renews ${renewDate}` : "—"
+                  : "Free plan · 10 posts/month"}
+                {isPro && !isCancelling && price ? ` · ₹${price.toLocaleString("en-IN")}/mo` : ""}
               </p>
             </CardContent>
           </Card>
