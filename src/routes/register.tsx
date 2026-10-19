@@ -38,6 +38,12 @@ function Register() {
 
   useEffect(() => {
     if (!authLoading && session) {
+      const pendingMethod = sessionStorage.getItem("_gtm_oauth_signup");
+      if (pendingMethod) {
+        sessionStorage.removeItem("_gtm_oauth_signup");
+        pushEvent("sign_up", { method: pendingMethod });
+        pushEvent("started_free_plan", { method: pendingMethod });
+      }
       navigate({ to: "/dashboard", replace: true });
     }
   }, [authLoading, session, navigate]);
@@ -66,7 +72,7 @@ function Register() {
     }
 
     pushEvent("sign_up", { method: "email", specialty });
-    pushEvent("starter_plan_initiated", { method: "email" });
+    pushEvent("started_free_plan", { method: "email" });
 
     if (data.session) {
       navigate({ to: "/dashboard", replace: true });
@@ -77,24 +83,22 @@ function Register() {
 
   async function handleGoogleSignIn() {
     setError(null);
-    pushEvent("sign_up", { method: "google" });
-    pushEvent("starter_plan_initiated", { method: "google" });
+    sessionStorage.setItem("_gtm_oauth_signup", "google");
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/dashboard`,
+        redirectTo: `${window.location.origin}/register`,
       },
     });
   }
 
   async function handleAppleSignIn() {
     setError(null);
-    pushEvent("sign_up", { method: "apple" });
-    pushEvent("starter_plan_initiated", { method: "apple" });
+    sessionStorage.setItem("_gtm_oauth_signup", "apple");
     await supabase.auth.signInWithOAuth({
       provider: "apple",
       options: {
-        redirectTo: `${window.location.origin}/dashboard`,
+        redirectTo: `${window.location.origin}/register`,
       },
     });
   }

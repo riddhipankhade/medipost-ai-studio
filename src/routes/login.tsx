@@ -32,6 +32,11 @@ function Login() {
 
   useEffect(() => {
     if (!loading && session) {
+      const pendingMethod = sessionStorage.getItem("_gtm_oauth_login");
+      if (pendingMethod) {
+        sessionStorage.removeItem("_gtm_oauth_login");
+        pushEvent("login", { method: pendingMethod });
+      }
       navigate({ to: "/dashboard", replace: true });
     }
   }, [loading, session, navigate]);
@@ -56,22 +61,22 @@ function Login() {
 
   async function handleGoogleSignIn() {
     setError(null);
-    pushEvent("login", { method: "google" });
+    sessionStorage.setItem("_gtm_oauth_login", "google");
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/dashboard`,
+        redirectTo: `${window.location.origin}/login`,
       },
     });
   }
 
   async function handleAppleSignIn() {
     setError(null);
-    pushEvent("login", { method: "apple" });
+    sessionStorage.setItem("_gtm_oauth_login", "apple");
     await supabase.auth.signInWithOAuth({
       provider: "apple",
       options: {
-        redirectTo: `${window.location.origin}/dashboard`,
+        redirectTo: `${window.location.origin}/login`,
       },
     });
   }

@@ -211,9 +211,6 @@ function SubscriptionPage() {
   }
 
   async function handleUpgrade(planKey: string, startTrial = false) {
-    if (planKey === "growth") {
-      pushEvent("growth_plan_initiated", { start_trial: startTrial });
-    }
     setPaying(planKey);
     try {
       const voucherCode = !startTrial && appliedVoucher?.applicablePlans.includes(planKey)
@@ -269,6 +266,13 @@ function SubscriptionPage() {
                       subId:       r.sub_id ?? r.subId ?? "",
                     },
                   });
+                  if (planKey === "growth") {
+                    pushEvent("started_growth_plan", {
+                      plan_name: "Growth Plan",
+                      value: parseFloat(r.amount) || 499,
+                      currency: "INR",
+                    });
+                  }
                   toast.success(
                     startTrial
                       ? "Trial started! You'll be charged ₹499 automatically after 7 days."
