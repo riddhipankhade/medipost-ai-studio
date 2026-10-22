@@ -97,6 +97,7 @@
     "vite": "^8.0.16"
   },
   "overrides": {
-    "@tanstack/start-server-core": ">=1.169.39"
+    "@tanstack/start-server-core": ">=1.169.39",
+    "@tanstack/start-plugin-core": "1.167.51"
   }
 }
