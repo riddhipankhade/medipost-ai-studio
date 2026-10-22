@@ -98,6 +98,6 @@
   },
   "overrides": {
     "@tanstack/start-server-core": ">=1.169.39",
-    "@tanstack/start-plugin-core": "1.167.51"
+    "@tanstack/start-plugin-core": "1.167.35"
   }
 }
