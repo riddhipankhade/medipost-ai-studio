@@ -213,6 +213,13 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
     const nextBillingDate = new Date();
     nextBillingDate.setDate(nextBillingDate.getDate() + (isTrial ? periodDays : periodDays - 1));
 
+    // ── Mandate capture fix ───────────────────────────────────────────────────
+    // PayU's Bolt browser response does NOT return a `sub_id`/`subId` field, so
+    // relying on it left payu_subid empty and auto_renew/next_billing_date unset.
+    // For PayU SI (si=1), the identifier used for future auto-debits is the
+    // `mihpayid` of the registration transaction. Fall back to it.
+    const mandateId = data.subId?.trim() || data.mihpayid?.trim() || null;
+
     const { error: upsertError } = await supabase
       .from("subscriptions")
       .upsert(
@@ -227,9 +234,9 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
           current_period_end:   expiresAt.toISOString(),
           payu_txn_id:          data.txnid,
           payu_payment_id:      data.mihpayid,
-          payu_subid:           data.subId ?? null,
-          auto_renew:           !!data.subId,
-          next_billing_date:    data.subId ? nextBillingDate.toISOString() : null,
+          payu_subid:           mandateId,
+          auto_renew:           !!mandateId,
+          next_billing_date:    mandateId ? nextBillingDate.toISOString() : null,
           trial_used_at:        isTrial ? new Date().toISOString() : undefined,
           canceled_at:          null,
           updated_at:           new Date().toISOString(),
@@ -257,7 +264,7 @@ export const verifyPayUPayment = createServerFn({ method: "POST" })
     return {
       success:   true,
       expiresAt: expiresAt.toISOString(),
-      autoRenew: !!data.subId,
+      autoRenew: !!mandateId,
     };
   });
 
