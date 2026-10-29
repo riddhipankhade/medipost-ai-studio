@@ -115,14 +115,15 @@ async function attemptRefund(
   supabase: ReturnType<typeof getSupabaseClient>,
   userId: string,
   context: string,
+  rpc: "refund_credit" | "refund_image_credit" = "refund_credit",
 ): Promise<RefundResult> {
   try {
-    const { error } = await supabase.rpc("refund_credit", { p_user_id: userId });
+    const { error } = await supabase.rpc(rpc, { p_user_id: userId });
     if (error) throw error;
     return { refunded: true };
   } catch (refundErr: any) {
     console.error(
-      `[generateContent][REFUND_FAILED] user_id=${userId} context="${context}" ` +
+      `[generateContent][REFUND_FAILED] user_id=${userId} rpc=${rpc} context="${context}" ` +
       `refundError="${refundErr?.message ?? refundErr}"`,
     );
     return { refunded: false };
@@ -1250,6 +1251,27 @@ export const generateImage = createServerFn({ method: "POST" })
         .maybeSingle();
       const imgConfig = getPlanConfig(imgSub?.plan);
 
+      // Image generation is the single most expensive call in the app
+      // (gemini-2.5-flash-image is billed per image, far above a text
+      // generation), and every slide of a carousel -- plus every manual
+      // "regenerate visual" -- is its own billed image. Without a ceiling a
+      // single user can drain the whole Gemini balance for everyone, which
+      // is exactly how generation went down platform-wide. Mirrors
+      // deduct_credit's contract: locks the row, raises
+      // INSUFFICIENT_IMAGE_CREDITS / SUBSCRIPTION_NOT_FOUND.
+      const { error: imageCreditError } = await supabase.rpc("deduct_image_credit", {
+        p_user_id: user.id,
+      });
+      if (imageCreditError) {
+        if (imageCreditError.message.includes("INSUFFICIENT_IMAGE_CREDITS"))
+          throw new Error(
+            "You've used all your image generations for this month. Upgrade your plan for more visuals.",
+          );
+        if (imageCreditError.message.includes("SUBSCRIPTION_NOT_FOUND"))
+          throw new Error("No active subscription found. Please contact support.");
+        throw new Error(`Image credit processing failed: ${imageCreditError.message}`);
+      }
+
       const directive = data.visualStyle ? (STYLE_DIRECTIVES[data.visualStyle] ?? "") : "";
       const isFestive = data.visualStyle?.startsWith("Festive") ?? false;
       const fullPrompt = [
@@ -1262,7 +1284,25 @@ export const generateImage = createServerFn({ method: "POST" })
         .filter(Boolean)
         .join(" ");
 
-      const { dataUrl } = await callGeminiImage(fullPrompt, geminiApiKey);
+      // The image credit was already deducted above, so a failed render has
+      // to give it back -- otherwise a provider outage silently burns the
+      // user's monthly image allowance. Same no-retry refund contract as
+      // text generation (see attemptRefund).
+      let dataUrl: string;
+      try {
+        ({ dataUrl } = await callGeminiImage(fullPrompt, geminiApiKey));
+      } catch (imgErr: any) {
+        const refund = await attemptRefund(
+          supabase,
+          user.id,
+          `image generation failed: ${imgErr?.message ?? "unknown error"}`,
+          "refund_image_credit",
+        );
+        if (refund.refunded) throw imgErr;
+        throw new Error(
+          refundAwareMessage(refund, imgErr?.message || "Image generation failed."),
+        );
+      }
 
       // Persist the generated visual onto its content row so it survives
       // navigation/remount (Content History, tab switches, etc.) — mirrors
