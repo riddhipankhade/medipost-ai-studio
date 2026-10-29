@@ -141,6 +141,48 @@ function refundAwareMessage(refund: RefundResult, base: string): string {
     : `${base} We could not confirm your credit was refunded -- please check your remaining credits before trying again, or contact support if they look incorrect.`;
 }
 
+// ─── Generation error handling ───────────────────────────────────────────────
+// Appended to every system prompt. Gemini's JSON mode occasionally emits an
+// unescaped double quote inside a string value (common in Myth/Fact copy,
+// e.g. Myth: "ED only happens to old men"), which breaks JSON.parse.
+const JSON_RULE =
+  "\n\nJSON RULE: Inside any string value never use a raw double quote character; " +
+  "use single quotes ('...') instead. Output must be strictly valid JSON with no trailing commas.";
+
+/** Errors worth one automatic, uncharged retry (bad/cut-off model output). */
+function isRetryableGenerationError(err: any, kind: GenerateInput["kind"]): boolean {
+  if (kind === "template") return true; // keeps the existing template-validation retry
+  const m = String(err?.message ?? "");
+  return (
+    m === "INVALID_JSON" ||
+    m === "AI_OUTPUT_TRUNCATED" ||
+    m.includes("JSON") ||
+    m.includes("empty response")
+  );
+}
+
+/** Never show raw parser text or provider billing errors to users. */
+function friendlyGenerationError(err: any, kind: GenerateInput["kind"]): string {
+  const m = String(err?.message ?? "");
+  if (m.includes("(402)"))
+    return "Content generation is temporarily unavailable. Please try again a little later.";
+  if (m.includes("rate limit") || m.includes("busy") || m.includes("overloaded") || m.includes("safety filter"))
+    return m;
+  if (kind === "template")
+    return "We couldn't generate valid content for this template.";
+  if (
+    m === "INVALID_JSON" ||
+    m === "AI_OUTPUT_TRUNCATED" ||
+    m.includes("JSON") ||
+    m.includes("empty response")
+  )
+    return "The AI response came back incomplete. Please tap Generate again.";
+  if (m.startsWith("AI request failed"))
+    return "Content generation failed. Please try again in a moment.";
+  return m || "Generation failed.";
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function callGeminiText(
   system:     string,
   userPrompt: string,
@@ -150,7 +192,7 @@ async function callGeminiText(
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${apiKey}`;
 
   const body = {
-    systemInstruction: { parts: [{ text: system }] },
+    systemInstruction: { parts: [{ text: system + JSON_RULE }] },
     contents: [{ role: "user", parts: [{ text: userPrompt }] }],
     generationConfig: {
       temperature:      cfg.temperature,
@@ -158,6 +200,10 @@ async function callGeminiText(
       topP:             cfg.topP,
       maxOutputTokens:  cfg.maxOutputTokens,
       responseMimeType: "application/json",
+      // Gemini 2.5 Flash "thinks" by default; thinking tokens are billed at
+      // the output rate AND count against maxOutputTokens, which could cut a
+      // long carousel's JSON off mid-way. Copywriting doesn't need it.
+      thinkingConfig:   { thinkingBudget: 0 },
     },
     safetySettings: [
       { category: "HARM_CATEGORY_HARASSMENT",        threshold: "BLOCK_MEDIUM_AND_ABOVE" },
@@ -176,8 +222,20 @@ async function callGeminiText(
     });
 
     if (res.ok) {
-      const json = await res.json();
-      const text: string = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      const json      = await res.json();
+      const candidate = json?.candidates?.[0];
+      const finish    = String(candidate?.finishReason ?? "");
+      const text: string = Array.isArray(candidate?.content?.parts)
+        ? candidate.content.parts.map((p: any) => p?.text ?? "").join("")
+        : "";
+
+      if (finish === "MAX_TOKENS") {
+        console.warn("[Gemini] Output hit maxOutputTokens -- response was cut off.");
+        throw new Error("AI_OUTPUT_TRUNCATED");
+      }
+      if (finish === "SAFETY" || finish === "PROHIBITED_CONTENT" || finish === "BLOCKLIST") {
+        throw new Error("This topic was blocked by the AI's safety filter. Please rephrase it and try again.");
+      }
       if (!text || text.trim().length < 10)
         throw new Error("Gemini returned an empty response");
       return text;
@@ -192,9 +250,10 @@ async function callGeminiText(
     }
 
     const errBody = await res.text().catch(() => "");
+    console.error(`[Gemini] Request failed (${res.status}): ${errBody.slice(0, 500)}`);
     if (res.status === 429) throw new Error("AI rate limit reached. Please try again in a minute.");
     if (res.status === 503) throw new Error("AI service is currently busy. Please try again in 30 seconds.");
-    throw new Error(`AI request failed (${res.status}): ${errBody.slice(0, 200)}`);
+    throw new Error(`AI request failed (${res.status})`);
   }
 
   throw new Error("AI service is overloaded right now. Please try again in a moment.");
@@ -233,9 +292,12 @@ async function callGeminiImage(
       continue;
     }
     const errBody = await res.text().catch(() => "");
+    console.error(`[Gemini Image] Request failed (${res.status}): ${errBody.slice(0, 500)}`);
     if (res.status === 429)
       throw new Error("Image generation is rate-limited. Please try again shortly.");
-    throw new Error(`Image generation failed (${res.status}): ${errBody.slice(0, 200)}`);
+    if (res.status === 402)
+      throw new Error("Image generation is temporarily unavailable. Please try again a little later.");
+    throw new Error(`Image generation failed (${res.status}). Please try again.`);
   }
   throw new Error("Image generation failed after 3 attempts. Please try again in a moment.");
 }
@@ -841,15 +903,25 @@ Return STRICT JSON:
   }
 }
 
+/**
+ * Parses the model's JSON, tolerating code fences, surrounding chatter and
+ * trailing commas. Never leaks a raw JSON.parse error -- throws
+ * "INVALID_JSON" so the caller can retry and show a friendly message.
+ */
 function extractJson(text: string): unknown {
   const trimmed = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const m = trimmed.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
-    throw new Error("Model did not return valid JSON");
+
+  const candidates = [trimmed];
+  const m = trimmed.match(/\{[\s\S]*\}/);
+  if (m && m[0] !== trimmed) candidates.push(m[0]);
+
+  for (const c of candidates) {
+    try { return JSON.parse(c); } catch { /* try a light repair below */ }
+    try { return JSON.parse(c.replace(/,\s*([}\]])/g, "$1")); } catch { /* next candidate */ }
   }
+
+  console.warn("[generateContent] Unparseable model output (first 300 chars):", trimmed.slice(0, 300));
+  throw new Error("INVALID_JSON");
 }
 
 function normalizeVisual(v: unknown): Visual {
@@ -1026,8 +1098,8 @@ export const generateContent = createServerFn({ method: "POST" })
 
       // Runs the full Gemini call -> parse -> normalize -> (for `template`
       // only) schema-validate pipeline once. Thrown errors here (a Gemini
-      // call failure, malformed JSON, or -- template kind only -- a missing
-      // required slot) are handled by the retry/refund logic below, not here.
+      // call failure, malformed/cut-off JSON, or -- template kind only -- a
+      // missing required slot) are handled by the retry/refund logic below.
       async function generateAndValidate(): Promise<GenerateOutput> {
         const rawText = await callGeminiText(system, userPrompt, geminiApiKey, aiConfig);
         const parsed = extractJson(rawText);
@@ -1035,35 +1107,36 @@ export const generateContent = createServerFn({ method: "POST" })
         return generated.kind === "template" ? validateTemplateContent(generated) : generated;
       }
 
-      let result: GenerateOutput;
-      try {
-        result = await generateAndValidate();
-      } catch (firstErr: any) {
-        if (data.kind === "template") {
-          // Template content is schema-validated (see template-content-schema.ts).
-          // A failure here is worth one automatic, uncharged retry before
-          // giving up -- no second credit is deducted, since deduct_credit
-          // already ran once above for this whole request.
-          console.warn("[generateContent] template generation failed validation, retrying once:", firstErr?.message);
-          try {
-            result = await generateAndValidate();
-          } catch (secondErr: any) {
-            console.error("[generateContent] template generation failed validation twice:", secondErr?.message);
-            const refund = await attemptRefund(supabase, user.id, "template generation failed validation twice");
-            throw new Error(refundAwareMessage(refund, "We couldn't generate valid content for this template."));
+      // One automatic, uncharged retry for bad model output (malformed or
+      // cut-off JSON, empty response, and -- as before -- template schema
+      // validation failures), now for EVERY kind, not just `template`.
+      // deduct_credit already ran once for this whole request, so a retry
+      // never charges a second credit. Provider errors that already had
+      // their own retries inside callGeminiText (rate limit, busy, billing)
+      // and safety blocks are not retried here.
+      let result: GenerateOutput | undefined;
+      let lastErr: any;
+      for (let attempt = 1; attempt <= 2 && !result; attempt++) {
+        try {
+          result = await generateAndValidate();
+        } catch (err: any) {
+          lastErr = err;
+          if (attempt === 1 && isRetryableGenerationError(err, data.kind)) {
+            console.warn(`[generateContent] ${data.kind} generation failed (${err?.message}), retrying once...`);
+            continue;
           }
-        } else {
-          // Unchanged behavior for the other six kinds, extended to also
-          // cover extractJson/normalize failures (previously only a raw
-          // callGeminiText failure triggered a refund here -- a malformed-
-          // JSON response deducted a credit with no refund). When the
-          // refund succeeds, firstErr is rethrown unchanged -- identical to
-          // the pre-existing behavior. Only when the refund itself fails do
-          // we throw a different, refund-aware message instead.
-          const refund = await attemptRefund(supabase, user.id, `generation failed: ${firstErr?.message ?? "unknown error"}`);
-          if (refund.refunded) throw firstErr;
-          throw new Error(refundAwareMessage(refund, firstErr?.message || "Generation failed."));
+          break;
         }
+      }
+
+      if (!result) {
+        console.error(`[generateContent] ${data.kind} generation failed:`, lastErr?.message ?? lastErr);
+        const refund = await attemptRefund(
+          supabase,
+          user.id,
+          `generation failed: ${lastErr?.message ?? "unknown error"}`,
+        );
+        throw new Error(refundAwareMessage(refund, friendlyGenerationError(lastErr, data.kind)));
       }
 
       const hashtags =
