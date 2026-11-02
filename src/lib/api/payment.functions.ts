@@ -352,8 +352,38 @@ export async function debitUserSI(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. activateSubscriptionFromWebhook
+// 4. activateSubscriptionFromWebhook — server-side activation for EVERY
+//    successful PayU payment, not just renewals.
+//
+//    WHY THIS EXISTS: activation used to depend solely on verifyPayUPayment
+//    running in the customer's browser after Bolt returned. On mobile the
+//    customer leaves the app to approve in GPay/PhonePe, and if they never
+//    come back -- or the tab reloads -- that callback never fires. PayU keeps
+//    the money and the app never learns about it. Observed rate: 1 in 5
+//    (a GBP-1-equivalent trial paid, PayU success, subscription row untouched).
+//
+//    This handler is the server-side source of truth. It covers:
+//      - initial trial payment       (txnid "mp_...", productinfo "... 7-Day Trial")
+//      - initial full plan purchase  (txnid "mp_...", Growth / Pro Clinic)
+//      - recurring SI auto-debit     (txnid "si_...")
+//
+//    Safe to run alongside verifyPayUPayment: whichever arrives first wins,
+//    and the txnid idempotency guard makes the second a no-op.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** productinfo is set by createPayUHash, so it is a reliable discriminator. */
+function planFromProductInfo(productinfo: string): { planKey: string; isTrial: boolean } | null {
+  const p = (productinfo ?? "").toLowerCase();
+  const isTrial = p.includes("trial");
+  if (p.includes("pro clinic")) return { planKey: "pro_clinic", isTrial };
+  if (p.includes("growth"))     return { planKey: "growth",     isTrial };
+  return null;
+}
+
+export type PayUWebhookResult =
+  | { handled: "already_processed" | "initial_activated" | "renewal_extended" }
+  | { handled: "ignored"; reason: string };
+
 export async function activateSubscriptionFromWebhook(params: {
   txnid:       string;
   status:      string;
@@ -363,7 +393,7 @@ export async function activateSubscriptionFromWebhook(params: {
   productinfo: string;
   mihpayid:    string;
   hash:        string;
-}): Promise<void> {
+}): Promise<PayUWebhookResult> {
   const { txnid, status, amount, email, firstname, productinfo, mihpayid, hash } = params;
 
   const salt = process.env.PAYU_SALT!;
@@ -372,46 +402,130 @@ export async function activateSubscriptionFromWebhook(params: {
   const reverseHash = `${salt}|${status}|||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${key}`;
   const expected    = crypto.createHash("sha512").update(reverseHash).digest("hex");
 
-  if (expected !== hash) throw new Error("Webhook hash mismatch — ignoring.");
-  if (status !== "success") return;
+  // Never trust an unverified payload -- it decides paid access.
+  if (expected !== hash) throw new Error("Webhook hash mismatch -- ignoring.");
+
+  if (status !== "success") {
+    console.warn(`[payu-webhook] Non-success status "${status}" for txn ${txnid} -- no change made.`);
+    return { handled: "ignored", reason: `status=${status}` };
+  }
 
   const supabase = getSupabaseAdmin();
 
   const { data: subRow } = await supabase
     .from("subscriptions")
-    .select("user_id, auto_renew")
+    .select("user_id, auto_renew, canceled_at, payu_txn_id, trial_used_at")
     .eq("email", email)
-    .single();
+    .maybeSingle();
 
-  if (!subRow) throw new Error(`No subscription found for email: ${email}`);
-
-  if (!subRow.auto_renew) {
+  if (!subRow) {
+    // Payment succeeded for an address with no subscription row. Do not guess --
+    // log loudly so it can be reconciled by hand.
     console.error(
-      `[payu-webhook] Debit succeeded for user ${subRow.user_id} (txn ${txnid}) after they cancelled — ` +
-      `not re-extending access. This charge may need a manual refund.`
+      `[payu-webhook][ORPHAN_PAYMENT] No subscription row for email=${email} ` +
+      `txn=${txnid} mihpayid=${mihpayid} amount=${amount}. Manual reconciliation needed.`
     );
-    return;
+    return { handled: "ignored", reason: "no_subscription_row" };
   }
 
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 30);
+  // Idempotency: PayU retries, and verifyPayUPayment may already have run in
+  // the browser. The same txnid must never extend access twice.
+  if (subRow.payu_txn_id === txnid) {
+    return { handled: "already_processed" };
+  }
 
-  const nextBillingDate = new Date();
-  nextBillingDate.setDate(nextBillingDate.getDate() + 29);
+  const now       = new Date();
+  const nowIso    = now.toISOString();
+  const isRenewal = txnid.startsWith("si_");
+  const mandateId = (mihpayid ?? "").trim() || null;
 
-  await supabase
+  // -- Recurring auto-debit --------------------------------------------------
+  if (isRenewal) {
+    if (subRow.canceled_at || !subRow.auto_renew) {
+      console.error(
+        `[payu-webhook] Debit succeeded for user ${subRow.user_id} (txn ${txnid}) after cancellation -- ` +
+        `not re-extending access. This charge likely needs a manual refund.`
+      );
+      return { handled: "ignored", reason: "cancelled_but_charged" };
+    }
+
+    const expiresAt = new Date(now); expiresAt.setDate(expiresAt.getDate() + 30);
+    const nextBill  = new Date(now); nextBill.setDate(nextBill.getDate() + 29);
+
+    const { error } = await supabase
+      .from("subscriptions")
+      .update({
+        status:               "active",
+        plan_expires_at:      expiresAt.toISOString(),
+        current_period_start: nowIso,
+        current_period_end:   expiresAt.toISOString(),
+        payu_txn_id:          txnid,
+        payu_payment_id:      mihpayid,
+        next_billing_date:    nextBill.toISOString(),
+        updated_at:           nowIso,
+      })
+      .eq("user_id", subRow.user_id);
+
+    if (error) throw new Error(`Renewal update failed: ${error.message}`);
+    console.log(`[payu-webhook] Renewal extended for user ${subRow.user_id} (txn ${txnid}).`);
+    return { handled: "renewal_extended" };
+  }
+
+  // -- Initial payment (trial start or plan purchase) ------------------------
+  const resolved = planFromProductInfo(productinfo);
+  if (!resolved) {
+    console.error(
+      `[payu-webhook][UNKNOWN_PRODUCT] Could not resolve plan from productinfo="${productinfo}" ` +
+      `email=${email} txn=${txnid}. Manual reconciliation needed.`
+    );
+    return { handled: "ignored", reason: "unresolved_plan" };
+  }
+
+  const { data: planRow } = await supabase
+    .from("plans")
+    .select("id")
+    .eq("name", resolved.planKey)
+    .maybeSingle();
+
+  if (!planRow) throw new Error(`Plan "${resolved.planKey}" not found.`);
+
+  // A trial is granted only if this account has never used one. If it has,
+  // the payment is still recorded, but as a normal period -- never hand out
+  // a second free trial silently.
+  const grantTrial = resolved.isTrial && !subRow.trial_used_at;
+  const periodDays = grantTrial ? TRIAL_DAYS : 30;
+
+  const expiresAt = new Date(now); expiresAt.setDate(expiresAt.getDate() + periodDays);
+  const nextBill  = new Date(now);
+  nextBill.setDate(nextBill.getDate() + (grantTrial ? periodDays : periodDays - 1));
+
+  const { error } = await supabase
     .from("subscriptions")
     .update({
-      status:               "active",
+      plan_id:              planRow.id,
+      plan:                 resolved.planKey,
+      status:               grantTrial ? "trialing" : "active",
       plan_expires_at:      expiresAt.toISOString(),
-      current_period_start: new Date().toISOString(),
+      current_period_start: nowIso,
       current_period_end:   expiresAt.toISOString(),
       payu_txn_id:          txnid,
       payu_payment_id:      mihpayid,
-      next_billing_date:    nextBillingDate.toISOString(),
-      updated_at:           new Date().toISOString(),
+      payu_subid:           mandateId,
+      auto_renew:           !!mandateId,
+      next_billing_date:    mandateId ? nextBill.toISOString() : null,
+      ...(grantTrial ? { trial_used_at: nowIso } : {}),
+      canceled_at:          null,
+      updated_at:           nowIso,
     })
     .eq("user_id", subRow.user_id);
+
+  if (error) throw new Error(`Initial activation failed: ${error.message}`);
+
+  console.log(
+    `[payu-webhook] Activated user ${subRow.user_id} on ${resolved.planKey}` +
+    `${grantTrial ? " (trial)" : ""} from txn ${txnid}.`
+  );
+  return { handled: "initial_activated" };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
