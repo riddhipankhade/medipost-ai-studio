@@ -102,60 +102,22 @@ export const createPayUHash = createServerFn({ method: "POST" })
 
     const productinfo = isTrial ? `${plan.productinfo} — 7-Day Trial` : plan.productinfo;
 
-    // ── Standing Instruction (mandate) details ───────────────────────────────
-    // Shape follows PayU's documented si_details object. The previous version
-    // sent `paymentCount: 0` and no dates, which is not what PayU documents:
-    // it expects paymentStartDate / paymentEndDate.
-    //
-    // paymentStartDate = the first date PayU may auto-debit the FULL plan
-    // price. For a ₹1 trial that is the day the trial ends; for a direct
-    // purchase it is one billing period from today.
-    const ymd = (d: Date) => d.toISOString().slice(0, 10);
-
-    const firstDebit = new Date();
-    firstDebit.setDate(firstDebit.getDate() + (isTrial ? TRIAL_DAYS : 30));
-
-    const mandateEnd = new Date();
-    mandateEnd.setFullYear(mandateEnd.getFullYear() + 10); // long-lived mandate
+    const hashString = `${key}|${txnid}|${finalAmount}|${productinfo}|${firstname}|${email}|||||||||||${salt}`;
+    const hash = crypto.createHash("sha512").update(hashString).digest("hex");
 
     const si_details = JSON.stringify({
-      billingAmount:    plan.amount,          // the RECURRING amount (₹499/₹999), not the ₹1
-      billingCurrency:  "INR",
-      billingCycle:     "MONTHLY",
-      billingInterval:  1,
-      paymentStartDate: ymd(firstDebit),
-      paymentEndDate:   ymd(mandateEnd),
-      remarks:          plan.productinfo,
+      billingAmount:   plan.amount,
+      billingInterval: 1,
+      paymentCount:    0,
+      billingCycle:    "MONTHLY",
+      billingCurrency: "INR",
+      remarks:         plan.productinfo,
     });
-
-    // ── Hash ─────────────────────────────────────────────────────────────────
-    // CRITICAL: for an SI/mandate transaction PayU's hash sequence includes
-    // si_details immediately before the salt:
-    //   key|txnid|amount|productinfo|firstname|email|udf1..udf5||||||si_details|salt
-    //
-    // The previous code used the plain non-SI sequence, so the signature did
-    // not cover si_details. PayU validated it as an ordinary payment, took the
-    // money and silently discarded the mandate — which is why five successful
-    // ₹1 trials produced zero mandates in the PayU dashboard.
-    //
-    // A non-SI payment must still use the original sequence, so the two cases
-    // are kept explicitly separate rather than always appending si_details.
-    const USE_SI = true; // every checkout here registers a mandate
-
-    const hashString = USE_SI
-      ? `${key}|${txnid}|${finalAmount}|${productinfo}|${firstname}|${email}|||||||||||${si_details}|${salt}`
-      : `${key}|${txnid}|${finalAmount}|${productinfo}|${firstname}|${email}|||||||||||${salt}`;
-
-    const hash = crypto.createHash("sha512").update(hashString).digest("hex");
 
     return {
       key, txnid, amount: finalAmount, productinfo,
       firstname, email, phone, hash,
       si: "1", si_details, isTrial,
-      // PayU treats a request without api_version as hash sequence v1. We send
-      // the v1 SI sequence above, so api_version is deliberately NOT set here.
-      // If PayU support tells you this account requires api_version = 7, add it
-      // AND switch the hash to their v7 sequence — the two must always match.
     };
   });
 
