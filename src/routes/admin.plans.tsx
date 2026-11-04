@@ -83,7 +83,7 @@ export const getPlans = createServerFn({ method: "GET" }).handler(async (): Prom
         .from("subscriptions")
         .select("*", { count: "exact", head: true })
         .eq("plan_id", p.id)
-        .eq("status", "active");
+        .in("status", ["active", "trialing"])
       return { ...p, userCount: count ?? 0 };
     })
   );

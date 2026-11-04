@@ -74,7 +74,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       .from("subscriptions")
       .select("*", { count: "exact", head: true })
       .in("plan", PAID_PLANS)
-      .eq("status", "active")
+      .in("status", ["active", "trialing"])
       .gt("plan_expires_at", new Date().toISOString());
 
     const { count: totalGenerated } = await admin
