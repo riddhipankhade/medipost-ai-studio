@@ -60,7 +60,7 @@ import {
   type ContentCategory,
 } from "@/lib/mock-data";
 import { getTopicExamples } from "@/lib/topic-suggestions";
-import { useTypewriter } from "@/hooks/useTypewriter";
+import { useTypewriterSuggestion } from "@/hooks/useTypewriter";
 import {
   generateContent,
   generateImage,
@@ -204,6 +204,22 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 
 const CONTENT_LANGUAGES = [
   "English", "Hindi", "Marathi", "Kannada", "Tamil", "Telugu", "Bengali", "Gujarati", "Punjabi", "Malayalam",
+];
+
+// Rotating examples for the "Additional context" field under a Did You Know
+// statistic. Every one of these shapes HOW the post is written — none states
+// a medical fact. That is deliberate: the field above it exists so that
+// Medipost only ever repeats a number the doctor supplied and sourced, and a
+// one-tap suggestion carrying an unverified claim would defeat it.
+const STATISTIC_CONTEXT_EXAMPLES = [
+  "many don't know they have it",
+  "explain why this matters for patients",
+  "keep the tone reassuring, not alarming",
+  "focus on prevention and early checks",
+  "write it for people with no medical background",
+  "end by encouraging a check-up at our clinic",
+  "aimed at families and older patients",
+  "avoid jargon — keep it simple and warm",
 ];
 
 // The three catalog formats with no render_key (see migration
@@ -382,9 +398,22 @@ function GeneratePage() {
 
   // Animated "e.g. ..." examples in the Topic/Prompt field — inspiration for a
   // doctor who isn't sure what to write. Freezes once they start typing.
+  //
+  // `full` is the complete example currently being typed out, which is what
+  // gets accepted when the doctor takes the suggestion — accepting `text`
+  // would drop a half-typed sentence into the field.
   const topicExamples = useMemo(() => getTopicExamples(kind, form.specialty), [kind, form.specialty]);
-  const animatedTopicExample = useTypewriter(topicExamples, form.topic.trim() === "");
-  const topicPlaceholder = `e.g. ${animatedTopicExample}`;
+  const { text: animatedTopicExample, full: fullTopicExample } =
+    useTypewriterSuggestion(topicExamples, form.topic.trim() === "");
+
+  // Same treatment for the Did You Know "Additional context" field. Called
+  // unconditionally (hooks must be), even on tabs where the field is hidden —
+  // it is inert when nothing renders it.
+  const { text: animatedContextExample, full: fullContextExample } =
+    useTypewriterSuggestion(
+      STATISTIC_CONTEXT_EXAMPLES,
+      (form.statisticContext ?? "").trim() === "",
+    );
 
   useEffect(() => {
     if (typeof window === "undefined" || !userId) return;
@@ -777,10 +806,11 @@ function GeneratePage() {
                   />
                 </Field>
                 <Field label="Additional context (optional)">
-                  <Input
+                  <SuggestionInput
                     value={form.statisticContext ?? ""}
-                    onChange={(e) => update("statisticContext", e.target.value)}
-                    placeholder="e.g. many don't know they have it"
+                    onChange={(v) => update("statisticContext", v)}
+                    example={animatedContextExample}
+                    fullExample={fullContextExample}
                   />
                 </Field>
               </>
@@ -812,10 +842,11 @@ function GeneratePage() {
                   </div>
                 </Field>
                 <Field label="Message angle (Topic / Prompt)">
-                  <AutoGrowTextarea
+                  <TopicPromptField
                     value={form.topic}
-                    onChange={(e) => update("topic", e.target.value)}
-                    placeholder={topicPlaceholder}
+                    onChange={(v) => update("topic", v)}
+                    example={animatedTopicExample}
+                    fullExample={fullTopicExample}
                   />
                 </Field>
                 <Field label="Creative Style">
@@ -842,10 +873,11 @@ function GeneratePage() {
               </>
             ) : (
               <Field label="Topic / Prompt">
-                <AutoGrowTextarea
+                <TopicPromptField
                   value={form.topic}
-                  onChange={(e) => update("topic", e.target.value)}
-                  placeholder={topicPlaceholder}
+                  onChange={(v) => update("topic", v)}
+                  example={animatedTopicExample}
+                  fullExample={fullTopicExample}
                 />
               </Field>
             )}
@@ -1031,6 +1063,157 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-2">
       <Label>{label}</Label>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Topic / Prompt input with an acceptable suggestion.
+ *
+ * The animated example can no longer be a `placeholder` — a placeholder is not
+ * interactive, so there is nothing to tap or accept. It is rendered instead as
+ * ghost text layered behind the textarea (padding and type scale copied from
+ * AutoGrowTextarea so the two line up exactly), with the real textarea left
+ * transparent-but-focusable on top.
+ *
+ * Accepting the suggestion inserts `fullExample`, the complete sentence — never
+ * the half-typed string currently on screen.
+ *
+ * Keys: Space and ArrowRight, and only while the field is empty. Tab is
+ * deliberately NOT used: on an empty field it is how a keyboard user moves to
+ * the next control, and hijacking it would trap them. Space in an empty topic
+ * box is never intentional, so it is safe to take.
+ *
+ * The line underneath is the touch path — on a phone there is no Tab key, and
+ * it also makes the full suggestion readable while the ghost text is still
+ * mid-animation.
+ */
+function TopicPromptField({ value, onChange, example, fullExample }: {
+  value: string;
+  onChange: (v: string) => void;
+  example: string;
+  fullExample: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const isEmpty = value.trim() === "";
+  const showGhost = isEmpty && example.length > 0;
+  const canAccept = isEmpty && fullExample.length > 0;
+
+  function accept() {
+    if (!canAccept) return;
+    onChange(fullExample);
+    ref.current?.focus();
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="relative">
+        <AutoGrowTextarea
+          ref={ref}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (!canAccept) return;
+            if (e.key === " " || e.key === "ArrowRight") {
+              e.preventDefault();
+              accept();
+            }
+          }}
+          placeholder=""
+          className="relative z-10 bg-transparent"
+        />
+        {showGhost && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 px-3 py-2 text-base md:text-sm text-muted-foreground whitespace-pre-wrap"
+          >
+            e.g. {example}
+            <span className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[0.15em] bg-muted-foreground animate-pulse" />
+          </div>
+        )}
+      </div>
+
+      {canAccept && (
+        <button
+          type="button"
+          onClick={accept}
+          className="w-full text-left text-[11px] leading-relaxed text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Tap to use:{" "}
+          <span className="font-medium text-foreground">{fullExample}</span>
+          <span className="ml-1 hidden sm:inline">· or press Space</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Single-line input with the same acceptable rotating suggestion as
+ * TopicPromptField — ghost text behind the field, accepted with Space, the
+ * right arrow, or a tap on the line beneath.
+ *
+ * Kept separate from TopicPromptField rather than generalised because the two
+ * wrap different controls (Input vs AutoGrowTextarea) whose padding and
+ * min-height differ, and the ghost layer has to line up with its own control
+ * exactly or the text appears offset.
+ */
+function SuggestionInput({ value, onChange, example, fullExample }: {
+  value: string;
+  onChange: (v: string) => void;
+  example: string;
+  fullExample: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const isEmpty = value.trim() === "";
+  const showGhost = isEmpty && example.length > 0;
+  const canAccept = isEmpty && fullExample.length > 0;
+
+  function accept() {
+    if (!canAccept) return;
+    onChange(fullExample);
+    ref.current?.focus();
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="relative">
+        <Input
+          ref={ref}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (!canAccept) return;
+            if (e.key === " " || e.key === "ArrowRight") {
+              e.preventDefault();
+              accept();
+            }
+          }}
+          placeholder=""
+          className="relative z-10 bg-transparent"
+        />
+        {showGhost && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 flex items-center px-3 text-base md:text-sm text-muted-foreground"
+          >
+            <span className="truncate">e.g. {example}</span>
+            <span className="ml-0.5 inline-block h-[1em] w-[2px] shrink-0 bg-muted-foreground animate-pulse" />
+          </div>
+        )}
+      </div>
+
+      {canAccept && (
+        <button
+          type="button"
+          onClick={accept}
+          className="w-full text-left text-[11px] leading-relaxed text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Tap to use:{" "}
+          <span className="font-medium text-foreground">{fullExample}</span>
+          <span className="ml-1 hidden sm:inline">· or press Space</span>
+        </button>
+      )}
     </div>
   );
 }
