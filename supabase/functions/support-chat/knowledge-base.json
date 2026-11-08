@@ -1,0 +1,317 @@
+{
+  "version": 2,
+  "lastReviewed": "2026-11-06",
+  "engine": "rules",
+
+  "engineNote": "No AI model is called. Answers come from this file and nothing else. A customer either taps a prebuilt question, or types freely and is matched against the keyword lists below. Anything that does not match confidently is handed to the support team rather than answered. That means coverage is exactly what is written here — to make the bot handle a new question, add an entry.",
+
+  "sourceNote": "Every figure here was read from the production database (public.plans, the credit functions) or from src/routes/_app.generate.tsx on 2026-11-06 — not from the marketing site. Update this file when plans or limits change.",
+
+  "disclosureRule": "Posts per month is published on the pricing page and may be quoted. The AI-visual allowance is NOT published — its numbers appear only in internalOnly, which is never shown to a customer.",
+
+  "internalOnly": {
+    "note": "Staff reference only. Never rendered in chat.",
+    "imageAllowancePerMonth": { "starter": 15, "growth": 90, "pro_clinic": 250 }
+  },
+
+  "facts": {
+    "plans": [
+      { "key": "starter",    "name": "Starter",    "priceMonthly": 0,   "posts": 10 },
+      { "key": "growth",     "name": "Growth",     "priceMonthly": 499, "posts": 60 },
+      { "key": "pro_clinic", "name": "Pro Clinic", "priceMonthly": 999, "posts": 200 }
+    ],
+    "trial": { "price": 1, "days": 7, "plan": "Growth", "oncePerAccount": true },
+    "support": {
+      "email": "medipost.ai.26@gmail.com",
+      "hours": "Monday to Friday, 10:00–18:00 IST",
+      "phone": "+91 92745 57987",
+      "phoneRule": "Shown only by the phone_number_request entry, which fires when a customer explicitly asks to call. Never attached to any other answer."
+    }
+  },
+
+  "menu": [
+    { "category": "Plans & billing", "ids": ["kb-006", "kb-011", "kb-013", "kb-016", "kb-020", "kb-015"] },
+    { "category": "Using Medipost",  "ids": ["kb-004", "kb-005", "kb-002", "kb-003", "kb-026", "kb-025"] },
+    { "category": "Something's wrong", "ids": ["kb-021", "kb-023", "kb-007", "kb-022", "kb-014", "kb-024"] },
+    { "category": "Account",         "ids": ["kb-041", "kb-042", "kb-039", "kb-038"] }
+  ],
+
+  "fallback": {
+    "noMatch": "I don't have an answer for that one — I only cover the common questions. I'm passing this to our support team and they'll come back to you by email.",
+    "escalated": "Passing this to our support team now. They'll reply to the email address on your account."
+  },
+
+  "entries": [
+    {
+      "id": "kb-001", "intent": "product_overview", "category": "general", "escalate": false,
+      "q": "What is Medipost AI?",
+      "keywords": ["what is medipost", "about medipost", "what does medipost do", "kya hai medipost", "medipost kya karta", "what is this app", "ye app kya hai"],
+      "a": "Medipost AI writes ready-to-publish content for your clinic's social media. You give it a short brief — your specialty, a topic and a tone — and it produces the post, caption, hashtags and a matching visual in about a minute."
+    },
+    {
+      "id": "kb-002", "intent": "formats_available", "category": "general", "escalate": false,
+      "q": "What kinds of content can I make?",
+      "keywords": ["what content", "which formats", "types of post", "kind of content", "carousel story reel", "kya bana sakta", "konsa content", "what can i create", "post types"],
+      "a": "Single posts, carousels of 2 to 10 slides, 9:16 stories, reel scripts, awareness campaigns, festive greetings, and Template Studio posters. Template Studio needs Growth or Pro Clinic."
+    },
+    {
+      "id": "kb-003", "intent": "languages", "category": "general", "escalate": false,
+      "q": "Can I make posts in Hindi or another language?",
+      "keywords": ["hindi", "language", "marathi", "tamil", "telugu", "gujarati", "bengali", "punjabi", "kannada", "malayalam", "regional language", "bhasha", "language change", "other language", "hindi me post", "hindi post", "hindi me", "language me post", "doosri bhasha", "apni bhasha", "local language"],
+      "a": "Yes. Pick your language in the Content Language dropdown in the brief — English, Hindi, Marathi, Kannada, Tamil, Telugu, Bengali, Gujarati, Punjabi or Malayalam. The text on the creative, the caption and the script are all written in that language."
+    },
+    {
+      "id": "kb-004", "intent": "getting_started", "category": "general", "escalate": false,
+      "q": "How do I make my first post?",
+      "keywords": ["first post", "how to start", "get started", "how do i use", "kaise banau", "kaise use kare", "how to make post", "start karna", "begin"],
+      "a": "Three steps. Set up your Brand Kit — clinic name, specialty, colours and logo — so everything comes out on-brand. Then pick a format and fill in the brief: category, specialty, topic and tone. Then hit Generate, and tap 'Generate visual' to add an image."
+    },
+    {
+      "id": "kb-005", "intent": "brand_kit", "category": "features", "escalate": false,
+      "q": "How do I set up my Brand Kit?",
+      "keywords": ["brand kit", "logo upload", "clinic name", "brand colour", "brand color", "change logo", "clinic details", "brand setup", "logo kaise"],
+      "a": "Open the Brand Kit page and add your clinic name, doctor name, specialty, logo, brand colours, phone and website. You enter it once and it's applied to every creative you generate afterwards. You can change it any time."
+    },
+    {
+      "id": "kb-006", "intent": "plan_limits", "category": "billing", "escalate": false,
+      "q": "How many posts do I get each month?",
+      "keywords": ["how many posts", "post limit", "monthly limit", "kitne post", "post kitne", "quota", "how many generations", "limit kya hai", "posts per month", "plan limit"],
+      "a": "Starter includes 10 posts a month. Growth is ₹499 a month for 60 posts. Pro Clinic is ₹999 a month for 200 posts. Your allowance resets at the start of each billing period."
+    },
+    {
+      "id": "kb-007", "intent": "image_limit_separate", "category": "billing", "escalate": false,
+      "q": "I have posts left but can't generate images",
+      "keywords": ["out of images", "image limit", "images finished", "image khatam", "no images left", "visual limit", "image allowance", "posts left but images"],
+      "a": "Your plan has a separate monthly allowance for AI visuals, so you can still have posts left while the visuals for this period are used up. Generating a visual for every slide of a carousel uses that allowance faster than a single post does. It resets at the start of your next billing period, and a higher plan comes with more."
+    },
+    {
+      "id": "kb-008", "intent": "regeneration_cost", "category": "billing", "escalate": false,
+      "q": "Does regenerating use another credit?",
+      "keywords": ["regenerate", "regeneration", "try again cost", "dobara banane", "does retry count", "regenerate credit", "same topic again"],
+      "a": "Yes — each generation counts as one, including a regeneration of the same topic. If a generation fails, it's returned to you automatically, so you're only charged for content you actually receive."
+    },
+    {
+      "id": "kb-009", "intent": "credits_reset", "category": "billing", "escalate": false,
+      "q": "When does my monthly limit reset?",
+      "keywords": ["reset", "renew limit", "when refresh", "kab reset", "limit reset", "new month", "refresh quota"],
+      "a": "At the start of each billing period — one month from when your current period began, not on the 1st of the calendar month. You can see your usage on the Subscription page."
+    },
+    {
+      "id": "kb-010", "intent": "out_of_credits", "category": "billing", "escalate": false,
+      "q": "I've run out of generations",
+      "keywords": ["out of credits", "no credits", "limit reached", "limit khatam", "credit khatam", "insufficient credits", "used all", "exhausted"],
+      "a": "You can wait for your billing period to reset, or move to a higher plan for more each month — Growth gives 60 posts, Pro Clinic gives 200. You can upgrade from the Subscription page."
+    },
+    {
+      "id": "kb-011", "intent": "trial_how_it_works", "category": "billing", "escalate": false,
+      "q": "How does the ₹1 trial work?",
+      "keywords": ["trial", "1 rupee", "1 rs", "rs 1", "one rupee", "free trial", "trial kaise", "7 day trial", "trial kya hai"],
+      "a": "You pay ₹1 and get 7 days of the full Growth plan — 60 posts a month, all tones, Template Studio and no watermark. The ₹1 is a registration charge, not a subscription payment. One trial per account."
+    },
+    {
+      "id": "kb-012", "intent": "trial_already_used", "category": "billing", "escalate": true,
+      "q": "It says my trial is already used",
+      "keywords": ["trial already used", "trial used", "already taken trial", "trial nahi mil raha", "cannot take trial", "trial expired already"],
+      "a": "Each account can take the ₹1 trial once, and the system has it recorded against yours. If that looks wrong, our team will check it — I'm passing this to them now."
+    },
+    {
+      "id": "kb-013", "intent": "after_trial_billing", "category": "billing", "escalate": false,
+      "q": "Will I be charged ₹499 after the trial?",
+      "keywords": ["charged after trial", "499 after trial", "auto charge", "auto debit", "after 7 days", "trial ke baad", "automatically charge", "will i be billed"],
+      "a": "Yes. When the 7-day trial ends, ₹499 a month is charged automatically to the payment method you used and your Growth plan carries on without a break. If you'd rather not continue, cancel from the Subscription page before the trial ends and nothing further is charged.",
+      "note": "States the subscription as designed and sold. Team note, not for customers: recurring mandates were not live on the PayU merchant account as of 2026-11-06, so trials reaching day 8 before activation lapse rather than convert. Watch those accounts manually."
+    },
+    {
+      "id": "kb-014", "intent": "payment_not_reflected", "category": "billing", "escalate": true,
+      "q": "I paid but my account still shows free",
+      "keywords": ["paid but free", "payment not showing", "paisa kat gaya", "paise kat", "money deducted", "payment done but", "still showing free", "plan not activated", "payment not reflected"],
+      "a": "Sorry about that — that shouldn't happen. I'm passing this to our team with your account details so they can activate your plan. A payment that completed is never lost."
+    },
+    {
+      "id": "kb-015", "intent": "payment_methods", "category": "billing", "escalate": false,
+      "q": "What payment methods can I use?",
+      "keywords": ["payment method", "upi", "card", "net banking", "how to pay", "kaise pay", "payment option", "paytm", "wallet", "debit credit"],
+      "a": "Payments go through PayU, which accepts UPI, debit and credit cards, net banking and wallets."
+    },
+    {
+      "id": "kb-016", "intent": "cancel_subscription", "category": "billing", "escalate": false,
+      "q": "How do I cancel my subscription?",
+      "keywords": ["cancel", "stop subscription", "unsubscribe", "band karna", "cancel kaise", "stop auto renew", "end plan", "cancel plan"],
+      "a": "Open the Subscription page and cancel from there. You keep access until the end of the period you've already paid for."
+    },
+    {
+      "id": "kb-017", "intent": "refund_request", "category": "billing", "escalate": true,
+      "q": "Can I get a refund?",
+      "keywords": ["refund", "money back", "paisa wapas", "return money", "refund chahiye", "want refund"],
+      "a": "Refunds are reviewed case by case by our team. I'm passing your message to them — tell me anything else that would help them understand what happened."
+    },
+    {
+      "id": "kb-018", "intent": "double_charge", "category": "billing", "escalate": true,
+      "q": "I've been charged twice",
+      "keywords": ["charged twice", "double charge", "do baar", "two times charged", "duplicate payment", "extra charge"],
+      "a": "That needs looking at properly — I'm passing it to our team now so they can check both transactions and put it right."
+    },
+    {
+      "id": "kb-019", "intent": "invoice_receipt", "category": "billing", "escalate": true,
+      "q": "How do I get an invoice or receipt?",
+      "keywords": ["invoice", "receipt", "bill", "gst", "tax invoice", "bill chahiye", "payment receipt"],
+      "a": "Our team can send you a receipt for any payment. I'm passing this on — mention which payment you need it for."
+    },
+    {
+      "id": "kb-020", "intent": "upgrade_plan", "category": "billing", "escalate": false,
+      "q": "How do I upgrade my plan?",
+      "keywords": ["upgrade", "change plan", "move to growth", "buy pro clinic", "plan badalna", "upgrade kaise", "higher plan"],
+      "a": "Go to the Subscription page and choose Growth or Pro Clinic. The higher limits and features apply as soon as the payment goes through."
+    },
+    {
+      "id": "kb-021", "intent": "generation_failed", "category": "technical", "escalate": false,
+      "q": "I'm getting an error when I generate",
+      "keywords": ["error", "generation failed", "not working", "kaam nahi kar raha", "failed", "something went wrong", "generate nahi ho raha", "post nahi ban raha"],
+      "a": "Try once more first — if the AI service was momentarily busy the second attempt usually works, and a failed generation doesn't cost you anything. If it keeps failing, tell me the exact message on screen and I'll pass it to the team."
+    },
+    {
+      "id": "kb-022", "intent": "no_active_subscription_error", "category": "technical", "escalate": true,
+      "q": "It says no active subscription found",
+      "keywords": ["no active subscription", "subscription not found", "no subscription", "plan not found", "subscription nahi"],
+      "a": "That means the system can't see a live plan on your account, usually a payment that didn't finish registering. I'm passing this to our team — it's quick for them to fix."
+    },
+    {
+      "id": "kb-023", "intent": "image_not_generating", "category": "technical", "escalate": false,
+      "q": "The image isn't generating",
+      "keywords": ["image not generating", "image nahi", "photo nahi", "visual not working", "image generate nahi ho raha", "picture not coming", "image failed", "visual nahi ban raha"],
+      "a": "Two common reasons. If you've used your plan's monthly allowance for AI visuals, generating stops until your billing period resets. Otherwise the image service may have been briefly busy — try again, and a failed attempt doesn't cost you anything. If it still won't work, tell me what the screen says."
+    },
+    {
+      "id": "kb-024", "intent": "content_disappeared", "category": "technical", "escalate": false,
+      "q": "My generated content has disappeared",
+      "keywords": ["content gone", "post missing", "disappeared", "lost my post", "content nahi mil raha", "post gayab", "where is my content"],
+      "a": "Everything you generate is saved automatically — open Content History, where you can search and filter by format. If something genuinely isn't there, tell me roughly when you made it and I'll pass it on."
+    },
+    {
+      "id": "kb-025", "intent": "find_old_posts", "category": "features", "escalate": false,
+      "q": "Where can I find my old posts?",
+      "keywords": ["old posts", "history", "previous posts", "past content", "purane post", "saved posts", "find my posts"],
+      "a": "In Content History. Everything you've generated is saved there, with search and filtering by content type."
+    },
+    {
+      "id": "kb-026", "intent": "download_content", "category": "features", "escalate": false,
+      "q": "How do I download my post?",
+      "keywords": ["download", "save image", "export", "download kaise", "save post", "get the image", "png"],
+      "a": "Use the Download button under the preview. Posts come out as 1080×1080 PNG, stories as 1080×1920, and for carousels you can download one slide or all of them at once."
+    },
+    {
+      "id": "kb-027", "intent": "watermark", "category": "features", "escalate": false,
+      "q": "How do I remove the watermark?",
+      "keywords": ["watermark", "remove watermark", "logo on post", "medipost branding", "watermark hatana"],
+      "a": "The watermark is on the free Starter plan. It's removed on Growth and Pro Clinic."
+    },
+    {
+      "id": "kb-028", "intent": "direct_publishing", "category": "features", "escalate": false,
+      "q": "Can Medipost post to Instagram directly?",
+      "keywords": ["post to instagram", "publish directly", "auto post", "schedule post", "instagram connect", "direct publish", "facebook post"],
+      "a": "Not at the moment. You download the creative and copy the caption, then post it from your own account. Direct publishing isn't available yet."
+    },
+    {
+      "id": "kb-029", "intent": "tone_locked", "category": "features", "escalate": false,
+      "q": "Why can't I choose a different tone?",
+      "keywords": ["tone locked", "cannot change tone", "tone not working", "audience locked", "professional tone", "tone nahi badal"],
+      "a": "Starter writes in Standard tone and targets General Public only. Professional, Educational, Friendly and Motivational tones, and the other audiences, are part of Growth."
+    },
+    {
+      "id": "kb-030", "intent": "template_studio_locked", "category": "features", "escalate": false,
+      "q": "Why can't I use Template Studio?",
+      "keywords": ["template studio", "templates locked", "poster design", "template nahi khul raha", "cannot use template"],
+      "a": "Template Studio's ready-made poster designs are a Growth feature. You can browse the designs on Starter, but generating with them needs Growth or Pro Clinic."
+    },
+    {
+      "id": "kb-031", "intent": "statistic_required", "category": "features", "escalate": false,
+      "q": "Why is it asking for a statistic and source?",
+      "keywords": ["statistic required", "source required", "why statistic", "statistic kyu", "did you know statistic", "need source"],
+      "a": "That's for the 'Did You Know?' category. Medipost will format a number for social media but never invents or changes one, so it asks you to supply the figure and where it came from — nothing unverified goes out under your clinic's name. Pick a different category if you don't want a statistic in the post."
+    },
+    {
+      "id": "kb-032", "intent": "carousel_slides", "category": "features", "escalate": false,
+      "q": "How many slides can a carousel have?",
+      "keywords": ["how many slides", "carousel slides", "slide limit", "kitne slide", "number of slides"],
+      "a": "Between 2 and 10. You set it with the slider in the brief before generating."
+    },
+    {
+      "id": "kb-033", "intent": "edit_generated_content", "category": "features", "escalate": false,
+      "q": "Can I edit the content after generating?",
+      "keywords": ["edit content", "change text", "modify post", "edit kar sakta", "change the caption", "customise", "customize"],
+      "a": "Yes. You can copy any section and change the wording, and in the studio panel you can adjust the theme, layout, fonts, colours and icons, then download the result."
+    },
+    {
+      "id": "kb-034", "intent": "multiple_clinics", "category": "features", "escalate": true,
+      "q": "Can I manage more than one clinic?",
+      "keywords": ["multiple clinics", "two clinics", "multi brand", "more than one clinic", "do clinic", "manage clinics"],
+      "a": "Multi-brand support is part of Pro Clinic. I'm passing this to our team so they can confirm exactly how it would work for your setup."
+    },
+    {
+      "id": "kb-035", "intent": "medical_accuracy", "category": "safety", "escalate": false,
+      "q": "Is the medical information accurate?",
+      "keywords": ["accurate", "medical accuracy", "is it correct", "wrong information", "galat information", "reliable", "trust the content"],
+      "a": "Always review generated content before you publish it. Medipost drafts it for you, but you're the clinician and the post goes out under your name. For 'Did You Know?' posts it only ever uses the statistic and source you supply — it won't invent a number."
+    },
+    {
+      "id": "kb-036", "intent": "patient_data_prohibited", "category": "safety", "escalate": false,
+      "q": "Can I upload a patient's report or prescription?",
+      "keywords": ["patient report", "prescription", "patient data", "medical record", "upload report", "patient details", "patient photo"],
+      "a": "Please don't. Medipost is for marketing and patient-education content, not clinical records, and identifiable patient information shouldn't be entered anywhere in it. For anything patient-specific, use your clinical system."
+    },
+    {
+      "id": "kb-037", "intent": "medicine_advice_out_of_scope", "category": "safety", "escalate": false,
+      "q": "Can you tell me about a medicine or dosage?",
+      "keywords": ["medicine", "dosage", "dose", "tablet", "drug", "treatment", "diagnosis", "symptoms", "dawa", "ilaj", "side effect"],
+      "a": "That's outside what Medipost does — it's a content tool for clinics, not a medicine or treatment reference. For anything about medicines, dosages or treatment, please go to a qualified pharmacist or clinician."
+    },
+    {
+      "id": "kb-038", "intent": "data_privacy", "category": "privacy", "escalate": false,
+      "q": "Is my data safe?",
+      "keywords": ["data safe", "privacy", "secure", "do you train", "my data", "data surakshit", "is it private", "confidential"],
+      "a": "Your content isn't used to train AI models. Data is encrypted in transit, passwords are hashed, and your Brand Kit and generated content are visible only to your account. The full detail is in the Privacy Policy on the website."
+    },
+    {
+      "id": "kb-039", "intent": "delete_account", "category": "privacy", "escalate": true,
+      "q": "I want to delete my account",
+      "keywords": ["delete account", "close account", "remove my account", "account delete", "account band"],
+      "a": "Our team handles account deletion so it's done properly and completely. I'm passing this to them — they'll confirm with you before anything is removed."
+    },
+    {
+      "id": "kb-040", "intent": "account_compromised", "category": "privacy", "escalate": true,
+      "q": "I think someone else is using my account",
+      "keywords": ["hack", "hacked", "hacking", "account hack", "someone else", "unauthorized", "unauthorised", "account compromised", "compromised", "suspicious login", "koi aur use", "koi aur chala raha"],
+      "a": "Change your password straight away from the login page. I'm flagging this to our team now so they can check the account."
+    },
+    {
+      "id": "kb-041", "intent": "password_reset", "category": "account", "escalate": false,
+      "q": "I forgot my password",
+      "keywords": ["forgot password", "reset password", "password bhool", "cannot login", "login nahi ho raha", "change password", "password reset"],
+      "a": "Use 'Forgot password' on the login page and you'll get a reset link by email. If it doesn't arrive in a few minutes check your spam folder — and tell me if it's still missing."
+    },
+    {
+      "id": "kb-042", "intent": "change_email", "category": "account", "escalate": true,
+      "q": "Can I change my email address?",
+      "keywords": ["change email", "update email", "wrong email", "email badalna", "new email address"],
+      "a": "Our team can do that for you. I'm passing this on — mention the current address and the new one you'd like."
+    },
+    {
+      "id": "kb-043", "intent": "contact_support", "category": "support", "escalate": true,
+      "q": "I want to talk to a person",
+      "keywords": ["talk to human", "contact support", "speak to someone", "customer care", "support team", "insaan se baat", "real person", "agent"],
+      "a": "Passing you to our support team now — they'll reply to the email address on your account. They're around Monday to Friday, 10am to 6pm IST."
+    },
+    {
+      "id": "kb-044", "intent": "feature_request", "category": "support", "escalate": true,
+      "q": "I'd like to suggest a feature",
+      "keywords": ["feature request", "suggestion", "please add", "can you add", "feature chahiye", "idea", "improvement"],
+      "a": "Passing it to the product team — requests from working clinicians genuinely shape what gets built next."
+    },
+    {
+      "id": "kb-045", "intent": "phone_number_request", "category": "support", "escalate": true,
+      "q": "Can I call someone?",
+      "keywords": ["phone number", "call", "mobile number", "contact number", "phone", "call kar sakta", "number do", "helpline", "talk on phone"],
+      "a": "You can reach the team on +91 92745 57987, Monday to Friday, 10am to 6pm IST. I'm also passing this conversation to them so they have the background before you call."
+    }
+  ]
+}

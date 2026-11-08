@@ -7,7 +7,10 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Brand } from "@/components/brand";
 import { cn } from "@/lib/utils";
 
-const ENQUIRY_EMAIL = "office@sayitdoc.com";
+// The landing page has its own contact form further down (ContactSection,
+// id="contact"). "Contact Us" scrolls there rather than opening a mailto:,
+// which would take the visitor off the site and into their mail client.
+const CONTACT_ANCHOR = "#contact";
 
 const links = [
   { href: "#features", label: "Content Studio" },
@@ -65,7 +68,7 @@ export function LandingNav() {
         <div className="col-start-3 flex items-center gap-2 justify-self-end">
           <div className="hidden md:flex items-center gap-2">
             <Button variant="outline" size="sm" asChild>
-              <a href={`mailto:${ENQUIRY_EMAIL}`}>Contact Us</a>
+              <a href={CONTACT_ANCHOR}>Contact Us</a>
             </Button>
             <Button size="sm" asChild><Link to="/login">Sign in</Link></Button>
           </div>
@@ -95,7 +98,7 @@ export function LandingNav() {
               </nav>
               <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-border/70">
                 <Button variant="outline" asChild>
-                  <a href={`mailto:${ENQUIRY_EMAIL}`} onClick={() => setMobileOpen(false)}>
+                  <a href={CONTACT_ANCHOR} onClick={() => setMobileOpen(false)}>
                     Contact Us
                   </a>
                 </Button>

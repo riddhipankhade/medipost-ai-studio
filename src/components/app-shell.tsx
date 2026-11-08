@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth-context";
 import { useSubscription, useIsPro } from "@/lib/use-subscription";
+import { SupportChat } from "@/components/support-chat";
 
 const nav = [
   { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
@@ -161,6 +162,9 @@ export function AppShell() {
           <Outlet />
         </div>
       </main>
+      {/* Floating support chat. Inside the signed-in shell on purpose — the
+          support-chat Edge Function needs the customer's session. */}
+      <SupportChat />
     </div>
   );
 }

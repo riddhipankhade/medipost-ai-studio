@@ -15,14 +15,17 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { sendContactEmail } from "@/lib/api/contact.functions";
-import { Mail, Phone, MapPin, MessageCircle, Send, Loader2, CheckCircle2 } from "lucide-react";
+import { Mail, Phone, MessageCircle, Send, Loader2, CheckCircle2 } from "lucide-react";
 
 // ── Edit these with your real contact details ──────────────────────────────
 const CLINIC_INFO = {
-  email:   "office@sayitdoc.com",
-  phone:   "+91 98765 43210",          // replace with your number
-  whatsapp: "919876543210",            // country code + number, no + or spaces
-  address: "123, Healthcare Plaza\nAndheri West, Mumbai\nMaharashtra 400058", // replace
+  email:   "medipost.ai.26@gmail.com",
+  phone:   "+91 92745 57987",
+  // Country code + number, no + or spaces. Same line as the phone above —
+  // change it here if WhatsApp is handled on a different number.
+  whatsapp: "919274557987",
+  // No address shown. The one here was a placeholder from the original
+  // example; add the real registered address if you ever want it displayed.
 };
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -93,12 +96,6 @@ export function ContactSection() {
               label="Phone"
               value={CLINIC_INFO.phone}
               href={`tel:${CLINIC_INFO.phone.replace(/\s/g, "")}`}
-            />
-
-            <InfoCard
-              icon={<MapPin className="h-5 w-5" />}
-              label="Address"
-              value={CLINIC_INFO.address}
             />
 
             {/* WhatsApp CTA */}

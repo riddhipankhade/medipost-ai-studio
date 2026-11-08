@@ -18,6 +18,7 @@ import { LandingNav } from "@/components/landing/landing-nav";
 import { Sparkles, Check, Palette, History, Zap, Crown, Building2 } from "lucide-react";
 import { SpotlightCard } from "@/components/landing/spotlight-card";
 import { ShineSweep, GlowHalo } from "@/components/landing/shine-sweep";
+import { ContactSection } from "@/components/landing/ContactSection";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -248,6 +249,10 @@ function Landing() {
           </p>
         </div>
       </Reveal>
+
+      {/* The contact form. Carries id="contact", which is what the nav's
+          "Contact Us" button scrolls to. */}
+      <ContactSection />
 
       <footer className="relative border-t border-border/70 py-8">
         <div className="max-w-6xl mx-auto px-6 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
