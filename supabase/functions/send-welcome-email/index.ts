@@ -34,7 +34,7 @@ const FROM         = (Deno.env.get("RESEND_FROM_EMAIL") ?? "Medipost AI <noreply
 const APP_URL      = "https://www.medipostai.com";
 const DEMO_VIDEO   = `${APP_URL}/demo/medipost-demo-en.mp4`;
 const DEMO_THUMB   = `${APP_URL}/video-thumb-english.jpg`;
-const SUPPORT_MAIL = "office@sayitdoc.com";
+const SUPPORT_MAIL = "medipost.ai.26@gmail.com";
 
 const BATCH_SIZE   = 25;   // max emails per run
 const MAX_AGE_DAYS = 7;    // never email an account older than this

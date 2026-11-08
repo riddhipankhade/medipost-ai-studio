@@ -115,7 +115,7 @@ function RefundPolicy() {
         <Section title="5. Refund Request Process & Timelines">
           <p>If you believe you qualify for a refund under Section 4:</p>
           <Ul items={[
-            "Submit a request to office@sayitdoc.com within 7 days of the charge.",
+            "Submit a request to medipost.ai.26@gmail.com within 7 days of the charge.",
             "Include: your account email, transaction ID / order number, date and amount of the charge, and a clear description of the issue (with screenshots if possible).",
             "We will review and may request additional information to verify the issue.",
             "We aim to respond within 5–7 business days of receiving all required information.",
@@ -131,7 +131,7 @@ function RefundPolicy() {
             <p>Manage or cancel via: Google Play Store → Profile → Payments & subscriptions → Subscriptions → Medipost AI → Cancel subscription.</p>
           </SubSection>
           <SubSection title="6.2 If You Subscribed Directly (Web/App)">
-            <p>Cancel via your account settings in the Service, or contact <a href="mailto:office@sayitdoc.com" className="text-primary underline">office@sayitdoc.com</a>.</p>
+            <p>Cancel via your account settings in the Service, or contact <a href="mailto:medipost.ai.26@gmail.com" className="text-primary underline">medipost.ai.26@gmail.com</a>.</p>
           </SubSection>
           <SubSection title="6.3 Effect of Cancellation">
             <Ul items={[
@@ -162,7 +162,7 @@ function RefundPolicy() {
         <Section title="9. Contact & Support for Billing Issues">
           <p>
             <strong className="text-foreground">SID Clinic Pvt. Ltd.</strong><br />
-            Billing / Support Email: <a href="mailto:office@sayitdoc.com" className="text-primary underline">office@sayitdoc.com</a><br />
+            Billing / Support Email: <a href="mailto:medipost.ai.26@gmail.com" className="text-primary underline">medipost.ai.26@gmail.com</a><br />
             Support Hours: Monday–Friday, 10:00 AM–6:00 PM IST
           </p>
         </Section>

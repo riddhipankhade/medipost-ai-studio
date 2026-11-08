@@ -131,7 +131,7 @@ function Terms() {
           </SubSection>
           <SubSection title="7.4 Refunds">
             <p>Except where required by law or by the applicable app-store policy, fees are non-refundable. See our full{" "}
-              <Link to="/refund-policy" className="text-primary underline">Refund Policy</Link> for details. To request a refund where eligible, contact <a href="mailto:office@sayitdoc.com" className="text-primary underline">office@sayitdoc.com</a>.
+              <Link to="/refund-policy" className="text-primary underline">Refund Policy</Link> for details. To request a refund where eligible, contact <a href="mailto:medipost.ai.26@gmail.com" className="text-primary underline">medipost.ai.26@gmail.com</a>.
             </p>
           </SubSection>
           <SubSection title="7.5 Price Changes">
@@ -185,7 +185,7 @@ function Terms() {
         <Section title="16. Contact Us">
           <p>
             <strong className="text-foreground">Medipost AI (SID Clinic Pvt. Ltd.)</strong><br />
-            Email: <a href="mailto:office@sayitdoc.com" className="text-primary underline">office@sayitdoc.com</a><br />
+            Email: <a href="mailto:medipost.ai.26@gmail.com" className="text-primary underline">medipost.ai.26@gmail.com</a><br />
             Address: HRF Incubation Centre, Shela Off, Sardar Patel Ring Rd, Opp. Vraj Gardens, Ahmedabad, Gujarat 380057
           </p>
         </Section>

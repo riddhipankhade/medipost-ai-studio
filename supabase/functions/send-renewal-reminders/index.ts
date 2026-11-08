@@ -33,7 +33,7 @@ const RESEND_KEY   = Deno.env.get("RESEND_API_KEY")!;
 const FROM         = (Deno.env.get("RESEND_FROM_EMAIL") ?? "Medipost AI <noreply@medipostai.com>").trim();
 
 const APP_URL      = "https://www.medipostai.com";
-const SUPPORT_MAIL = "office@sayitdoc.com";
+const SUPPORT_MAIL = "medipost.ai.26@gmail.com";
 const WINDOW_HOURS = 36;   // daily cron + dedupe => exactly one reminder
 const BATCH_SIZE   = 50;
 

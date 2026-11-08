@@ -7,7 +7,7 @@
  * Required env vars:
  *   RESEND_API_KEY        — your Resend API key
  *   RESEND_FROM_EMAIL     — verified sender, e.g. Medipost AI <noreply@medipostai.com>
- *   CONTACT_TO_EMAIL      — inbox that receives submissions, e.g. office@sayitdoc.com
+ *   CONTACT_TO_EMAIL      — inbox that receives submissions, e.g. medipost.ai.26@gmail.com
  */
 
 import { createServerFn } from "@tanstack/react-start";
@@ -23,7 +23,7 @@ const schema = z.object({
 const SENDER_RE = /^([^<>]+<[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+>|[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+)$/;
 
 const DEFAULT_FROM = "Medipost AI <noreply@medipostai.com>";
-const DEFAULT_TO   = "office@sayitdoc.com";
+const DEFAULT_TO   = "medipost.ai.26@gmail.com";
 
 /** Read an env var, strip stray quotes/whitespace, and fall back if blank. */
 function cleanEnv(value: string | undefined, fallback: string): string {
@@ -94,7 +94,7 @@ export const sendContactEmail = createServerFn({ method: "POST" })
 
     if (error) {
       console.error("[contact] Resend error:", error.message);
-      throw new Error("Sorry, we couldn't send your message right now. Please email office@sayitdoc.com directly.");
+      throw new Error("Sorry, we couldn't send your message right now. Please email medipost.ai.26@gmail.com directly.");
     }
     return { success: true };
   });

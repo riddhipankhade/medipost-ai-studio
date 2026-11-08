@@ -156,7 +156,7 @@ function PrivacyPolicy() {
             "Opt out of marketing communications",
             "Lodge a complaint with a data-protection authority",
           ]} />
-          <p>Contact us at <a href="mailto:office@sayitdoc.com" className="text-primary underline">office@sayitdoc.com</a> to exercise these rights.</p>
+          <p>Contact us at <a href="mailto:medipost.ai.26@gmail.com" className="text-primary underline">medipost.ai.26@gmail.com</a> to exercise these rights.</p>
         </Section>
 
         <Section title="9. Healthcare Data & Prohibited Content">
@@ -194,10 +194,10 @@ function PrivacyPolicy() {
             <p>You have the rights described in Section 8 and may lodge a complaint with your local supervisory authority.</p>
           </SubSection>
           <SubSection title="14.2 India (Digital Personal Data Protection Act, 2023)">
-            <p>We process personal data lawfully for specified purposes, obtain consent where required, and honor your rights to access, correction, and erasure. Contact: <a href="mailto:office@sayitdoc.com" className="text-primary underline">office@sayitdoc.com</a>.</p>
+            <p>We process personal data lawfully for specified purposes, obtain consent where required, and honor your rights to access, correction, and erasure. Contact: <a href="mailto:medipost.ai.26@gmail.com" className="text-primary underline">medipost.ai.26@gmail.com</a>.</p>
           </SubSection>
           <SubSection title="14.3 California (CCPA/CPRA)">
-            <p>California residents have the right to know, delete, and correct personal information, and to opt out of "sale" or "sharing." We do not sell personal information. Contact: <a href="mailto:office@sayitdoc.com" className="text-primary underline">office@sayitdoc.com</a>.</p>
+            <p>California residents have the right to know, delete, and correct personal information, and to opt out of "sale" or "sharing." We do not sell personal information. Contact: <a href="mailto:medipost.ai.26@gmail.com" className="text-primary underline">medipost.ai.26@gmail.com</a>.</p>
           </SubSection>
         </Section>
 
@@ -212,7 +212,7 @@ function PrivacyPolicy() {
         <Section title="17. Contact Us">
           <p>
             <strong className="text-foreground">Medipost AI (SID Clinic Pvt. Ltd.)</strong><br />
-            Email: <a href="mailto:office@sayitdoc.com" className="text-primary underline">office@sayitdoc.com</a><br />
+            Email: <a href="mailto:medipost.ai.26@gmail.com" className="text-primary underline">medipost.ai.26@gmail.com</a><br />
             Address: HRF Incubation Centre, Shela Off, Sardar Patel Ring Rd, Opp. Vraj Gardens, Ahmedabad, Gujarat 380057
           </p>
         </Section>
