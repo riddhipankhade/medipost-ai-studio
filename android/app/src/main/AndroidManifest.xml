@@ -32,4 +32,16 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Android 11+ (API 30) hides other installed apps by default. Without
+         this, the system filters out the speech recognition service and
+         SpeechRecognizer.isRecognitionAvailable() returns false even on
+         devices that transcribe perfectly well — the mic would never appear
+         in the Android app. RECORD_AUDIO is merged in from the speech plugin's
+         own manifest, so it is not repeated here. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 </manifest>
