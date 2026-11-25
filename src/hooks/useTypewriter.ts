@@ -18,7 +18,9 @@ export function useTypewriterSuggestion(
   active: boolean,
   opts?: TypewriterOpts,
 ): { text: string; full: string } {
-  const { typingSpeed = 45, deletingSpeed = 25, pauseMs = 1500 } = opts ?? {};
+  // Slower than a typing animation would normally be, on purpose: these are
+  // examples a doctor needs time to read, not decoration.
+  const { typingSpeed = 80, deletingSpeed = 45, pauseMs = 2800 } = opts ?? {};
   const [text, setText] = useState("");
   const [wordIndex, setWordIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);

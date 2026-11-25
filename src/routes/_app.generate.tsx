@@ -150,6 +150,8 @@ import {
   fetchStudioSessionRow,
   type StudioSessionRow,
 } from "@/lib/studio-session";
+import { Mic } from "lucide-react";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
 
 export const Route = createFileRoute("/_app/generate")({
   head: () => ({ meta: [{ title: "Content Studio — Medipost AI" }] }),
@@ -847,6 +849,7 @@ function GeneratePage() {
                     onChange={(v) => update("topic", v)}
                     example={animatedTopicExample}
                     fullExample={fullTopicExample}
+                    language={form.language}
                   />
                 </Field>
                 <Field label="Creative Style">
@@ -878,6 +881,7 @@ function GeneratePage() {
                   onChange={(v) => update("topic", v)}
                   example={animatedTopicExample}
                   fullExample={fullTopicExample}
+                  language={form.language}
                 />
               </Field>
             )}
@@ -1088,22 +1092,40 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * it also makes the full suggestion readable while the ghost text is still
  * mid-animation.
  */
-function TopicPromptField({ value, onChange, example, fullExample }: {
+function TopicPromptField({ value, onChange, example, fullExample, language }: {
   value: string;
   onChange: (v: string) => void;
   example: string;
   fullExample: string;
+  /** Content Language from the brief — decides which locale the mic listens in. */
+  language?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const isEmpty = value.trim() === "";
-  const showGhost = isEmpty && example.length > 0;
   const canAccept = isEmpty && fullExample.length > 0;
+
+  // Dictation appends rather than replaces, so a doctor can speak a second
+  // sentence without losing the first.
+  const voice = useVoiceInput({
+    language,
+    onResult: (text) => {
+      const next = value.trim() ? `${value.trim()} ${text}` : text;
+      onChange(next);
+      ref.current?.focus();
+    },
+    onError: (message) => toast.error(message),
+  });
+
+  // Ghost text would sit underneath the live transcript while dictating.
+  const showGhost = isEmpty && example.length > 0 && !voice.listening;
 
   function accept() {
     if (!canAccept) return;
     onChange(fullExample);
     ref.current?.focus();
   }
+
+  const micDisabled = !voice.languageOk;
 
   return (
     <div className="space-y-1.5">
@@ -1120,8 +1142,9 @@ function TopicPromptField({ value, onChange, example, fullExample }: {
             }
           }}
           placeholder=""
-          className="relative z-10 bg-transparent"
+          className={`relative z-10 bg-transparent ${voice.available ? "pr-12" : ""}`}
         />
+
         {showGhost && (
           <div
             aria-hidden
@@ -1131,18 +1154,45 @@ function TopicPromptField({ value, onChange, example, fullExample }: {
             <span className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[0.15em] bg-muted-foreground animate-pulse" />
           </div>
         )}
+
+        {/* Live transcript while speaking. Shown over the empty field so the
+            doctor can see they are being heard; the real value is only written
+            when the engine returns a final result. */}
+        {voice.listening && voice.partial && isEmpty && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 px-3 py-2 pr-12 text-base md:text-sm text-foreground/70 whitespace-pre-wrap"
+          >
+            {voice.partial}
+          </div>
+        )}
+
+        {voice.available && (
+          <button
+            type="button"
+            onClick={voice.toggle}
+            disabled={micDisabled}
+            aria-label={voice.listening ? "Stop dictating" : "Dictate the topic"}
+            title={
+              micDisabled
+                ? `Your device can't transcribe ${language ?? "this language"} — type the topic instead`
+                : voice.listening ? "Tap to stop" : "Tap and speak"
+            }
+            className={`absolute right-2 top-2 z-20 grid h-8 w-8 place-items-center rounded-full border transition-colors
+              ${voice.listening
+                ? "border-transparent bg-[color:var(--teal)] text-white animate-pulse"
+                : "border-border bg-background text-muted-foreground hover:text-foreground"}
+              ${micDisabled ? "cursor-not-allowed opacity-40" : ""}`}
+          >
+            {voice.listening ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
+          </button>
+        )}
       </div>
 
-      {canAccept && (
-        <button
-          type="button"
-          onClick={accept}
-          className="w-full text-left text-[11px] leading-relaxed text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Tap to use:{" "}
-          <span className="font-medium text-foreground">{fullExample}</span>
-          <span className="ml-1 hidden sm:inline">· or press Space</span>
-        </button>
+      {voice.listening && (
+        <p className="text-[11px] text-[color:var(--teal)]">
+          Listening in {language ?? "English"} — tap the square when you're done.
+        </p>
       )}
     </div>
   );
@@ -1203,17 +1253,6 @@ function SuggestionInput({ value, onChange, example, fullExample }: {
         )}
       </div>
 
-      {canAccept && (
-        <button
-          type="button"
-          onClick={accept}
-          className="w-full text-left text-[11px] leading-relaxed text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Tap to use:{" "}
-          <span className="font-medium text-foreground">{fullExample}</span>
-          <span className="ml-1 hidden sm:inline">· or press Space</span>
-        </button>
-      )}
     </div>
   );
 }
